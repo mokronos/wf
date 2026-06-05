@@ -1,0 +1,23 @@
+{
+  "name": "wf",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run index.ts",
+    "start:node": "node --experimental-strip-types index.ts"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@effect/cluster": "^0.59.0",
+    "@effect/platform-node": "^0.107.0",
+    "@effect/sql-sqlite-wasm": "^0.52.0",
+    "@effect/workflow": "^0.18.2",
+    "effect": "^3.21.2"
+  }
+}
