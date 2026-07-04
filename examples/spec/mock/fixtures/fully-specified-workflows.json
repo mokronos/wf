@@ -1,0 +1,509 @@
+{
+  "version": 1,
+  "description": "Fully specified mock workflow cases. Tests execute each node, compare every node output, then replay with a prefilled cache.",
+  "workflows": [
+    {
+      "slug": "arithmetic-approval-lab",
+      "title": "Arithmetic Approval Lab",
+      "html": "../arithmetic-approval-lab.html",
+      "cases": [
+        {
+          "caseId": "math-review-correction",
+          "title": "One answer requires human correction",
+          "workflowInput": {
+            "batchId": "math-batch-001",
+            "deadlineSeconds": 30,
+            "problems": [
+              { "id": "p1", "op": "add", "args": [12, 30], "expected": 42 },
+              { "id": "p2", "op": "divide", "args": [22, 7], "expected": 3.142, "tolerance": 0.01 },
+              { "id": "p3", "op": "sqrt", "args": [144], "expected": 12 }
+            ],
+            "reviewSignals": [
+              { "problemId": "p2", "correctedAnswer": 3.142857, "reviewer": "test-human" }
+            ]
+          },
+          "expectedOutput": {
+            "batchId": "math-batch-001",
+            "status": "completed",
+            "score": 3,
+            "maxScore": 3,
+            "reviewedProblems": ["p2"],
+            "reportArtifact": "memory://reports/math-batch-001.json"
+          },
+          "nodes": [
+            {
+              "id": "load-problems",
+              "name": "Load problem batch",
+              "operation": "math.loadProblems",
+              "cacheKey": "math-batch-001/load-problems",
+              "cacheable": true,
+              "input": {
+                "batchId": "math-batch-001",
+                "problemCount": 3
+              },
+              "expectedOutput": {
+                "problemIds": ["p1", "p2", "p3"],
+                "maxScore": 3
+              }
+            },
+            {
+              "id": "solve-problems",
+              "name": "Solve each problem",
+              "operation": "math.solveProblems",
+              "cacheKey": "math-batch-001/solve-problems",
+              "cacheable": true,
+              "input": {
+                "problems": [
+                  { "id": "p1", "op": "add", "args": [12, 30], "expected": 42 },
+                  { "id": "p2", "op": "divide", "args": [22, 7], "expected": 3.142, "tolerance": 0.0001 },
+                  { "id": "p3", "op": "sqrt", "args": [144], "expected": 12 }
+                ]
+              },
+              "expectedOutput": {
+                "answers": [
+                  { "problemId": "p1", "answer": 42 },
+                  { "problemId": "p2", "answer": 3.14 },
+                  { "problemId": "p3", "answer": 12 }
+                ]
+              }
+            },
+            {
+              "id": "check-tolerance",
+              "name": "Check answer tolerance",
+              "operation": "math.checkTolerance",
+              "cacheKey": "math-batch-001/check-tolerance/v1",
+              "cacheable": true,
+              "input": {
+                "problems": [
+                  { "id": "p1", "expected": 42 },
+                  { "id": "p2", "expected": 3.142, "tolerance": 0.0001 },
+                  { "id": "p3", "expected": 12 }
+                ],
+                "answers": [
+                  { "problemId": "p1", "answer": 42 },
+                  { "problemId": "p2", "answer": 3.14 },
+                  { "problemId": "p3", "answer": 12 }
+                ]
+              },
+              "expectedOutput": {
+                "passed": ["p1", "p3"],
+                "needsReview": ["p2"]
+              }
+            },
+            {
+              "id": "apply-review",
+              "name": "Apply human review signal",
+              "operation": "math.applyReview",
+              "cacheKey": "math-batch-001/apply-review/review-v1",
+              "cacheable": false,
+              "input": {
+                "answers": [
+                  { "problemId": "p1", "answer": 42 },
+                  { "problemId": "p2", "answer": 3.14 },
+                  { "problemId": "p3", "answer": 12 }
+                ],
+                "needsReview": ["p2"],
+                "reviewSignals": [
+                  { "problemId": "p2", "correctedAnswer": 3.142857, "reviewer": "test-human" }
+                ]
+              },
+              "expectedOutput": {
+                "answers": [
+                  { "problemId": "p1", "answer": 42 },
+                  { "problemId": "p2", "answer": 3.142857 },
+                  { "problemId": "p3", "answer": 12 }
+                ],
+                "reviewedProblems": ["p2"]
+              }
+            },
+            {
+              "id": "generate-report",
+              "name": "Generate score report",
+              "operation": "math.generateReport",
+              "cacheKey": "math-batch-001/generate-report/v1",
+              "cacheable": true,
+              "input": {
+                "batchId": "math-batch-001",
+                "maxScore": 3,
+                "problems": [
+                  { "id": "p1", "expected": 42 },
+                  { "id": "p2", "expected": 3.142, "tolerance": 0.01 },
+                  { "id": "p3", "expected": 12 }
+                ],
+                "answers": [
+                  { "problemId": "p1", "answer": 42 },
+                  { "problemId": "p2", "answer": 3.142857 },
+                  { "problemId": "p3", "answer": 12 }
+                ],
+                "reviewedProblems": ["p2"]
+              },
+              "expectedOutput": {
+                "batchId": "math-batch-001",
+                "status": "completed",
+                "score": 3,
+                "maxScore": 3,
+                "reviewedProblems": ["p2"],
+                "reportArtifact": "memory://reports/math-batch-001.json"
+              }
+            }
+          ]
+        },
+        {
+          "caseId": "math-review-timeout",
+          "title": "Review times out and default penalty applies",
+          "workflowInput": {
+            "batchId": "math-batch-timeout",
+            "deadlineSeconds": 5,
+            "problems": [
+              { "id": "p1", "op": "add", "args": [5, 5], "expected": 10 },
+              { "id": "p2", "op": "divide", "args": [1, 3], "expected": 0.333, "tolerance": 0.0001 }
+            ],
+            "reviewSignals": []
+          },
+          "expectedOutput": {
+            "batchId": "math-batch-timeout",
+            "status": "completed_with_penalty",
+            "score": 1,
+            "maxScore": 2,
+            "reviewedProblems": [],
+            "penalizedProblems": ["p2"],
+            "reportArtifact": "memory://reports/math-batch-timeout.json"
+          },
+          "nodes": [
+            {
+              "id": "solve-problems",
+              "name": "Solve each problem",
+              "operation": "math.solveProblems",
+              "cacheKey": "math-batch-timeout/solve-problems",
+              "cacheable": true,
+              "input": {
+                "problems": [
+                  { "id": "p1", "op": "add", "args": [5, 5], "expected": 10 },
+                  { "id": "p2", "op": "divide", "args": [1, 3], "expected": 0.333, "tolerance": 0.0001 }
+                ]
+              },
+              "expectedOutput": {
+                "answers": [
+                  { "problemId": "p1", "answer": 10 },
+                  { "problemId": "p2", "answer": 0.33 }
+                ]
+              }
+            },
+            {
+              "id": "check-tolerance",
+              "name": "Check answer tolerance",
+              "operation": "math.checkTolerance",
+              "cacheKey": "math-batch-timeout/check-tolerance/v1",
+              "cacheable": true,
+              "input": {
+                "problems": [
+                  { "id": "p1", "expected": 10 },
+                  { "id": "p2", "expected": 0.333, "tolerance": 0.0001 }
+                ],
+                "answers": [
+                  { "problemId": "p1", "answer": 10 },
+                  { "problemId": "p2", "answer": 0.33 }
+                ]
+              },
+              "expectedOutput": {
+                "passed": ["p1"],
+                "needsReview": ["p2"]
+              }
+            },
+            {
+              "id": "review-timeout",
+              "name": "Wait for review until deadline",
+              "operation": "math.reviewTimeout",
+              "cacheKey": "math-batch-timeout/review-timeout/5s",
+              "cacheable": false,
+              "input": {
+                "needsReview": ["p2"],
+                "reviewSignals": [],
+                "deadlineSeconds": 5
+              },
+              "expectedOutput": {
+                "reviewedProblems": [],
+                "penalizedProblems": ["p2"],
+                "virtualTimeAdvancedSeconds": 5
+              }
+            },
+            {
+              "id": "generate-report",
+              "name": "Generate score report",
+              "operation": "math.generateReport",
+              "cacheKey": "math-batch-timeout/generate-report/v1",
+              "cacheable": true,
+              "input": {
+                "batchId": "math-batch-timeout",
+                "maxScore": 2,
+                "penalizedProblems": ["p2"],
+                "problems": [
+                  { "id": "p1", "expected": 10 },
+                  { "id": "p2", "expected": 0.333, "tolerance": 0.0001 }
+                ],
+                "answers": [
+                  { "problemId": "p1", "answer": 10 },
+                  { "problemId": "p2", "answer": 0.33 }
+                ],
+                "reviewedProblems": []
+              },
+              "expectedOutput": {
+                "batchId": "math-batch-timeout",
+                "status": "completed_with_penalty",
+                "score": 1,
+                "maxScore": 2,
+                "reviewedProblems": [],
+                "penalizedProblems": ["p2"],
+                "reportArtifact": "memory://reports/math-batch-timeout.json"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "file-batch-transform",
+      "title": "File Batch Transform",
+      "html": "../file-batch-transform.html",
+      "cases": [
+        {
+          "caseId": "file-transform-with-quarantine",
+          "title": "Transform two files and quarantine one bad file",
+          "workflowInput": {
+            "runId": "file-run-001",
+            "events": ["inbox/a.csv", "inbox/b.csv", "inbox/a.csv", "inbox/bad.csv"],
+            "files": {
+              "inbox/a.csv": "name,amount\nAda,10\nLinus,20\n",
+              "inbox/b.csv": "name,amount\nGrace,30\n",
+              "inbox/bad.csv": "wrong,columns\nx,y\n"
+            }
+          },
+          "expectedOutput": {
+            "runId": "file-run-001",
+            "status": "completed",
+            "processed": ["inbox/a.csv", "inbox/b.csv"],
+            "quarantined": [{ "path": "inbox/bad.csv", "reason": "missing required headers: name, amount" }],
+            "manifest": "memory://manifests/file-run-001.json"
+          },
+          "nodes": [
+            {
+              "id": "dedupe-events",
+              "name": "Deduplicate file events",
+              "operation": "file.dedupeEvents",
+              "cacheKey": "file-run-001/dedupe-events",
+              "cacheable": true,
+              "input": {
+                "events": ["inbox/a.csv", "inbox/b.csv", "inbox/a.csv", "inbox/bad.csv"]
+              },
+              "expectedOutput": {
+                "paths": ["inbox/a.csv", "inbox/b.csv", "inbox/bad.csv"]
+              }
+            },
+            {
+              "id": "validate-files",
+              "name": "Validate CSV headers",
+              "operation": "file.validateCsvHeaders",
+              "cacheKey": "file-run-001/validate-files/v1",
+              "cacheable": true,
+              "input": {
+                "requiredHeaders": ["name", "amount"],
+                "files": {
+                  "inbox/a.csv": "name,amount\nAda,10\nLinus,20\n",
+                  "inbox/b.csv": "name,amount\nGrace,30\n",
+                  "inbox/bad.csv": "wrong,columns\nx,y\n"
+                }
+              },
+              "expectedOutput": {
+                "valid": ["inbox/a.csv", "inbox/b.csv"],
+                "invalid": [{ "path": "inbox/bad.csv", "reason": "missing required headers: name, amount" }]
+              }
+            },
+            {
+              "id": "normalize-valid-files",
+              "name": "Normalize CSV rows",
+              "operation": "file.normalizeCsv",
+              "cacheKey": "file-run-001/normalize-valid-files/v1",
+              "cacheable": true,
+              "input": {
+                "paths": ["inbox/a.csv", "inbox/b.csv"],
+                "files": {
+                  "inbox/a.csv": "name,amount\nAda,10\nLinus,20\n",
+                  "inbox/b.csv": "name,amount\nGrace,30\n"
+                }
+              },
+              "expectedOutput": {
+                "outputs": [
+                  { "path": "done/a.ndjson", "content": "{\"name\":\"Ada\",\"amount\":10}\n{\"name\":\"Linus\",\"amount\":20}\n" },
+                  { "path": "done/b.ndjson", "content": "{\"name\":\"Grace\",\"amount\":30}\n" }
+                ]
+              }
+            },
+            {
+              "id": "checksum-outputs",
+              "name": "Checksum outputs",
+              "operation": "file.checksumOutputs",
+              "cacheKey": "file-run-001/checksum-outputs/v1",
+              "cacheable": true,
+              "input": {
+                "outputs": [
+                  { "path": "done/a.ndjson", "content": "{\"name\":\"Ada\",\"amount\":10}\n{\"name\":\"Linus\",\"amount\":20}\n" },
+                  { "path": "done/b.ndjson", "content": "{\"name\":\"Grace\",\"amount\":30}\n" }
+                ]
+              },
+              "expectedOutput": {
+                "outputs": [
+                  { "path": "done/a.ndjson", "checksum": "len:56" },
+                  { "path": "done/b.ndjson", "checksum": "len:29" }
+                ]
+              }
+            },
+            {
+              "id": "summarize",
+              "name": "Summarize manifest",
+              "operation": "file.summarize",
+              "cacheKey": "file-run-001/summarize/v1",
+              "cacheable": true,
+              "input": {
+                "runId": "file-run-001",
+                "processed": ["inbox/a.csv", "inbox/b.csv"],
+                "invalid": [{ "path": "inbox/bad.csv", "reason": "missing required headers: name, amount" }]
+              },
+              "expectedOutput": {
+                "runId": "file-run-001",
+                "status": "completed",
+                "processed": ["inbox/a.csv", "inbox/b.csv"],
+                "quarantined": [{ "path": "inbox/bad.csv", "reason": "missing required headers: name, amount" }],
+                "manifest": "memory://manifests/file-run-001.json"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "build-cache-pipeline",
+      "title": "Build Cache Pipeline",
+      "html": "../build-cache-pipeline.html",
+      "cases": [
+        {
+          "caseId": "build-cache-hit-and-flaky-retry",
+          "title": "Cached compile and flaky unit test retry",
+          "workflowInput": {
+            "buildId": "build-001",
+            "tasks": [
+              { "id": "compile", "deps": [], "hash": "h1", "script": ["pass"] },
+              { "id": "unit-test", "deps": ["compile"], "hash": "h2", "script": ["flaky_fail", "pass"] },
+              { "id": "package", "deps": ["unit-test"], "hash": "h3", "script": ["pass"] }
+            ],
+            "cache": { "h1": "artifact://compile-cached" },
+            "postPublishScript": ["pass"]
+          },
+          "expectedOutput": {
+            "buildId": "build-001",
+            "status": "published",
+            "releaseMarker": "memory://releases/build-001",
+            "rolledBack": false
+          },
+          "nodes": [
+            {
+              "id": "sort-tasks",
+              "name": "Topologically sort tasks",
+              "operation": "build.topologicalSort",
+              "cacheKey": "build-001/sort-tasks/v1",
+              "cacheable": true,
+              "input": {
+                "tasks": [
+                  { "id": "compile", "deps": [] },
+                  { "id": "unit-test", "deps": ["compile"] },
+                  { "id": "package", "deps": ["unit-test"] }
+                ]
+              },
+              "expectedOutput": {
+                "taskOrder": ["compile", "unit-test", "package"]
+              }
+            },
+            {
+              "id": "execute-tasks",
+              "name": "Execute tasks with cache and retry",
+              "operation": "build.executeTasks",
+              "cacheKey": "build-001/execute-tasks/h1-h2-h3",
+              "cacheable": true,
+              "input": {
+                "taskOrder": ["compile", "unit-test", "package"],
+                "tasks": [
+                  { "id": "compile", "hash": "h1", "script": ["pass"] },
+                  { "id": "unit-test", "hash": "h2", "script": ["flaky_fail", "pass"] },
+                  { "id": "package", "hash": "h3", "script": ["pass"] }
+                ],
+                "cache": { "h1": "artifact://compile-cached" },
+                "maxAttempts": 2
+              },
+              "expectedOutput": {
+                "taskResults": [
+                  { "id": "compile", "source": "cache" },
+                  { "id": "unit-test", "source": "executed", "attempts": 2 },
+                  { "id": "package", "source": "executed", "attempts": 1 }
+                ],
+                "artifacts": {
+                  "compile": "artifact://compile-cached",
+                  "unit-test": "artifact://unit-test-h2",
+                  "package": "artifact://package-h3"
+                }
+              }
+            },
+            {
+              "id": "publish-marker",
+              "name": "Publish release marker",
+              "operation": "build.publishMarker",
+              "cacheKey": "build-001/publish-marker/v1",
+              "cacheable": false,
+              "input": {
+                "buildId": "build-001",
+                "artifact": "artifact://package-h3"
+              },
+              "expectedOutput": {
+                "releaseMarker": "memory://releases/build-001",
+                "published": true
+              }
+            },
+            {
+              "id": "verify-publish",
+              "name": "Verify published marker",
+              "operation": "build.verifyPublish",
+              "cacheKey": "build-001/verify-publish/v1",
+              "cacheable": false,
+              "input": {
+                "buildId": "build-001",
+                "postPublishScript": ["pass"],
+                "releaseMarker": "memory://releases/build-001"
+              },
+              "expectedOutput": {
+                "verified": true,
+                "rolledBack": false
+              }
+            },
+            {
+              "id": "summarize",
+              "name": "Summarize build",
+              "operation": "build.summarize",
+              "cacheKey": "build-001/summarize/v1",
+              "cacheable": true,
+              "input": {
+                "buildId": "build-001",
+                "releaseMarker": "memory://releases/build-001",
+                "verified": true,
+                "rolledBack": false
+              },
+              "expectedOutput": {
+                "buildId": "build-001",
+                "status": "published",
+                "releaseMarker": "memory://releases/build-001",
+                "rolledBack": false
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

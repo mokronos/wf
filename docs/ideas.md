@@ -1,0 +1,4 @@
+- effect ts
+- agent first
+- simple cli workflow manager
+- integrations?

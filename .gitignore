@@ -26,6 +26,9 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .eslintcache
 .cache
 *.tsbuildinfo
+.wf/*.sqlite
+.wf/*.sqlite-*
+.wf/*.sqlite.tmp
 
 # IntelliJ based IDEs
 .idea

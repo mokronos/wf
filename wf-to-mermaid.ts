@@ -2,7 +2,22 @@
 import ts from "typescript"
 import { readFileSync, writeFileSync } from "fs"
 
-// ── Graph types ──
+// Parses a workflow authored against the `wf` module (the `ctx.*` surface) and
+// renders a Mermaid flowchart. The parser only needs to recognize:
+//   - ctx.* primitive calls  -> graph nodes
+//   - (later) if/for/parallel -> structure
+// Everything else (transforms inlined, bindings) is opaque and ignored.
+//
+// NOTE: linear flows only for now — branch/loop/parallel support is a TODO.
+
+// ── Workflow step types ──
+type Step =
+  | { kind: "activity"; name: string; retry?: number; compensate?: boolean }
+  | { kind: "step"; description: string; code: string } // pure, non-durable
+  | { kind: "sleep"; duration: string }
+  | { kind: "signal_fork"; signal: string; after?: string }
+  | { kind: "signal_await"; signal: string }
+
 interface Node {
   id: string
   label: string
@@ -15,321 +30,207 @@ interface Edge {
   label?: string
 }
 
-// ── Workflow step types ──
-interface ActivityInfo {
-  name: string
-  retryTimes?: number
-  compensationLog?: string
-}
-type Step =
-  | { kind: "activity"; info: ActivityInfo }
-  | { kind: "sleep"; duration: string }
-  | { kind: "deferred_make"; name: string }
-  | { kind: "deferred_signal"; after: string }
-  | { kind: "deferred_await" }
-
 // ── Helpers ──
-function slug(s: string) { return s.replace(/[^a-zA-Z0-9]/g, "_") }
-
 function mermaidEsc(s: string): string {
-  return s.replace(/"/g, "#quot;").replace(/\(/g, "#40;").replace(/\)/g, "#41;")
+  return s
+    .replace(/"/g, "#quot;")
+    .replace(/\(/g, "#40;")
+    .replace(/\)/g, "#41;")
 }
 
-function textOf(n: ts.Node, sf: ts.SourceFile): string {
-  return n.getText(sf)
-}
-
-function isCallTo(
-  expr: ts.Expression,
-  mod: string,
-  fn: string,
-): boolean {
-  return (
-    ts.isPropertyAccessExpression(expr) &&
-    ts.isIdentifier(expr.expression) &&
-    expr.expression.text === mod &&
-    expr.name.text === fn
-  )
-}
-
-function isTaggedError(n: ts.Node, sf: ts.SourceFile): boolean {
-  const text = n.getText(sf)
-  return /class\s+\w+\s+extends\s+Schema\.TaggedError/.test(text)
+function literalText(n: ts.Node | undefined): string | undefined {
+  if (!n) return
+  if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text
+  if (ts.isTemplateExpression(n)) return n.getText().replace(/`/g, "")
 }
 
 // ── Extractor ──
-function extractSteps(code: string): { steps: Step[]; wfName: string; payloadStr: string } {
+function extractSteps(code: string): {
+  steps: Step[]
+  wfName: string
+  payloadStr: string
+} {
   const sf = ts.createSourceFile("workflow.ts", code, ts.ScriptTarget.Latest, true)
   let wfName = "Workflow"
   let payloadStr = ""
+  let ctxName = "ctx"
   const steps: Step[] = []
-  const deferredVarMap = new Map<string, string>() // variable name -> deferred name
+  const signalNames = new Map<string, string>() // variable name -> signal label
 
-  function getStringArg(call: ts.CallExpression, propName: string): string | undefined {
-    if (call.arguments.length === 0) return
-    const arg = call.arguments[0]!
-    if (!ts.isObjectLiteralExpression(arg)) return
-    for (const prop of arg.properties) {
-      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === propName) {
-        if (ts.isStringLiteral(prop.initializer)) return prop.initializer.text
+  // Read a property off an object literal as a string literal.
+  function objString(obj: ts.ObjectLiteralExpression, key: string): string | undefined {
+    for (const p of obj.properties) {
+      if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name) && p.name.text === key) {
+        return literalText(p.initializer)
       }
     }
   }
 
-  function extractObjectString(obj: ts.ObjectLiteralExpression, key: string): string | undefined {
-    for (const prop of obj.properties) {
-      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === key) {
-        if (ts.isStringLiteral(prop.initializer)) return prop.initializer.text
-      }
-    }
-  }
-
-  function getRetryTimes(call: ts.CallExpression): number | undefined {
-    // Activity.retry({ times: N }) or Activity.retry({ maxRetries: N })
-    if (call.arguments.length === 0) return
-    const arg = call.arguments[0]!
-    if (!ts.isObjectLiteralExpression(arg)) return
-    for (const prop of arg.properties) {
-      if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name)) {
-        if ((prop.name.text === "times" || prop.name.text === "maxRetries") &&
-            ts.isNumericLiteral(prop.initializer)) {
-          return Number(prop.initializer.text)
-        }
-      }
-    }
-  }
-
-  function findPipeArgs(call: ts.CallExpression, parents: ts.Node[]): ts.Node[] | undefined {
-    // parents[last] = PropertyAccessExpression(.pipe) — call's direct parent
-    // parents[last-1] = CallExpression(.pipe call) — the enclosing .pipe(...)
-    if (parents.length < 2) return
-    const directParent = parents[parents.length - 1]!
-    if (!ts.isPropertyAccessExpression(directParent)) return
-    if (directParent.name.text !== "pipe") return
-    // Ensure the PropertyAccessExpression's expression IS this call
-    if (directParent.expression !== call) return
-    const pipeCall = parents[parents.length - 2]!
-    if (!ts.isCallExpression(pipeCall)) return
-    return pipeCall.arguments
+  // Resolve a signal argument (an identifier) to its declared label.
+  function signalLabel(arg: ts.Node | undefined): string {
+    if (arg && ts.isIdentifier(arg)) return signalNames.get(arg.text) ?? arg.text
+    return "signal"
   }
 
   function visit(node: ts.Node, parents: ts.Node[]) {
-    // Call expressions
     if (ts.isCallExpression(node)) {
       const expr = node.expression
 
-      // Workflow.make({...})
-      if (isCallTo(expr, "Workflow", "make")) {
-        if (node.arguments.length > 0 && ts.isObjectLiteralExpression(node.arguments[0]!)) {
-          const obj = node.arguments[0]!
-          wfName = extractObjectString(obj, "name") ?? wfName
-          // payload
-          for (const prop of obj.properties) {
-            if (ts.isPropertyAssignment(prop) && ts.isIdentifier(prop.name) && prop.name.text === "payload") {
-              if (ts.isObjectLiteralExpression(prop.initializer)) {
-                const fields: string[] = []
-                for (const f of prop.initializer.properties) {
-                  if (ts.isPropertyAssignment(f) && ts.isIdentifier(f.name)) {
-                    let ftype = textOf(f.initializer, sf)
-                    ftype = ftype.replace(/^Schema\./, "") // shorten Schema.String -> String
-                    fields.push(`${f.name.text}: ${ftype}`)
-                  }
+      // defineWorkflow({...}, function* (input, ctx) {...})
+      if (ts.isIdentifier(expr) && expr.text === "defineWorkflow") {
+        const cfg = node.arguments[0]
+        if (cfg && ts.isObjectLiteralExpression(cfg)) {
+          wfName = objString(cfg, "name") ?? wfName
+          for (const prop of cfg.properties) {
+            if (
+              ts.isPropertyAssignment(prop) &&
+              ts.isIdentifier(prop.name) &&
+              prop.name.text === "payload" &&
+              ts.isObjectLiteralExpression(prop.initializer)
+            ) {
+              const fields: string[] = []
+              for (const f of prop.initializer.properties) {
+                if (ts.isPropertyAssignment(f) && ts.isIdentifier(f.name)) {
+                  fields.push(`${f.name.text}: ${f.initializer.getText().replace(/^t\./, "")}`)
                 }
-                payloadStr = fields.join(", ")
               }
+              payloadStr = fields.join(", ")
             }
           }
         }
-      }
-
-      // Activity.make({...})
-      if (isCallTo(expr, "Activity", "make")) {
-        const name = getStringArg(node, "name") ?? "Unnamed"
-        const info: ActivityInfo = { name }
-
-        // Check if this is inside a .pipe() chain
-        const pipeArgs = findPipeArgs(node, parents)
-        if (pipeArgs) {
-          for (const arg of pipeArgs) {
-            if (ts.isCallExpression(arg)) {
-              const argExpr = arg.expression
-              // Activity.retry({...}) or Effect.retry({...})
-              if (isCallTo(argExpr, "Activity", "retry") || isCallTo(argExpr, "Effect", "retry")) {
-                info.retryTimes = getRetryTimes(arg)
-              }
-              // .withCompensation(...)  — could be on Workflow reference
-              if (ts.isPropertyAccessExpression(argExpr) && argExpr.name.text === "withCompensation") {
-                // Find Effect.log inside the callback
-                const logText = extractLogFromCompensation(arg, sf)
-                if (logText) info.compensationLog = logText
-              }
-            }
-          }
+        const body = node.arguments[1]
+        if (body && (ts.isFunctionExpression(body) || ts.isArrowFunction(body))) {
+          const ctxParam = body.parameters[1]
+          if (ctxParam && ts.isIdentifier(ctxParam.name)) ctxName = ctxParam.name.text
         }
-
-        // Also check direct parent for non-pipe chains (e.g. variable then .pipe separately)
-        steps.push({ kind: "activity", info })
       }
 
-      // DurableClock.sleep({...})
-      if (isCallTo(expr, "DurableClock", "sleep")) {
-        const duration = getStringArg(node, "duration") ?? "?"
-        steps.push({ kind: "sleep", duration })
-      }
-
-      // DurableDeferred.make("...")
-      if (isCallTo(expr, "DurableDeferred", "make")) {
-        const name = node.arguments.length > 0 && ts.isStringLiteral(node.arguments[0]!)
-          ? node.arguments[0]!.text : "Deferred"
-        steps.push({ kind: "deferred_make", name })
-
-        // Track which variable this is assigned to
+      // defineSignal("Name") assigned to a const -> remember the variable.
+      if (ts.isIdentifier(expr) && expr.text === "defineSignal") {
+        const label = literalText(node.arguments[0]) ?? "signal"
         for (let i = parents.length - 1; i >= 0; i--) {
           const p = parents[i]!
           if (ts.isVariableDeclaration(p) && ts.isIdentifier(p.name)) {
-            deferredVarMap.set(p.name.text, name)
-            break
-          }
-          if (ts.isBinaryExpression(p) && p.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-              ts.isIdentifier(p.left)) {
-            deferredVarMap.set(p.left.text, name)
+            signalNames.set(p.name.text, label)
             break
           }
         }
       }
 
-      // DurableDeferred.succeed / done
-      if (ts.isPropertyAccessExpression(expr) &&
-          ts.isIdentifier(expr.expression) &&
-          expr.expression.text === "DurableDeferred" &&
-          (expr.name.text === "succeed" || expr.name.text === "done")) {
-        // Check for Effect.delay in the pipe chain
-        const pipeArgs = findPipeArgs(node, parents)
-        let after = ""
-        if (pipeArgs) {
-          for (const arg of pipeArgs) {
-            if (ts.isCallExpression(arg) && isCallTo(arg.expression, "Effect", "delay")) {
-              if (arg.arguments.length > 0 && ts.isStringLiteral(arg.arguments[0]!)) {
-                after = arg.arguments[0]!.text
+      // ctx.<method>(...)
+      if (
+        ts.isPropertyAccessExpression(expr) &&
+        ts.isIdentifier(expr.expression) &&
+        expr.expression.text === ctxName
+      ) {
+        const method = expr.name.text
+        const args = node.arguments
+
+        if (method === "activity") {
+          const name = literalText(args[0]) ?? "Unnamed"
+          const step: Extract<Step, { kind: "activity" }> = { kind: "activity", name }
+          const opts = args[2]
+          if (opts && ts.isObjectLiteralExpression(opts)) {
+            for (const p of opts.properties) {
+              if (ts.isPropertyAssignment(p) && ts.isIdentifier(p.name)) {
+                if (p.name.text === "retry" && ts.isNumericLiteral(p.initializer)) {
+                  step.retry = Number(p.initializer.text)
+                }
+                if (p.name.text === "compensate") step.compensate = true
               }
             }
           }
+          steps.push(step)
+        } else if (method === "step") {
+          steps.push({
+            kind: "step",
+            description: literalText(args[0]) ?? "step",
+            code: args[1]?.getText() ?? ""
+          })
+        } else if (method === "sleep") {
+          steps.push({ kind: "sleep", duration: literalText(args[0]) ?? "?" })
+        } else if (method === "completeSignalAfter") {
+          steps.push({
+            kind: "signal_fork",
+            signal: signalLabel(args[0]),
+            after: literalText(args[1])
+          })
+        } else if (method === "waitForSignal") {
+          steps.push({ kind: "signal_await", signal: signalLabel(args[0]) })
         }
-        steps.push({ kind: "deferred_signal", after })
-      }
-
-      // DurableDeferred.await
-      if (isCallTo(expr, "DurableDeferred", "await")) {
-        steps.push({ kind: "deferred_await" })
-      }
-
-      // Activity.retry standalone (if not in pipe)
-      if (isCallTo(expr, "Activity", "retry")) {
-        // Already handled as part of pipe chain above
       }
     }
 
-    // Recurse
-    ts.forEachChild(node, child => visit(child, [...parents, node]))
+    ts.forEachChild(node, (child) => visit(child, [...parents, node]))
   }
 
   visit(sf, [])
-
   return { steps, wfName, payloadStr }
 }
 
-function extractLogFromCompensation(compCall: ts.CallExpression, sf: ts.SourceFile): string | undefined {
-  // Search through the callback body for Effect.log(...)
-  function searchLog(node: ts.Node): string | undefined {
-    if (ts.isCallExpression(node)) {
-      const expr = node.expression
-      if (isCallTo(expr, "Effect", "log")) {
-        const a = node.arguments[0]
-        if (a && ts.isStringLiteral(a)) return a.text
-        if (a && ts.isNoSubstitutionTemplateLiteral(a)) return a.text
-      }
-    }
-    let result: string | undefined
-    ts.forEachChild(node, child => {
-      if (!result) result = searchLog(child)
-    })
-    return result
-  }
-  return searchLog(compCall)
-}
-
 // ── Graph builder ──
-function buildGraph(steps: Step[], wfName: string, payloadStr: string): { nodes: Node[]; edges: Edge[] } {
+function buildGraph(steps: Step[], wfName: string, payloadStr: string): {
+  nodes: Node[]
+  edges: Edge[]
+} {
   const nodes: Node[] = []
   const edges: Edge[] = []
-  const nid = (() => { let i = 0; return () => `N${i++}` })()
+  let i = 0
+  const nid = () => `N${i++}`
 
-  const labelText = payloadStr ? `${wfName}<br/>(${payloadStr})` : wfName
   const startId = nid()
-  nodes.push({ id: startId, label: labelText, shape: "start" })
+  nodes.push({
+    id: startId,
+    label: payloadStr ? `${wfName}<br/>(${payloadStr})` : wfName,
+    shape: "start"
+  })
   let lastId = startId
-  let hadRetry = false
+  let pendingLabel: string | undefined
 
-  function advance(to: string, label?: string) {
-    edges.push({ from: lastId, to, label })
+  function advance(to: string) {
+    edges.push({ from: lastId, to, label: pendingLabel })
+    pendingLabel = undefined
     lastId = to
   }
-
-  let deferredBranchNode: string | undefined // last deferred_make node for parallel signal
 
   for (const step of steps) {
     switch (step.kind) {
       case "activity": {
-        const actId = nid()
-        nodes.push({ id: actId, label: `Activity: ${step.info.name}`, class: "activity" })
-        advance(actId)
-        hadRetry = false
-
-        if (step.info.retryTimes) {
-          const retId = nid()
-          nodes.push({ id: retId, label: `Retry: ${step.info.retryTimes}×`, class: "retry" })
-          advance(retId)
-          hadRetry = true
+        const id = nid()
+        const badge = step.retry ? `<br/>retry ${step.retry}×` : ""
+        nodes.push({ id, label: `${step.name}${badge}`, class: "activity" })
+        advance(id)
+        if (step.compensate) {
+          const cid = nid()
+          nodes.push({ id: cid, label: "compensate", class: "compensation" })
+          edges.push({ from: id, to: cid, label: "on failure" })
         }
-
-        if (step.info.compensationLog) {
-          const compId = nid()
-          nodes.push({ id: compId, label: "Compensation", class: "compensation" })
-          edges.push({ from: lastId, to: compId, label: "failure" })
-          const logId = nid()
-          nodes.push({ id: logId, label: `Log: ${step.info.compensationLog}`, class: "log" })
-          edges.push({ from: compId, to: logId })
-        }
+        break
+      }
+      case "step": {
+        const id = nid()
+        nodes.push({ id, label: step.description, class: "step" })
+        advance(id)
         break
       }
       case "sleep": {
-        const sid = nid()
-        nodes.push({ id: sid, label: `Sleep: ${step.duration}`, class: "sleep" })
-        advance(sid, hadRetry ? "success" : undefined)
-        hadRetry = false
+        const id = nid()
+        nodes.push({ id, label: `sleep ${step.duration}`, class: "sleep" })
+        advance(id)
         break
       }
-      case "deferred_make": {
-        const did = nid()
-        nodes.push({ id: did, label: `Deferred: ${step.name}`, class: "deferred" })
-        advance(did)
-        deferredBranchNode = did
+      case "signal_fork": {
+        // A forked side-branch off the current node; main flow continues.
+        const id = nid()
+        const after = step.after ? `<br/>after ${step.after}` : ""
+        nodes.push({ id, label: `complete ${step.signal}${after}`, class: "fork" })
+        edges.push({ from: lastId, to: id, label: "fork" })
         break
       }
-      case "deferred_signal": {
-        // Branch from the deferred node — don't advance main flow
-        if (deferredBranchNode) {
-          const after = step.after ? ` (after ${step.after})` : ""
-          const fid = nid()
-          nodes.push({ id: fid, label: `Fork: signal${after}`, class: "fork" })
-          edges.push({ from: deferredBranchNode, to: fid, label: "fork" })
-        }
-        break
-      }
-      case "deferred_await": {
-        const wid = nid()
-        nodes.push({ id: wid, label: "Wait: await", class: "deferred" })
-        advance(wid)
+      case "signal_await": {
+        const id = nid()
+        nodes.push({ id, label: `await ${step.signal}`, class: "signal" })
+        advance(id)
         break
       }
     }
@@ -338,7 +239,6 @@ function buildGraph(steps: Step[], wfName: string, payloadStr: string): { nodes:
   const endId = nid()
   nodes.push({ id: endId, label: "End", shape: "end" })
   advance(endId)
-
   return { nodes, edges }
 }
 
@@ -346,40 +246,30 @@ function buildGraph(steps: Step[], wfName: string, payloadStr: string): { nodes:
 function renderMermaid(nodes: Node[], edges: Edge[]): string {
   let out = "flowchart TD\n"
   out += "    classDef activity fill:#e1f5fe,stroke:#0288d1,stroke-width:2px\n"
+  out += "    classDef step fill:#f5f5f5,stroke:#9e9e9e,stroke-width:1px,stroke-dasharray:5 5\n"
   out += "    classDef sleep fill:#fff3e0,stroke:#f57c00,stroke-width:2px\n"
-  out += "    classDef deferred fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px\n"
-  out += "    classDef compensation fill:#ffebee,stroke:#c62828,stroke-width:2px\n"
-  out += "    classDef retry fill:#fff8e1,stroke:#f9a825,stroke-width:2px\n"
-  out += "    classDef log fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:5,5\n"
+  out += "    classDef signal fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px\n"
   out += "    classDef fork fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px\n"
+  out += "    classDef compensation fill:#ffebee,stroke:#c62828,stroke-width:2px\n"
 
   for (const n of nodes) {
     const label = mermaidEsc(n.label)
-    if (n.shape === "start") {
-      out += `    ${n.id}("${label}")\n`
-    } else if (n.shape === "end") {
-      out += `    ${n.id}(["${label}"])\n`
-    } else {
-      out += `    ${n.id}["${label}"]\n`
-    }
+    if (n.shape === "start") out += `    ${n.id}("${label}")\n`
+    else if (n.shape === "end") out += `    ${n.id}(["${label}"])\n`
+    else out += `    ${n.id}["${label}"]\n`
     if (n.class) out += `    class ${n.id} ${n.class};\n`
   }
-
   for (const e of edges) {
-    if (e.label) {
-      out += `    ${e.from} -->|${mermaidEsc(e.label)}| ${e.to}\n`
-    } else {
-      out += `    ${e.from} --> ${e.to}\n`
-    }
+    out += e.label
+      ? `    ${e.from} -->|${mermaidEsc(e.label)}| ${e.to}\n`
+      : `    ${e.from} --> ${e.to}\n`
   }
-
   return out
 }
 
 // ── Main ──
 const args = process.argv.slice(2)
 const htmlFlagIdx = args.indexOf("--html")
-
 let htmlPath: string | undefined
 let filePath: string | undefined
 

@@ -1,0 +1,19 @@
+{
+  "name": "@wf/cli",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "wf": "./src/main.ts",
+    "integrations": "./src/integrations.ts"
+  },
+  "scripts": {
+    "start": "bun run src/main.ts"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "^0.90.0",
+    "@effect/cli": "^0.75.2",
+    "effect": "^3.21.4",
+    "wf": "workspace:*"
+  }
+}

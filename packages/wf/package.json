@@ -1,0 +1,17 @@
+{
+  "name": "wf",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "The workflow authoring surface — the stable API agents design against.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./testing": "./src/testing/index.ts"
+  },
+  "dependencies": {
+    "@effect/cluster": "^0.59.0",
+    "@effect/platform-node": "^0.107.0",
+    "@effect/sql-sqlite-bun": "^0.52.0",
+    "@effect/workflow": "^0.18.2",
+    "effect": "^3.21.4"
+  }
+}
