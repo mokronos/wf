@@ -1,95 +1,181 @@
 # wf
 
-To install dependencies:
+Durable workflows in plain TypeScript. You author workflows with typed inputs,
+outputs, and errors; the engine (built on `@effect/workflow`) persists every
+step result, timer, and signal wait in SQLite, so executions replay
+deterministically and survive process restarts. Authored workflows import only
+from `wf` — never from `effect` directly.
+
+## Install
 
 ```bash
 bun install
 ```
 
-To run the example directly:
+## Quickstart
+
+One workflow that touches the whole authoring surface
+([examples/quickstart/order.ts](examples/quickstart/order.ts)):
+
+```ts
+import { defineStep, defineWorkflow, t } from "wf"
+
+// Typed errors are tagged structs so the engine can persist and replay them.
+const PaymentDeclined = t.taggedStruct("PaymentDeclined", { orderId: t.string })
+const OrderRejected = t.taggedStruct("OrderRejected", { reason: t.string })
+
+// A step is the unit of durable side effects: retried on thrown errors,
+// its result persisted so replays never re-execute it.
+const chargeCard = defineStep({
+  name: "ChargeCard",
+  input: t.struct({ orderId: t.string, amount: t.number }),
+  output: t.struct({ paymentId: t.string }),
+  errors: PaymentDeclined,
+  retry: { attempts: 3, backoff: "none" },
+  concurrency: { limit: 5 },
+  execute: async (input, step) => {
+    if (step.attempt < 2) {
+      throw new Error("payment gateway flaked") // thrown errors are transient -> retried
+    }
+    if (input.amount <= 0) {
+      return step.fail({ _tag: "PaymentDeclined", orderId: input.orderId }) // terminal -> never retried
+    }
+    console.log(`charged order ${input.orderId} on attempt ${step.attempt}`)
+    return { paymentId: `pay_${input.orderId}` }
+  },
+  // Runs in reverse order if a later part of the workflow fails.
+  compensate: async (result) => {
+    console.log(`refunding ${result.paymentId}`)
+  }
+})
+
+const shipOrder = defineStep({
+  name: "ShipOrder",
+  input: t.struct({ orderId: t.string }),
+  output: t.void,
+  execute: async (input) => {
+    console.log(`shipped order ${input.orderId}`)
+  }
+})
+
+export const OrderWorkflow = defineWorkflow({
+  name: "OrderWorkflow",
+  version: 1,
+  input: t.struct({ orderId: t.string, amount: t.number }),
+  output: t.struct({ paymentId: t.string }),
+  errors: t.union([PaymentDeclined, OrderRejected]),
+  run: function* (input, ctx) {
+    // Durable step call: result is persisted, replays skip re-execution.
+    const payment = yield* ctx.run(chargeCard, input)
+
+    // Time and randomness must go through ctx so replays see the same values.
+    // (This log line prints once per resume — the workflow body replays after
+    // each suspension, but the recorded values never change.)
+    const placedAt = yield* ctx.now()
+    const luckyDiscount = (yield* ctx.random()) < 0.1
+    console.log(`order placed at ${placedAt.toISOString()}, lucky discount: ${luckyDiscount}`)
+
+    // Durable timer: survives process restarts.
+    yield* ctx.sleep("2 seconds", "cooldown")
+
+    // Human-in-the-loop: suspend until an external signal arrives (or time out).
+    const approval = yield* ctx.waitForSignal(
+      "managerApproval",
+      t.struct({ approved: t.boolean }),
+      { timeout: "1 minute" }
+    )
+    if (approval.type === "timeout" || !approval.value.approved) {
+      // Typed workflow failure: compensations run (chargeCard refunds).
+      return yield* ctx.fail({ _tag: "OrderRejected", reason: "not approved" })
+    }
+
+    yield* ctx.run(shipOrder, { orderId: input.orderId })
+    return { paymentId: payment.paymentId }
+  }
+})
+```
+
+Run it through the durable engine with the workflow client
+([examples/quickstart/main.ts](examples/quickstart/main.ts)):
+
+```ts
+import { createWorkflowClient, createWorkflowRuntime } from "wf"
+import { OrderWorkflow } from "./order"
+
+const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: ".wf/quickstart.sqlite" })
+runtime.register([OrderWorkflow])
+const client = createWorkflowClient(runtime)
+
+const handle = await client.start(OrderWorkflow, { orderId: "123", amount: 42 })
+
+// Approve the order once the workflow suspends on the managerApproval signal.
+const waitingForApproval = async () => {
+  const history = await client.history(handle.executionId)
+  return history.some((record) => record.event.type === "signal.waiting" && record.event.name === "managerApproval")
+}
+while (!(await waitingForApproval())) {
+  await new Promise((resolve) => setTimeout(resolve, 100))
+}
+await client.signal(handle.executionId, "managerApproval", { approved: true }, { actor: "manager" })
+
+const result = await client.result(handle.executionId)
+console.log("result:", result)
+
+// The engine's SQLite connection keeps the event loop alive.
+process.exit(0)
+```
+
+```bash
+bun run example:quickstart
+```
+
+The client also exposes `status`, `history`, and cancellation; because all
+engine state lives in SQLite, a new process pointed at the same database can
+deliver the signal and resume a suspended execution.
+
+For a workflow that needs no external signals, `run(workflow, payload)`
+executes it engine-backed as a standalone script — see
+[examples/email](examples/email):
 
 ```bash
 bun run example:email
 ```
 
-## CLI walkthrough
+## Testing workflows
 
-The CLI stores workflow source code in a local SQLite catalog and then runs that
-stored source through the workflow engine. It does not just create a name or an
-empty placeholder.
-
-Run these commands from the repository root.
-
-### Create a generated starter workflow
+`createTestRuntime` (from `wf/testing`) and `workflow.executeInMemory` run
+workflows without the engine, with hooks to fake steps, sleeps, signal
+timeouts, and secrets. `deliverSignal(executionId, name, payload)` feeds
+signals to in-memory executions.
 
 ```bash
-bun run cli -- create welcome-email
+bun test
 ```
 
-This creates a workflow artifact with id `welcome-email` in `.wf/wf.sqlite`.
-Because no `--file` or `--source` is provided, the CLI generates a small starter
-workflow for you and stores that TypeScript source in the catalog. The generated
-workflow is named `WelcomeEmailWorkflow` and expects this payload shape:
+## CLI
 
-```json
-{ "message": "hello" }
-```
-
-That is why it can be run immediately:
-
-```bash
-bun run cli -- run welcome-email '{"message":"hello"}'
-```
-
-### Import the email example workflow
+The CLI stores workflow source in a local SQLite catalog and runs the stored
+source through the engine:
 
 ```bash
 bun run cli -- create email --file examples/email/email.ts
-```
-
-This creates or imports a different workflow artifact with id `email`. Instead
-of generating starter source, the CLI reads `examples/email/email.ts` and stores
-that source in `.wf/wf.sqlite`.
-
-The example email workflow is not the same as `welcome-email`. It expects this
-payload shape:
-
-```json
-{ "id": "123", "to": "hello@example.com" }
-```
-
-Run it with:
-
-```bash
 bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
+bun run cli -- list             # stored workflow artifacts
+bun run cli -- runs             # persisted executions
+bun run cli -- events <run-id>  # step/sleep/signal events for one run
 ```
 
-Running `email` with `{ "message": "hello" }` fails validation because the
-stored `EmailWorkflow` requires `id` and `to`.
+See [apps/cli/README.md](apps/cli/README.md) for the full reference.
 
-### Inspect stored workflows and runs
+## Storage
+
+- `.wf/wf.sqlite` — CLI catalog: workflow source, run rows, event rows.
+- `.wf/engine.sqlite` — durable engine state: completed activity results,
+  timers, and suspended signal waits.
+
+## Development
 
 ```bash
-bun run cli -- list
-bun run cli -- runs
-bun run cli -- events '<run-id>'
+bun run typecheck
+bun test
 ```
-
-`list` shows the workflow artifacts stored in `.wf/wf.sqlite`. `runs` shows
-persisted workflow executions. `events <run-id>` shows the workflow, step,
-activity, sleep, and signal events recorded for a specific run.
-
-See [apps/cli/README.md](apps/cli/README.md) for the full CLI reference.
-
-`wf run` prints workflow events for steps, activities, sleeps, and signals to
-stderr while leaving the final result on stdout.
-
-Workflow source, catalog rows, run rows, and event rows are stored in
-`.wf/wf.sqlite`. Files are only a CLI convenience for importing workflow source
-with `wf create --file`.
-
-The Effect workflow engine uses `.wf/engine.sqlite` directly through the
-SQL-backed `SingleRunner` layer, so completed activity results and durable
-workflow messages are stored in SQLite as the engine runs.
-
-This project was created using `bun init` in bun v1.3.12. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
