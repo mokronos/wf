@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Vendor Onboarding and Procurement</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #18212f; background: #f7f8fa; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #d9dee7; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef2f7; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #c9d3df; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfcfe; }
+    .mermaid { background: #fbfcfe; border: 1px solid #e4e9f1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Vendor Onboarding and Procurement</h1>
+      <p class="meta">Business workflow covering intake, risk checks, approvals, contract routing, ERP setup, and purchase order creation.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Turn an employee's request for a new vendor into a compliant, payable supplier record and an approved purchase order.
+        The workflow should coordinate humans, external systems, document generation, parallel approvals, retries, and auditable decisions.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Internal</strong><br>Slack or Teams, Jira Service Management, ERP, contract repository, identity provider.</div>
+        <div><strong>External</strong><br>SOC 2 portal, sanctions screening API, tax form validation, e-signature service, banking verification provider.</div>
+        <div><strong>Artifacts</strong><br>Vendor intake form, NDA, DPA, W-9 or W-8, purchase order, audit log, risk scorecard.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Employee submits vendor request] --> B{Duplicate vendor?}
+  B -- yes --> C[Link requester to existing vendor record]
+  B -- no --> D[Collect vendor profile and documents]
+  D --> E[Run sanctions, tax, bank, and domain checks]
+  E --> F{Risk level}
+  F -- low --> G[Manager approval]
+  F -- medium --> H[Manager and finance approvals in parallel]
+  F -- high --> I[Security, legal, finance, and exec approvals]
+  G --> J[Generate contract packet]
+  H --> J
+  I --> J
+  J --> K[Route for e-signature]
+  K --> L{Signed before deadline?}
+  L -- no --> M[Escalate and remind]
+  M --> K
+  L -- yes --> N[Create supplier in ERP]
+  N --> O[Create purchase order]
+  O --> P[Notify requester and vendor owner]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Request is a duplicate but the existing vendor lacks a required compliance document.</li>
+        <li>Vendor domain does not match banking information, requiring manual finance review.</li>
+        <li>Approver is out of office, so approval must delegate after a timeout.</li>
+        <li>Legal redlines the DPA and sends the workflow into a negotiation loop with versioned documents.</li>
+        <li>ERP supplier creation succeeds but purchase order creation fails and must be retried idempotently.</li>
+        <li>Requester cancels after approvals but before contract signature, requiring cancellation notices and audit closure.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "requester": "maya@company.example",
+  "department": "Marketing",
+  "vendor": {
+    "name": "Northstar Analytics LLC",
+    "website": "https://northstar-analytics.example",
+    "country": "US",
+    "contactEmail": "sales@northstar-analytics.example"
+  },
+  "spend": { "amount": 42000, "currency": "USD", "termMonths": 12 },
+  "dataAccess": ["customer_email", "campaign_metrics"],
+  "requestedStartDate": "2026-07-15",
+  "documents": ["w9.pdf", "soc2.pdf", "dpa-template.docx"]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "status": "ready_for_purchase_order",
+  "vendorId": "ERP-VND-10492",
+  "riskLevel": "medium",
+  "approvals": [
+    { "role": "manager", "status": "approved", "approvedBy": "director@company.example" },
+    { "role": "finance", "status": "approved", "approvedBy": "ap-lead@company.example" },
+    { "role": "security", "status": "approved_with_conditions", "condition": "annual SOC 2 renewal required" }
+  ],
+  "contractEnvelopeId": "sign-78431",
+  "purchaseOrder": { "poNumber": "PO-2026-1882", "amount": 42000 },
+  "auditArtifacts": ["risk-scorecard.json", "signed-dpa.pdf", "approval-log.jsonl"]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">parallel approval</span>
+      <span class="pill">human tasks</span>
+      <span class="pill">external APIs</span>
+      <span class="pill">document generation</span>
+      <span class="pill">timeouts</span>
+      <span class="pill">delegation</span>
+      <span class="pill">idempotency</span>
+      <span class="pill">audit trail</span>
+      <span class="pill">compensation</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

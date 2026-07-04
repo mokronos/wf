@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Fully Specified Fixtures</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #fbfaf7; line-height: 1.55; }
+    main { max-width: 1120px; margin: 0 auto; padding: 44px 22px 64px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.6rem; line-height: 1; }
+    h2 { margin: 30px 0 10px; font-family: Georgia, Times, serif; font-size: 1.7rem; line-height: 1.1; }
+    h3 { margin: 0 0 8px; font-size: 1.1rem; }
+    section, article { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    details { border: 1px solid #e0e6ed; border-radius: 8px; padding: 12px 14px; margin: 10px 0; background: #fbfcfd; }
+    summary { cursor: pointer; font-weight: 700; }
+    pre { overflow: auto; background: #f3f5f8; border: 1px solid #e1e6ed; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.9rem; }
+    a { color: #176c65; }
+    .meta { color: #5a6678; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+    .pill { display: inline-block; background: #edf4f2; border: 1px solid #d9e7e3; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; color: #30524d; }
+    .error { border-color: #c25444; color: #803126; background: #fff8f6; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Fully Specified Fixtures</h1>
+      <p class="meta">
+        Machine-readable mock workflow contracts with workflow input/output, every node, node input/output, cache key, and cacheability.
+      </p>
+    </header>
+
+    <section>
+      <h2>How To Use These</h2>
+      <p>
+        The source of truth is <a href="fixtures/fully-specified-workflows.json"><code>fixtures/fully-specified-workflows.json</code></a>.
+        The test harness at <code>../../../packages/wf/test/mock-fixtures.test.ts</code> executes each node independently,
+        asserts every node output, asserts the final workflow output, and replays cacheable nodes from cache.
+      </p>
+    </section>
+
+    <section>
+      <h2>Rendered Contract</h2>
+      <p class="meta">
+        This section loads the JSON fixture file. If you opened this page with <code>file://</code> and the browser blocks local fetches,
+        open the JSON link above or serve the repo root.
+      </p>
+      <div id="fixture-root"></div>
+    </section>
+  </main>
+
+  <script type="module">
+    const root = document.querySelector("#fixture-root");
+    const pretty = (value) => JSON.stringify(value, null, 2);
+
+    const renderCode = (value) => {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = pretty(value);
+      pre.append(code);
+      return pre;
+    };
+
+    const renderFixtures = (fixtures) => {
+      root.textContent = "";
+      for (const workflow of fixtures.workflows) {
+        const workflowArticle = document.createElement("article");
+        workflowArticle.innerHTML = `
+          <h2>${workflow.title}</h2>
+          <p class="meta"><a href="${workflow.html}">${workflow.slug}</a></p>
+        `;
+
+        for (const fixtureCase of workflow.cases) {
+          const caseDetails = document.createElement("details");
+          caseDetails.open = true;
+          caseDetails.innerHTML = `
+            <summary>${fixtureCase.caseId}: ${fixtureCase.title}</summary>
+            <div class="grid">
+              <div><h3>Workflow Input</h3></div>
+              <div><h3>Expected Workflow Output</h3></div>
+            </div>
+          `;
+          const ioGrid = caseDetails.querySelector(".grid");
+          ioGrid.children[0].append(renderCode(fixtureCase.workflowInput));
+          ioGrid.children[1].append(renderCode(fixtureCase.expectedOutput));
+
+          for (const node of fixtureCase.nodes) {
+            const nodeDetails = document.createElement("details");
+            nodeDetails.innerHTML = `
+              <summary>${node.id}: ${node.name}</summary>
+              <p>
+                <span class="pill">${node.operation}</span>
+                <span class="pill">${node.cacheable ? "cacheable" : "not cacheable"}</span>
+                <span class="pill">${node.cacheKey}</span>
+              </p>
+              <div class="grid">
+                <div><h3>Node Input</h3></div>
+                <div><h3>Expected Node Output</h3></div>
+              </div>
+            `;
+            const nodeGrid = nodeDetails.querySelector(".grid");
+            nodeGrid.children[0].append(renderCode(node.input));
+            nodeGrid.children[1].append(renderCode(node.expectedOutput));
+            caseDetails.append(nodeDetails);
+          }
+
+          workflowArticle.append(caseDetails);
+        }
+
+        root.append(workflowArticle);
+      }
+    };
+
+    try {
+      const response = await fetch("fixtures/fully-specified-workflows.json");
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      renderFixtures(await response.json());
+    } catch (error) {
+      root.innerHTML = `
+        <section class="error">
+          <h3>Could not load fixture JSON in this browser context.</h3>
+          <p>Open <a href="fixtures/fully-specified-workflows.json"><code>fixtures/fully-specified-workflows.json</code></a> directly or serve the repository root.</p>
+          <pre><code>${String(error)}</code></pre>
+        </section>
+      `;
+    }
+  </script>
+</body>
+</html>

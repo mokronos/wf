@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>wf vs n8n — Node Coverage Overview</title>
+<style>
+  :root {
+    --bg: #11111b;
+    --panel: #1e1e2e;
+    --panel2: #181825;
+    --ink: #cdd6f4;
+    --muted: #9399b2;
+    --line: #313244;
+    --accent: #89b4fa;
+    --ok: #a6e3a1;
+    --warn: #f9e2af;
+    --viz: #89dceb;
+    --no: #f38ba8;
+    --ext: #cba6f7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 0 0 80px;
+  }
+  header {
+    padding: 40px 32px 28px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, #181825, #11111b);
+  }
+  header h1 { color: var(--no); }
+  h1 { margin: 0 0 8px; font-size: 28px; letter-spacing: -0.4px; }
+  h1 .vs { color: var(--muted); font-weight: 400; }
+  .sub { color: var(--muted); max-width: 900px; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 32px; }
+  h2 { font-size: 20px; margin: 44px 0 6px; letter-spacing: -0.2px; }
+  h2 .em { color: var(--accent); }
+  .lead { color: var(--muted); margin: 0 0 18px; max-width: 940px; }
+  code { background: var(--panel2); border: 1px solid var(--line); border-radius: 5px;
+         padding: 1px 5px; font-size: 0.86em; color: #f5e0dc; }
+
+  /* legend */
+  .legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 22px 0 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px;
+          border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+          font-size: 13px; cursor: pointer; user-select: none; transition: .15s; }
+  .chip.off { opacity: .32; }
+  .dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .d-ok{background:var(--ok)} .d-warn{background:var(--warn)} .d-viz{background:var(--viz)}
+  .d-no{background:var(--no)} .d-ext{background:var(--ext)}
+
+  /* scorecard */
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 14px; margin: 18px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .card .n { font-size: 30px; font-weight: 700; line-height: 1; }
+  .card .l { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  /* tables */
+  table { width: 100%; border-collapse: collapse; margin: 10px 0 4px;
+          background: var(--panel); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--panel2); font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted); }
+  tr:last-child td { border-bottom: none; }
+  td.node { font-weight: 600; white-space: nowrap; }
+  td.maps { color: var(--muted); font-size: 13.5px; }
+  td.maps code { font-size: 12px; }
+  .v { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; font-size: 13px; font-weight: 600; }
+  .grp-title { display:flex; align-items:baseline; gap:10px; margin-top: 30px; }
+  .grp-title .meta { color: var(--muted); font-size: 13px; font-weight: 400; }
+
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px){ .two { grid-template-columns: 1fr; } }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; }
+  .box h3 { margin: 0 0 10px; font-size: 16px; }
+  .box.strong { border-color: #3a5a3a; }
+  .box.gap { border-color: #5a3a44; }
+  ul { margin: 8px 0; padding-left: 20px; }
+  li { margin: 5px 0; }
+  .box.strong h3 { color: var(--ok); }
+  .box.gap h3 { color: var(--no); }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 999px; border:1px solid var(--line);
+         color: var(--muted); margin-left:6px; }
+  .note { background: var(--panel2); border-left: 3px solid var(--accent); padding: 12px 16px;
+          border-radius: 0 8px 8px 0; margin: 14px 0; color: var(--ink); }
+  .note b { color: var(--accent); }
+  footer { color: var(--muted); font-size: 13px; margin-top: 50px; border-top: 1px solid var(--line); padding-top: 18px; }
+  .page-screenshot { display: block; width: min(100% - 64px, 1180px); height: auto; margin: 40px auto 0; border: 1px solid var(--line); border-radius: 12px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Workflow coverage: <span class="em" style="color:var(--accent)">wf</span> <span class="vs">vs.</span> n8n</h1>
+    <p class="sub">
+      How far does today's <code>wf</code> authoring surface — what the agent writes against
+      <code>ctx.*</code>, <code>defineWorkflow</code>, <code>defineError</code>, <code>defineSignal</code>, <code>t.*</code> —
+      go toward covering n8n's node catalog? Each n8n node is scored against the primitives that exist
+      <em>today</em> and against the static parser in <code>wf-to-mermaid.ts</code> (which renders the diagram/UI).
+      External SaaS/service nodes are split into their own section — they all collapse to one pattern you already have a plan for.
+    </p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ───────────────────────── what wf offers ───────────────────────── -->
+  <h2>What <span class="em">wf</span> exposes today</h2>
+  <p class="lead">The entire agent-facing vocabulary. Authored workflows import <em>only</em> from <code>wf</code> — never <code>effect</code> directly.</p>
+  <table>
+    <thead><tr><th>Primitive</th><th>What it is</th><th>Durable?</th><th>Visible to parser?</th></tr></thead>
+    <tbody>
+      <tr><td class="node"><code>ctx.activity(name, run, opts)</code></td><td>The only place I/O, time, randomness may happen. <code>opts</code>: <code>retry: N</code>, <code>error</code>, <code>compensate</code> (saga). Exposes <code>attempt</code> + <code>executionId</code>.</td><td>✅ checkpointed, exactly-once</td><td>✅ yes</td></tr>
+      <tr><td class="node"><code>ctx.step(desc, compute)</code></td><td>Pure, deterministic in-between logic (map/filter/aggregate/format). Re-runs free on replay. Annotated + source surfaced in diagram.</td><td>❌ pure, re-runs</td><td>✅ yes</td></tr>
+      <tr><td class="node"><code>ctx.sleep(duration, name)</code></td><td>Durable timer; consumes no resources while paused.</td><td>✅</td><td>✅ yes</td></tr>
+      <tr><td class="node"><code>ctx.waitForSignal(sig)</code></td><td>Pause until a <code>defineSignal</code> is completed — possibly by an external caller, possibly much later.</td><td>✅</td><td>✅ yes</td></tr>
+      <tr><td class="node"><code>ctx.completeSignalAfter(sig, d)</code></td><td>Demo helper to self-complete a signal after a delay.</td><td>✅</td><td>✅ (as fork)</td></tr>
+      <tr><td class="node"><code>defineWorkflow({name, payload, success, error, idempotencyKey})</code></td><td>The workflow shell. <code>idempotencyKey</code> dedups runs.</td><td>✅</td><td>✅ name + payload</td></tr>
+      <tr><td class="node"><code>defineError(tag, fields)</code> · <code>defineSignal(name)</code> · <code>t.*</code></td><td>Typed tagged errors persisted across replays; durable rendezvous points; the small schema vocabulary (<code>string/number/boolean/date/struct/array/literal/optional/union/unknown</code>).</td><td>✅</td><td>partial</td></tr>
+      <tr><td class="node">native <code>if</code> / <code>for</code> / <code>Promise.all</code> in the generator</td><td>Branching, looping, and parallelism are just JavaScript inside <code>function*</code>.</td><td>✅ (runs fine)</td><td>❌ <b>parser is linear-only</b></td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── legend + scorecard ───────────────────────── -->
+  <h2>Verdict legend <span class="meta" style="color:var(--muted);font-size:13px;font-weight:400">(click to filter the tables below)</span></h2>
+  <div class="legend" id="legend">
+    <span class="chip" data-k="ok"><span class="dot d-ok"></span> Represented well</span>
+    <span class="chip" data-k="warn"><span class="dot d-warn"></span> Awkward / needs convention</span>
+    <span class="chip" data-k="viz"><span class="dot d-viz"></span> Runs, but viz/parsing breaks</span>
+    <span class="chip" data-k="no"><span class="dot d-no"></span> Not possible yet</span>
+    <span class="chip" data-k="ext"><span class="dot d-ext"></span> External service (separate plan)</span>
+  </div>
+
+  <div class="cards">
+    <div class="card"><div class="n" style="color:var(--ok)">✅ ~20</div><div class="l">Clean today — mostly transforms &amp; reliability, the design's sweet spot</div></div>
+    <div class="card"><div class="n" style="color:var(--warn)">🟡 ~9</div><div class="l">Doable but clumsy — item-model, binary data, no datastore</div></div>
+    <div class="card"><div class="n" style="color:var(--viz)">📊 ~5</div><div class="l">Runtime is fine; the <em>diagram</em> can't see branches/loops/parallel</div></div>
+    <div class="card"><div class="n" style="color:var(--no)">❌ ~10</div><div class="l">Missing primitive — almost all are <b>triggers</b> &amp; sub-workflows</div></div>
+    <div class="card"><div class="n" style="color:var(--ext)">🔌 400+</div><div class="l">SaaS/app nodes → one pattern: <code>activity</code> + connector registry</div></div>
+  </div>
+
+  <div class="note">
+    <b>The headline.</b> The things <code>wf</code> covers cleanly are exactly the things the vision prioritizes:
+    computation (<code>step</code>), durable I/O (<code>activity</code>), waits, signals, retries, compensation, idempotency.
+    The gaps cluster in three places: <b>(1) no trigger surface</b> — workflows are invoked via <code>run(wf, payload)</code>, there is no schedule/webhook/event entrypoint yet;
+    <b>(2) the static parser is linear-only</b> — branches, loops and parallelism execute correctly but vanish from the diagram;
+    <b>(3) no item-stream / binary / datastore model</b> — n8n's per-item fan-out and binary blobs don't have a 1:1 home.
+  </div>
+
+  <!-- ───────────────────────── TRIGGERS ───────────────────────── -->
+  <div class="grp-title"><h2 style="margin-bottom:0">Triggers</h2><span class="meta">n8n workflows always start with one. <code>wf</code> has <b>no trigger primitive</b> yet — this is the single biggest gap.</span></div>
+  <table class="cmp">
+    <thead><tr><th>n8n node</th><th>Verdict</th><th>Maps to / why</th></tr></thead>
+    <tbody>
+      <tr data-k="ok"><td class="node">Manual Trigger</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps">This is just <code>run(wf, payload)</code> / <code>workflow.execute(payload)</code>. The typed <code>payload</code> schema <em>is</em> the manual trigger.</td></tr>
+      <tr data-k="no"><td class="node">Schedule / Cron Trigger</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No scheduling entrypoint. The engine has <code>DurableClock</code> for in-flow <code>sleep</code>, but nothing that <em>starts</em> a run on a cron. Needs a trigger registry.</td></tr>
+      <tr data-k="no"><td class="node">Webhook Trigger · Respond to Webhook</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No HTTP ingress surface. (Resuming a <em>running</em> workflow from outside is solved — that's <code>waitForSignal</code> — but <em>starting</em> one from HTTP is not.)</td></tr>
+      <tr data-k="no"><td class="node">Error Trigger</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No "run workflow B when workflow A fails" hook. Per-workflow typed <code>error</code> exists, but not a cross-workflow error subscriber.</td></tr>
+      <tr data-k="no"><td class="node">Form Trigger · Chat Trigger</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">Need both an HTTP/UI ingress and a rendered form. Mid-flow human input is close (<code>waitForSignal</code>), but the entry form is not.</td></tr>
+      <tr data-k="ext"><td class="node">Email (IMAP) · RSS Feed · Local File · SSE Trigger</td><td><span class="v" style="color:var(--ext)"><span class="dot d-ext"></span>External</span></td><td class="maps">All are "poll/subscribe to an external source, then start a run" — a trigger surface <em>plus</em> a connector. Belongs to the integration plan.</td></tr>
+      <tr data-k="no"><td class="node">Execute Sub-workflow Trigger · Workflow Trigger</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No sub-workflow invocation primitive exposed in the DSL yet (Effect workflows <em>can</em> call each other under the hood). Vision lists it as first-class — TODO.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── FLOW LOGIC ───────────────────────── -->
+  <div class="grp-title"><h2 style="margin-bottom:0">Flow logic &amp; control</h2><span class="meta">These mostly <em>run</em> fine as plain JS — the problem is the diagram, not the runtime.</span></div>
+  <table class="cmp">
+    <thead><tr><th>n8n node</th><th>Verdict</th><th>Maps to / why</th></tr></thead>
+    <tbody>
+      <tr data-k="viz"><td class="node">IF</td><td><span class="v" style="color:var(--viz)"><span class="dot d-viz"></span>Viz/parsing</span></td><td class="maps">Native <code>if (…) { … } else { … }</code> in the generator. Executes perfectly; <code>wf-to-mermaid.ts</code> walks calls linearly and renders neither branch. Needs branch-aware parsing.</td></tr>
+      <tr data-k="viz"><td class="node">Switch</td><td><span class="v" style="color:var(--viz)"><span class="dot d-viz"></span>Viz/parsing</span></td><td class="maps">Native <code>switch</code> / if-else chain. Same story — runtime fine, multi-route diagram missing.</td></tr>
+      <tr data-k="viz"><td class="node">Loop Over Items · Split In Batches</td><td><span class="v" style="color:var(--viz)"><span class="dot d-viz"></span>Viz/parsing</span></td><td class="maps">Native <code>for</code> / <code>for await</code>. Works, but loops are invisible to the parser and batching/back-pressure isn't a first-class concept.</td></tr>
+      <tr data-k="viz"><td class="node">Merge</td><td><span class="v" style="color:var(--viz)"><span class="dot d-viz"></span>Viz/parsing</span></td><td class="maps">Joining two prior results = combine variables in a <code>step</code>. Trivial in code, but the diagram has no notion of two inbound edges converging.</td></tr>
+      <tr data-k="ok"><td class="node">Filter</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.step("…", () =&gt; items.filter(…))</code>. Pure transform — exactly the intended use of <code>step</code>.</td></tr>
+      <tr data-k="ok"><td class="node">Wait</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps">Two flavours, both covered: wait-for-duration = <code>ctx.sleep</code>; wait-for-event/resume = <code>ctx.waitForSignal</code>. A genuine strength.</td></tr>
+      <tr data-k="ok"><td class="node">Stop And Error</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>throw new MyError({…})</code> from a <code>defineError</code> class — typed and persisted across replays.</td></tr>
+      <tr data-k="ok"><td class="node">No Operation</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps">Nothing, or an annotated <code>step</code> placeholder. Trivial.</td></tr>
+      <tr data-k="warn"><td class="node">Execution Data</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps"><code>ctx.executionId</code> + <code>attempt</code> are exposed, but there's no general run-metadata/tagging surface yet.</td></tr>
+      <tr data-k="no"><td class="node">Execute Sub-workflow</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No DSL primitive to call another <code>defineWorkflow</code> as a durable child. Listed in the vision; not built.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── DATA TRANSFORM ───────────────────────── -->
+  <div class="grp-title"><h2 style="margin-bottom:0">Data transformation</h2><span class="meta">The design's sweet spot: "local data manipulation should live in simple TypeScript transform steps." Almost all are one <code>ctx.step</code>.</span></div>
+  <table class="cmp">
+    <thead><tr><th>n8n node</th><th>Verdict</th><th>Maps to / why</th></tr></thead>
+    <tbody>
+      <tr data-k="ok"><td class="node">Edit Fields (Set)</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.step</code> returning a reshaped object.</td></tr>
+      <tr data-k="ok"><td class="node">Aggregate · Summarize</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.step</code> with <code>reduce</code> / group-by. Pure.</td></tr>
+      <tr data-k="ok"><td class="node">Sort · Limit</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.step</code> with <code>sort</code> / <code>slice</code>.</td></tr>
+      <tr data-k="ok"><td class="node">Rename Keys · Compare Datasets</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps">Plain object/array work in a <code>step</code>.</td></tr>
+      <tr data-k="warn"><td class="node">Remove Duplicates</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps">Within a run: a <code>step</code> over a <code>Set</code> — fine. <em>Across</em> runs (n8n's "dedupe seen items over time") needs a persistent store <code>wf</code> doesn't have.</td></tr>
+      <tr data-k="warn"><td class="node">Split Out</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps">Turning one record into many is just returning an array. But n8n then <em>fans the workflow out per item</em> — that execution-model difference is the awkward part, not the data.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── UTILITY / PROCESSING ───────────────────────── -->
+  <div class="grp-title"><h2 style="margin-bottom:0">Utility &amp; processing</h2><span class="meta">Pure ones → <code>step</code>; anything touching I/O, time, randomness, or the network → <code>activity</code>.</span></div>
+  <table class="cmp">
+    <thead><tr><th>n8n node</th><th>Verdict</th><th>Maps to / why</th></tr></thead>
+    <tbody>
+      <tr data-k="ok"><td class="node">Code / Function</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><b>The core philosophy.</b> Pure = <code>ctx.step</code>, effectful = <code>ctx.activity</code>. Better than n8n: <code>step</code> source is annotated &amp; surfaced for review.</td></tr>
+      <tr data-k="ok"><td class="node">HTTP Request · GraphQL</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.activity("…", () =&gt; fetch(…), {retry, error})</code>. Generic egress is exactly what activities are for; a typed connector registry is the polish.</td></tr>
+      <tr data-k="ok"><td class="node">Crypto (hash) · JWT · TOTP · HTML · XML · Markdown</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps">Pure parsing/encoding in a <code>step</code> (or <code>activity</code> when a key/secret or randomness is involved).</td></tr>
+      <tr data-k="ok"><td class="node">Compression</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>activity</code> wrapping zlib/gzip — though see binary caveat below.</td></tr>
+      <tr data-k="warn"><td class="node">Date &amp; Time</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps">Formatting/math on a given date = pure <code>step</code>. But <em>"now"</em> is non-deterministic — it must come from an <code>activity</code>, never a <code>step</code> (replay safety). Easy to get wrong.</td></tr>
+      <tr data-k="warn"><td class="node">Convert to File · Extract From File · Edit Image · Read/Write Files</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps">Doable in an <code>activity</code>, but <code>wf</code> has <b>no binary-data model</b> — values cross the durable boundary as JSON. Big blobs must be referenced (path/URL), not passed inline.</td></tr>
+      <tr data-k="ok"><td class="node">Execute Command</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.activity</code> running a subprocess (runtime-permission dependent).</td></tr>
+      <tr data-k="warn"><td class="node">Guardrails · AI Transform</td><td><span class="v" style="color:var(--warn)"><span class="dot d-warn"></span>Awkward</span></td><td class="maps">AI-at-runtime is a deliberate philosophy tension (vision wants deterministic deploys). Possible as an <code>activity</code> calling an LLM connector, but off the happy path.</td></tr>
+      <tr data-k="no"><td class="node">MCP Client · MCP Server Trigger</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No MCP surface in the DSL.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── STATE / FILES / COMMS ───────────────────────── -->
+  <div class="grp-title"><h2 style="margin-bottom:0">State, files &amp; communication</h2><span class="meta">Where the missing storage and ingress surfaces bite.</span></div>
+  <table class="cmp">
+    <thead><tr><th>n8n node</th><th>Verdict</th><th>Maps to / why</th></tr></thead>
+    <tbody>
+      <tr data-k="no"><td class="node">Data Table</td><td><span class="v" style="color:var(--no)"><span class="dot d-no"></span>Not possible</span></td><td class="maps">No built-in shared, mutable, cross-run datastore. State today = payload + activity results within a single run.</td></tr>
+      <tr data-k="ok"><td class="node">Error handling (retry / catch / saga)</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>retry: N</code> + typed <code>error</code> + <code>compensate</code> (saga rollback). <b>Stronger than n8n</b> — see below.</td></tr>
+      <tr data-k="ok"><td class="node">Human-in-the-loop / approval (mid-flow)</td><td><span class="v" style="color:var(--ok)"><span class="dot d-ok"></span>Represented</span></td><td class="maps"><code>ctx.waitForSignal</code> — durable pause for an external approval, resumes much later, zero resources held.</td></tr>
+      <tr data-k="ext"><td class="node">Send Email (SMTP) · Chat</td><td><span class="v" style="color:var(--ext)"><span class="dot d-ext"></span>External</span></td><td class="maps">The example workflow already stubs <code>SendEmail</code> as an activity — a real transport is a connector.</td></tr>
+      <tr data-k="ext"><td class="node">FTP · SSH · Git · LDAP</td><td><span class="v" style="color:var(--ext)"><span class="dot d-ext"></span>External</span></td><td class="maps">Each is an external system reached from an <code>activity</code> + connector + credentials.</td></tr>
+    </tbody>
+  </table>
+
+  <!-- ───────────────────────── strengths / gaps ───────────────────────── -->
+  <h2>Where the two diverge</h2>
+  <div class="two">
+    <div class="box strong">
+      <h3>✅ Where <span style="color:inherit">wf</span> is stronger than n8n</h3>
+      <ul>
+        <li><b>Durable, deterministic replay.</b> Activities checkpoint exactly-once; the workflow re-runs pure steps for free. n8n persists executions but doesn't replay deterministically.</li>
+        <li><b>Compensation / saga.</b> <code>compensate</code> runs to undo an activity if the workflow later fails. n8n has <em>no</em> native saga.</li>
+        <li><b>Idempotency.</b> <code>idempotencyKey</code> makes two runs with the same key one run — first-class.</li>
+        <li><b>Typed errors.</b> <code>defineError</code> values cross the durable boundary; not stringly-typed.</li>
+        <li><b>Reviewable artifact.</b> A workflow is versioned TypeScript with annotated steps — diffable, testable, replayable. Not opaque UI JSON.</li>
+        <li><b>Long waits are free.</b> <code>sleep</code>/<code>waitForSignal</code> hold no resources for days/weeks.</li>
+      </ul>
+    </div>
+    <div class="box gap">
+      <h3>❌ Where n8n is ahead today</h3>
+      <ul>
+        <li><b>Triggers.</b> n8n's whole front door — schedule, webhook, form, email, polling. <code>wf</code> has none yet; runs are invoked directly.</li>
+        <li><b>Visual branch / loop / parallel.</b> <code>wf</code> <em>runs</em> them as JS, but the parser is linear-only, so the diagram is incomplete — the thing reviewers actually look at.</li>
+        <li><b>400+ ready connectors.</b> n8n ships auth + schemas for hundreds of apps. <code>wf</code>'s registry is planned, not built.</li>
+        <li><b>Item-based fan-out.</b> n8n auto-runs each node per item; <code>wf</code> requires explicit iteration and has no fan-out execution model.</li>
+        <li><b>Binary data + datastore.</b> No binary blob model, no built-in Data Table.</li>
+        <li><b>Zero-code reach.</b> n8n needs no TypeScript; <code>wf</code> is code-first (a deliberate trade for the agent-author model).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- ───────────────────────── integrations ───────────────────────── -->
+  <h2>🔌 External services &amp; integrations <span class="tag">your separate plan</span></h2>
+  <p class="lead">
+    n8n's 400+ app nodes (Slack, Gmail, Google Sheets, Notion, Airtable, Salesforce, HubSpot, Stripe, GitHub, Jira,
+    Telegram, Discord, Twilio, the AWS/Google/Microsoft suites, Postgres/MySQL/MongoDB/Redis, Shopify, and the rest)
+    plus the entire LangChain/AI category (AI Agent, chains, vector stores, embeddings, memory, tools) <b>all collapse to a single shape</b>:
+  </p>
+  <div class="note" style="border-left-color:var(--ext)">
+    <code>ctx.activity("Slack.postMessage", () =&gt; client.chat.postMessage(args), { retry, error, compensate })</code>
+    &nbsp;— a typed call, behind credentials, from the durable backbone.
+  </div>
+  <p class="lead">
+    So coverage here is <b>not a per-node question</b> — it's one connector-registry question. The vision already calls for
+    "discover available connectors, inspect their schemas and auth requirements." Once that registry + auth/secrets surface exists,
+    every app node becomes a generated, typed activity. The 400+ nodes are breadth (a packaging/curation effort), not new workflow semantics.
+    Databases and vector stores additionally want the missing datastore/state story; LLM/AI nodes additionally sit in tension with
+    the "deterministic deploy" principle and should be isolated activities.
+  </p>
+
+  <footer>
+    Generated for the <code>wf</code> project · scored against the current <code>packages/wf/src</code> surface and the linear-only parser in <code>wf-to-mermaid.ts</code>.
+    n8n catalog cross-checked against <a href="https://docs.n8n.io/integrations/builtin/core-nodes/">docs.n8n.io core nodes</a> and
+    <a href="https://docs.n8n.io/flow-logic/">flow-logic</a>. Counts are approximate; integration nodes counted as one class.
+  </footer>
+</div>
+
+<script>
+  // verdict filter
+  const active = new Set(['ok','warn','viz','no','ext']);
+  const chips = document.querySelectorAll('#legend .chip');
+  function apply() {
+    document.querySelectorAll('tr.cmp, table.cmp tbody tr').forEach(tr => {
+      const k = tr.getAttribute('data-k');
+      if (!k) return;
+      tr.style.display = active.has(k) ? '' : 'none';
+    });
+  }
+  chips.forEach(c => c.addEventListener('click', () => {
+    const k = c.getAttribute('data-k');
+    if (active.has(k)) { active.delete(k); c.classList.add('off'); }
+    else { active.add(k); c.classList.remove('off'); }
+    apply();
+  }));
+</script>
+<img class="page-screenshot" src="screenshots/n8n-coverage.png" alt="Screenshot of this n8n coverage page">
+</body>
+</html>

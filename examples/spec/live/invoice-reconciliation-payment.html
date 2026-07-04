@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Invoice Reconciliation and Payment</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f8f7f4; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #dedbd1; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #e4e0d6; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #f0eee8; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #5f625b; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #d0c9b8; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fcfbf8; }
+    .mermaid { background: #fcfbf8; border: 1px solid #e8e3d8; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Invoice Reconciliation and Payment</h1>
+      <p class="meta">Business workflow for accounts payable, three-way matching, exception handling, approvals, and payment execution.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Ingest invoices from email and portals, extract invoice data, match against purchase orders and receiving records, route exceptions,
+        schedule payment, and reconcile bank settlement without paying duplicates or unapproved invoices.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Inputs</strong><br>AP mailbox, vendor portal downloads, scanned PDFs, EDI files, purchase order system.</div>
+        <div><strong>Finance Systems</strong><br>ERP, accounting system, payment processor, banking API, tax validation, currency rates.</div>
+        <div><strong>Controls</strong><br>Approval matrix, duplicate detector, fraud rules, audit archive, exception dashboard.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Invoice arrives by email, portal, scan, or EDI] --> B[Classify vendor and document type]
+  B --> C[Extract invoice fields and line items]
+  C --> D{Duplicate invoice?}
+  D -- yes --> E[Hold and notify AP analyst]
+  D -- no --> F[Match to vendor, PO, and receipt]
+  F --> G{Three-way match passed?}
+  G -- yes --> H[Apply payment terms and discount rules]
+  G -- no --> I[Route exception to buyer, receiver, or vendor]
+  I --> J{Exception resolved?}
+  J -- no --> K[Escalate before due date]
+  K --> I
+  J -- yes --> H
+  H --> L{Approval required?}
+  L -- yes --> M[Route by amount, department, and risk]
+  L -- no --> N[Schedule payment batch]
+  M --> N
+  N --> O[Submit payment file or API request]
+  O --> P[Reconcile settlement and update ERP]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Invoice currency differs from the PO currency and needs rate locking plus approval of variance.</li>
+        <li>Partial receipt means some lines can be approved while others remain blocked.</li>
+        <li>Vendor changes bank details shortly before payment, requiring fraud review and payment hold.</li>
+        <li>Payment processor accepts a batch but rejects one payment, requiring item-level compensation.</li>
+        <li>Early payment discount expires soon, so unresolved exceptions must escalate faster.</li>
+        <li>Credit memo arrives after invoice approval and must net against the scheduled payment.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "documentId": "ap-mail-884103",
+  "source": "ap@company.example",
+  "attachment": "invoice-INV-77831.pdf",
+  "vendor": "Northstar Analytics LLC",
+  "invoiceNumber": "INV-77831",
+  "invoiceDate": "2026-06-15",
+  "purchaseOrder": "PO-2026-1882",
+  "amount": { "value": 3500, "currency": "USD" },
+  "lineItems": [
+    { "sku": "ANALYTICS-SEAT", "quantity": 25, "unitPrice": 140 }
+  ]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "invoiceId": "AP-INV-2026-77831",
+  "status": "scheduled_for_payment",
+  "matchResult": {
+    "vendor": "matched",
+    "po": "matched",
+    "receipt": "not_required",
+    "variance": 0
+  },
+  "approvals": [],
+  "payment": {
+    "batchId": "PAY-2026-06-30-US-02",
+    "scheduledDate": "2026-06-30",
+    "method": "ach"
+  },
+  "erpJournalId": "ERP-JRN-551922"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">document extraction</span>
+      <span class="pill">matching logic</span>
+      <span class="pill">partial success</span>
+      <span class="pill">approval matrix</span>
+      <span class="pill">fraud hold</span>
+      <span class="pill">payment batch</span>
+      <span class="pill">settlement reconciliation</span>
+      <span class="pill">business deadlines</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

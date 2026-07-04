@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Recipe Timer Orchestrator</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #fbf9f6; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #e6ded4; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f7f2ec; border: 1px solid #e8ded3; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #f3eee8; border: 1px solid #e4d9ce; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Recipe Timer Orchestrator</h1>
+      <p class="meta">A friendly mock workflow that tests parallel timers, resource constraints, user feedback, cancellation, and dynamic replanning.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Coordinate a toy recipe with steps that can run in parallel, timers that must fire in order, limited equipment, and taste-test feedback
+        that can add extra cooking time or cancel remaining steps.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>Recipe JSON fixture.</li>
+        <li>Fake clock for all timers.</li>
+        <li>Equipment locks for oven, pan, and bowl.</li>
+        <li>User feedback signals such as <code>too_salty</code>, <code>needs_more_time</code>, or <code>serve_now</code>.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Load recipe] --> B[Check ingredient inventory]
+  B --> C{Missing optional ingredient?}
+  C -- yes --> D[Apply substitution]
+  C -- no --> E[Acquire equipment locks]
+  D --> E
+  E --> F[Start parallel prep timers]
+  F --> G[Wait for all prep complete]
+  G --> H[Start cook timer]
+  H --> I[Ask user for taste signal]
+  I --> J{Feedback}
+  J -- needs_more_time --> H
+  J -- cancel --> K[Release locks and stop]
+  J -- serve_now --> L[Release locks and publish recipe log]</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "recipeId": "mock-soup",
+  "ingredients": { "water": 1, "salt": 1, "noodles": 1 },
+  "availableEquipment": ["pot", "bowl"],
+  "steps": [
+    { "id": "boil", "durationSeconds": 5, "equipment": "pot" },
+    { "id": "prep-bowl", "durationSeconds": 2, "equipment": "bowl" },
+    { "id": "cook-noodles", "durationSeconds": 6, "after": ["boil"] }
+  ],
+  "feedbackSignals": ["needs_more_time", "serve_now"]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "recipeId": "mock-soup",
+  "status": "served",
+  "completedSteps": ["boil", "prep-bowl", "cook-noodles", "extra-cook-1"],
+  "substitutions": [],
+  "equipmentReleased": ["pot", "bowl"],
+  "virtualTimeAdvancedSeconds": 19,
+  "timelineArtifact": "memory://recipes/mock-soup.timeline.json"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "missing optional ingredient uses substitution",
+    "input": {
+      "recipeId": "mock-salad",
+      "missingIngredients": ["lemon"],
+      "substitutions": { "lemon": "vinegar" }
+    },
+    "output": {
+      "status": "served",
+      "substitutions": [{ "from": "lemon", "to": "vinegar" }]
+    }
+  },
+  {
+    "case": "user cancels during taste check",
+    "input": {
+      "recipeId": "mock-soup-cancel",
+      "feedbackSignals": ["cancel"]
+    },
+    "output": {
+      "status": "cancelled",
+      "equipmentReleased": ["pot", "bowl"],
+      "remainingTimersCancelled": true
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">parallel timers</span>
+      <span class="pill">resource locks</span>
+      <span class="pill">dynamic replanning</span>
+      <span class="pill">user feedback</span>
+      <span class="pill">cancellation</span>
+      <span class="pill">timeline artifact</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

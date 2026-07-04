@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Release Train Deployment</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f7f8fa; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #d9dee7; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef2f7; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #c9d3df; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfcfe; }
+    .mermaid { background: #fbfcfe; border: 1px solid #e4e9f1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Release Train Deployment</h1>
+      <p class="meta">Engineering workflow for collecting changes, validating release readiness, progressive deployment, and rollback.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Run a weekly release train across multiple services: freeze candidates, verify tests and migrations, get approvals, deploy progressively,
+        monitor health, roll back when required, and generate release notes from merged work.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Development</strong><br>GitHub or GitLab, CI, artifact registry, feature flag service, changelog generator.</div>
+        <div><strong>Delivery</strong><br>Kubernetes, Terraform, deployment orchestrator, database migration runner, secrets manager.</div>
+        <div><strong>Operations</strong><br>Observability stack, error tracker, status page, incident tool, stakeholder chat channel.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Release window opens] --> B[Collect merged changes and artifacts]
+  B --> C[Create release candidate manifest]
+  C --> D[Run tests, scans, migrations dry run, and smoke checks]
+  D --> E{Readiness passed?}
+  E -- no --> F[Remove failing change or delay train]
+  F --> C
+  E -- yes --> G[Request release manager approval]
+  G --> H[Deploy canary environment]
+  H --> I[Run synthetic and business metric checks]
+  I --> J{Canary healthy?}
+  J -- no --> K[Rollback canary and open blocker]
+  K --> F
+  J -- yes --> L[Progress to 10, 50, and 100 percent]
+  L --> M{Health regression?}
+  M -- yes --> N[Pause, rollback affected service, notify channel]
+  M -- no --> O[Publish release notes and close train]
+  N --> P[Create follow-up incident or hotfix]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>One service has a backward-incompatible migration, so deployment order must be constrained.</li>
+        <li>Feature flag rollout should continue after deploy and may be paused independently of code rollout.</li>
+        <li>Canary succeeds technically but business metrics drop, triggering manual review before continuing.</li>
+        <li>Rollback of one service requires compensating database migration or read-only mode.</li>
+        <li>A security patch skips the normal train and runs an expedited approval path.</li>
+        <li>Release notes must exclude internal-only issues while linking public tickets and customer-facing changes.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "releaseTrain": "2026.06.21",
+  "window": { "start": "2026-06-21T18:00:00Z", "end": "2026-06-21T22:00:00Z" },
+  "services": [
+    { "name": "billing-api", "artifact": "registry/billing-api:9f21c3", "migration": "2026062118_add_invoice_index.sql" },
+    { "name": "customer-web", "artifact": "registry/customer-web:32aa09", "migration": null }
+  ],
+  "requiredApprovers": ["release-manager@company.example"],
+  "healthChecks": ["synthetics", "error_rate", "checkout_success_rate"],
+  "rolloutPlan": [10, 50, 100]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "releaseId": "rel-2026.06.21",
+  "status": "completed",
+  "deployedServices": [
+    { "name": "billing-api", "version": "9f21c3", "rollout": 100 },
+    { "name": "customer-web", "version": "32aa09", "rollout": 100 }
+  ],
+  "migrationResults": [
+    { "service": "billing-api", "migration": "2026062118_add_invoice_index.sql", "status": "applied" }
+  ],
+  "healthSummary": { "synthetics": "pass", "errorRate": "normal", "checkoutSuccessRate": "normal" },
+  "releaseNotesUrl": "https://docs.example/releases/2026.06.21",
+  "rollbackPlanArchived": true
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">release manifest</span>
+      <span class="pill">dependency ordering</span>
+      <span class="pill">approval gate</span>
+      <span class="pill">progressive rollout</span>
+      <span class="pill">health monitors</span>
+      <span class="pill">rollback</span>
+      <span class="pill">hotfix branch</span>
+      <span class="pill">generated notes</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

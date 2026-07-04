@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wf — Vision &amp; Critical Review</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --surface: #ffffff;
+    --text: #1a1d21;
+    --muted: #5c6470;
+    --accent: #4553c9;
+    --accent-soft: #e8eafd;
+    --good: #1a7f4b;
+    --good-soft: #e3f5eb;
+    --warn: #b3560e;
+    --warn-soft: #fdeede;
+    --bad: #b3262e;
+    --bad-soft: #fbe9ea;
+    --border: #e2e5ea;
+    --code-bg: #14161c;
+    --code-text: #d7dce4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101216;
+      --surface: #191c22;
+      --text: #e7eaef;
+      --muted: #9aa3b0;
+      --accent: #8b96f0;
+      --accent-soft: #232848;
+      --good: #57c98a;
+      --good-soft: #14301f;
+      --warn: #e79a54;
+      --warn-soft: #33230f;
+      --bad: #ef7f85;
+      --bad-soft: #351417;
+      --border: #2a2e37;
+      --code-bg: #0c0e12;
+      --code-text: #cfd5df;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 20px 16px 80px; }
+  header.hero {
+    padding: 36px 0 8px;
+  }
+  header.hero h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.02em; }
+  header.hero .sub { color: var(--muted); font-size: .95rem; }
+  .pill {
+    display: inline-block; padding: 2px 10px; border-radius: 999px;
+    font-size: .75rem; font-weight: 600; letter-spacing: .03em;
+    background: var(--accent-soft); color: var(--accent); margin-right: 6px;
+  }
+  section { margin-top: 40px; }
+  h2 {
+    font-size: 1.35rem; letter-spacing: -0.01em; margin: 0 0 4px;
+    padding-top: 8px;
+  }
+  h2 .num { color: var(--accent); margin-right: 8px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 1.05rem; margin: 24px 0 8px; }
+  p { margin: 12px 0; }
+  .lede { color: var(--muted); margin: 0 0 16px; font-size: .95rem; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 18px 20px; margin: 14px 0;
+  }
+  .callout {
+    border-left: 4px solid var(--accent);
+    background: var(--accent-soft);
+    border-radius: 0 12px 12px 0;
+    padding: 14px 18px; margin: 16px 0;
+  }
+  .callout.good { border-color: var(--good); background: var(--good-soft); }
+  .callout.warn { border-color: var(--warn); background: var(--warn-soft); }
+  .callout.bad  { border-color: var(--bad);  background: var(--bad-soft); }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  ul, ol { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  li::marker { color: var(--accent); }
+  strong { font-weight: 650; }
+  code {
+    font: .85em/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    background: var(--accent-soft); color: var(--accent);
+    padding: 1px 5px; border-radius: 5px;
+  }
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: 12px; padding: 16px; overflow-x: auto;
+    font-size: .8rem; line-height: 1.55; margin: 14px 0;
+  }
+  pre code { background: none; color: inherit; padding: 0; }
+  pre .c { color: #7d8799; }
+  pre .k { color: #8b96f0; }
+  pre .s { color: #a8d08d; }
+  table {
+    width: 100%; border-collapse: collapse; margin: 14px 0;
+    font-size: .88rem; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+  }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { background: var(--accent-soft); color: var(--accent); font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+  tr:last-child td { border-bottom: none; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: .72rem; font-weight: 650; white-space: nowrap; }
+  .tag.good { background: var(--good-soft); color: var(--good); }
+  .tag.warn { background: var(--warn-soft); color: var(--warn); }
+  .tag.bad  { background: var(--bad-soft);  color: var(--bad); }
+  .grid { display: grid; gap: 12px; }
+  @media (min-width: 640px) { .grid.cols-3 { grid-template-columns: 1fr 1fr 1fr; } }
+  .bucket h4 { margin: 0 0 6px; font-size: .95rem; }
+  .bucket ul { font-size: .87rem; margin: 6px 0 0; }
+  footer { margin-top: 60px; color: var(--muted); font-size: .8rem; text-align: center; }
+  nav.toc { margin-top: 20px; font-size: .9rem; }
+  nav.toc a { color: var(--accent); text-decoration: none; }
+  nav.toc a:hover { text-decoration: underline; }
+  nav.toc li { margin: 3px 0; }
+</style>
+</head>
+<body>
+<main>
+
+<header class="hero">
+  <span class="pill">wf</span><span class="pill">July 3, 2026</span>
+  <h1>An agent-first workflow platform — vision, spec &amp; critical review</h1>
+  <div class="sub">Summary of a working session: project vision, the v1 SDK spec, competitive research across 10 automation platforms, gap analysis, and the human-in-the-loop design question.</div>
+  <nav class="toc">
+    <ol>
+      <li><a href="#vision">The vision</a></li>
+      <li><a href="#spec">The v1 spec at a glance</a></li>
+      <li><a href="#generators">Why generators, not async/await</a></li>
+      <li><a href="#landscape">Competitive landscape</a></li>
+      <li><a href="#buckets">Where wf stands: three buckets</a></li>
+      <li><a href="#gaps">The seven core gaps</a></li>
+      <li><a href="#hitl">Human-in-the-loop, done right</a></li>
+      <li><a href="#verdict">Verdict</a></li>
+    </ol>
+  </nav>
+</header>
+
+<section id="vision">
+  <h2><span class="num">1</span>The vision</h2>
+  <p>wf is an <strong>agent-first workflow automation platform</strong> — n8n/Zapier territory, but the LLM agent is the <em>workflow designer</em>, not the runtime. The agent discovers connectors, inspects schemas and auth requirements, composes durable workflows, tests them against fixtures, inspects failures, repairs the definition, and deploys versioned artifacts.</p>
+  <div class="callout">
+    <p><strong>Core principle:</strong> structured orchestration, typed integrations, code for computation.</p>
+    <p>Workflow semantics (triggers, branches, retries, waits, human tasks, compensation, versioning) are first-class engine primitives. Local data manipulation lives in plain TypeScript transform steps — not dozens of specialized UI nodes.</p>
+  </div>
+  <p>The deliverable is a <strong>repeatable workflow artifact</strong>, not an expensive LLM execution trace. The LLM designs; the deployed workflow runs deterministically on a small DSL over a durable execution engine (<code>@effect/workflow</code>). Long-term goal: the durability of Temporal-style engines with the accessibility and observability of visual automation tools.</p>
+</section>
+
+<section id="spec">
+  <h2><span class="num">2</span>The v1 spec at a glance</h2>
+  <p class="lede">A thin, opinionated SDK over <code>@effect/workflow</code> that hides both syntax boilerplate and semantic footguns.</p>
+  <div class="card">
+    <ul>
+      <li><strong><code>defineStep</code></strong> — colocates execute logic, typed terminal errors, retry policy, and compensation in one definition.</li>
+      <li><strong>Error taxonomy</strong> — anything <em>thrown</em> is transient and retried; <code>step.fail(...)</code> / <code>ctx.fail(...)</code> is a typed terminal business failure that triggers a LIFO compensation unwind (saga pattern).</li>
+      <li><strong>Replay safety is the wrapper's biggest job</strong> — <code>ctx.run</code> auto-suffixes invocation counters so calling a step twice or in a loop never replays a stale result; <code>ctx.now()</code>/<code>ctx.random()</code> are recorded-and-replayed; a divergence detector fails loudly with <code>NonDeterminismError</code>.</li>
+      <li><strong>Explicit versioning required</strong> — executions pin to the version they started on; old versions stay registered until drained.</li>
+      <li><strong>Testing ships in v1</strong> — in-memory runtime, per-step mocking, time-skipping, signal injection, compensation recording. “A saga you can't test is a saga you don't have.”</li>
+      <li><strong>Escape hatch</strong> — <code>ctx.effect(...)</code> keeps the full Effect engine reachable; <code>client.history()</code> is the foundation for the eventual no-code UI's execution inspector.</li>
+      <li><strong>No accidental dedup</strong> — every <code>start()</code> is fresh unless an explicit <code>idempotencyKey</code> is passed.</li>
+    </ul>
+  </div>
+  <p><strong>Deferred:</strong> parallel fan-out (<code>ctx.all</code>), child workflows, continue-as-new, <code>patched()</code>-style migration, the visual/no-code layer.</p>
+</section>
+
+<section id="generators">
+  <h2><span class="num">3</span>Why generators, not async/await</h2>
+  <p>Two halves, both real:</p>
+  <ul>
+    <li><strong>The Effect half.</strong> The engine is <code>@effect/workflow</code>, and Effect's native sequencing is <code>Effect.gen</code> with <code>yield*</code>. <code>ctx.run</code> honestly returns an Effect, so the escape hatch composes trivially — you never leave Effect-land.</li>
+    <li><strong>The independent half.</strong> Async/await durable execution is achievable (Inngest, Restate, Cloudflare Workflows do it), but it creates an unfixable footgun: a bare <code>await fetch(...)</code> outside <code>ctx.run</code> silently breaks replay determinism, and no compiler can forbid it. With generators, <code>yield*</code> only accepts Effects — the type system fences you into the durable primitives.</li>
+  </ul>
+  <p>Effect makes generators the <em>cheap</em> choice; the replay-safety argument makes them the <em>defended</em> choice.</p>
+</section>
+
+<section id="landscape">
+  <h2><span class="num">4</span>Competitive landscape</h2>
+  <p class="lede">Researched: n8n, Zapier, Make, Camunda 8/Zeebe, AWS Step Functions, Windmill, Retool Workflows, Pipedream, Power Automate, Tines — plus the durable-engine tier (Temporal, Restate, Inngest, DBOS…).</p>
+  <h3>Table stakes nearly every business platform shares</h3>
+  <table>
+    <tr><th>Feature</th><th>Benchmark / notes</th></tr>
+    <tr><td>Managed credential vault + OAuth</td><td>Zapier shared connections; n8n external vaults (AWS/Azure/HashiCorp); credentials as first-class objects (Tines)</td></tr>
+    <tr><td>Trigger trio: webhook + cron + polling</td><td>The app-specific trigger catalog is the moat — Zapier ~8,000 apps, Pipedream ~3,000 event sources</td></tr>
+    <tr><td>SSO/SCIM + RBAC + audit logs</td><td>Universal enterprise gate; SIEM export at high tiers</td></tr>
+    <tr><td>Retry machinery at 3 levels</td><td>Per-step retries; run-level replay (Zapier Autoreplay, Make incomplete-executions queue); <strong>replay-from-failed-step</strong> (Step Functions Redrive is the gold standard)</td></tr>
+    <tr><td>Error handling as workflow constructs</td><td>Error branches/paths, error workflows (n8n), BPMN error events, Make's Break/Rollback directives</td></tr>
+    <tr><td>Draft vs published + versions + rollback</td><td>Git integration now expected at enterprise tier of builder tools (n8n, Windmill, Retool, Camunda)</td></tr>
+    <tr><td>Environments (dev→staging→prod)</td><td>Gated promotion; Power Platform Pipelines, Camunda staged clusters, Tines test/live</td></tr>
+    <tr><td>Human-in-the-loop approvals</td><td>Power Automate Approvals &amp; Camunda Tasklist are the mature poles — inbox, reassignment, escalation</td></tr>
+    <tr><td>Concurrency + rate limiting</td><td>Pipedream per-workflow queues/throttling, Windmill concurrency keys</td></tr>
+    <tr><td>Governance of connector usage</td><td>Power Automate DLP policies (allow/block connector groups per environment) is the benchmark</td></tr>
+  </table>
+</section>
+
+<section id="buckets">
+  <h2><span class="num">5</span>Where wf stands: three buckets</h2>
+  <p class="lede">“Most of these just build on top of the core model” — mostly right, but the middle bucket is where projects get hurt.</p>
+  <div class="grid cols-3">
+    <div class="card bucket">
+      <span class="tag good">Platform layers — correctly out of scope</span>
+      <h4>Build later, on top</h4>
+      <ul>
+        <li>SSO / SAML / SCIM, RBAC</li>
+        <li>Workspaces &amp; environments</li>
+        <li>Credential-vault UI</li>
+        <li>Connector allow/block (DLP)</li>
+        <li>Task inboxes, spend quotas</li>
+        <li>Compliance paper (SOC 2…)</li>
+      </ul>
+    </div>
+    <div class="card bucket">
+      <span class="tag good">Core already beats incumbents</span>
+      <h4>wf's edge</h4>
+      <ul>
+        <li>Typed transient/terminal error taxonomy</li>
+        <li>Declarative LIFO compensation</li>
+        <li>Replay-divergence detection</li>
+        <li>Required versioning, pinned executions</li>
+        <li><strong>Real test runtime</strong> — barely exists in the iPaaS tier; it's what closes the agent's design→test→repair loop. Arguably the moat.</li>
+      </ul>
+    </div>
+    <div class="card bucket">
+      <span class="tag bad">Look like platform, need core primitives</span>
+      <h4>The danger list</h4>
+      <ul>
+        <li>Cancellation</li>
+        <li>Trigger bindings</li>
+        <li>Rate/concurrency limits</li>
+        <li>History growth &amp; secrets in payloads</li>
+        <li>Operator redrive</li>
+        <li>Long-lived execution migration</li>
+        <li>Actor metadata / audit hooks</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="gaps">
+  <h2><span class="num">6</span>The seven core gaps</h2>
+  <p class="lede">Features that silently require engine semantics or persistence-format decisions — promote these into the spec now.</p>
+  <div class="card">
+    <ol>
+      <li><strong>Cancellation.</strong> No <code>client.cancel()</code> in the spec. Every ops story starts with “kill the stuck execution” — and cancel must decide whether to run the compensation stack. <code>status</code> even reports <code>"compensating"</code>, but nothing external can trigger it. Most glaring v1 gap.</li>
+      <li><strong>Triggers.</strong> The only entry point is <code>client.start()</code>. Polling triggers need dedup state; trigger identity interacts with idempotency and versioning (a cron firing mid-deploy — which version starts?). Needs at least a trigger <em>binding</em> concept.</li>
+      <li><strong>Concurrency &amp; rate limiting.</strong> “10,000 orders arrived, don't call Stripe 10,000 times concurrently” is a day-one requirement. Must live in the engine's step scheduler — can't be layered on afterward.</li>
+      <li><strong>History growth + secret redaction.</strong> Continue-as-new is deferred (fine for v1), but any polling loop hits history limits. Worse: a bearer token in a step input lives in the history store forever and surfaces in <code>client.history()</code>. Credentials must be <em>references</em> resolved at execution time — a core serialization rule, absent from the spec.</li>
+      <li><strong>Operator redrive.</strong> Durable execution gives transient resume for free, but once terminal failure runs compensation there's no redrive. Decide explicitly: does an exhausted-retries execution park in a resumable state, or fail through to compensation?</li>
+      <li><strong>Long-lived executions vs deployment velocity.</strong> “Keep v1 registered until drained” is fine for minutes-long glue, but the flagship example waits 48 hours and Camunda-class processes run for months. Temporal's <code>patched()</code> and Camunda instance migration exist for this. HITL makes long-lived the <em>common</em> case — this deferred feature gets dragged forward.</li>
+      <li><strong>Audit hooks.</strong> Who started, signaled, cancelled — actor metadata on every external interaction, recorded in history. Trivial now, painful to retrofit, hard requirement for enterprise buyers.</li>
+    </ol>
+  </div>
+</section>
+
+<section id="hitl">
+  <h2><span class="num">7</span>Human-in-the-loop, done right</h2>
+  <div class="callout warn">
+    <p><strong>The worry:</strong> “You basically have to pause/resume in the middle of an activity, which is against the checkpointing model, no?”</p>
+    <p><strong>The answer:</strong> No — you never pause mid-activity. The rule in every durable engine: <strong>activities are short and side-effecting; time lives in the workflow.</strong> Human waiting is a workflow-level suspension, and <code>ctx.waitForSignal</code> is already exactly the right primitive.</p>
+  </div>
+  <pre><code><span class="c">// 1. A normal, fast, checkpointed step — sends the approval request</span>
+<span class="c">//    with a link encoding the executionId.</span>
+<span class="k">yield*</span> ctx.run(notifyApprover, { executionId, orderId })
+
+<span class="c">// 2. The workflow suspends durably. No process runs, no worker is held —</span>
+<span class="c">//    the recorded history IS the checkpoint; the engine keeps one</span>
+<span class="c">//    persisted "waiting for signal X or timer Y" row.</span>
+<span class="k">const</span> approval = <span class="k">yield*</span> ctx.waitForSignal(<span class="s">"managerApproval"</span>, ApprovalSchema, {
+  timeout: <span class="s">"48 hours"</span>,
+})
+
+<span class="c">// 3. A webhook / approval UI in the outside world calls:</span>
+<span class="c">//    client.signal(executionId, "managerApproval", { approved: true })</span></code></pre>
+  <p>This is precisely how everyone does it: Step Functions <code>.waitForTaskToken</code>, Windmill suspend/resume URLs, n8n Wait node, Camunda user tasks (the “task” is a row in a task store; the engine waits on its completion event). Suspension isn't against the checkpointing model — it <em>is</em> the checkpointing model at its purest: a workflow waiting 6 months for a signal costs one database row.</p>
+  <p><strong>The anti-pattern</strong> (correctly sensed): an <code>execute</code> that does <code>await pollUntilHumanApproves()</code> for 48 hours. Holds a worker slot, fights the retry policy, dies on every deploy. Never that.</p>
+  <h3>What's still needed for production-grade HITL</h3>
+  <ul>
+    <li><strong>Signal buffering.</strong> Specify what happens when a signal arrives <em>before</em> the workflow reaches <code>waitForSignal</code> (fast approver, workflow still retrying an earlier step). The engine must buffer per execution — otherwise approvals get lost. Temporal buffers; the spec is silent.</li>
+    <li><strong>A task record, not just a signal.</strong> <code>waitForSignal</code> is anonymous. Consider <code>ctx.humanTask({ assignee, form, … })</code> sugar that creates a task record + waits on its completion signal, so a <em>generic</em> inbox UI is possible. Camunda's per-“task user” pricing shows how much enterprises value this.</li>
+    <li><strong>Signal authorization + audit.</strong> Today anyone who knows the execution ID can approve anything. Who may signal, and the recorded actor, are part of the HITL story.</li>
+    <li><strong>Escalation &amp; reminders already work sequentially</strong> — no <code>ctx.all</code> needed. Timeout-as-branch gives escalation; reminders are a loop of <code>waitForSignal(timeout: "24 hours")</code> → send reminder → loop (invocation counters make it replay-safe). A point in favor of the v1 scoping.</li>
+    <li><strong>Version-pinning pressure.</strong> Every HITL workflow is by definition long-lived — HITL adoption directly drags the deferred <code>patched()</code>-style migration forward.</li>
+  </ul>
+</section>
+
+<section id="verdict">
+  <h2><span class="num">8</span>Verdict</h2>
+  <div class="callout good">
+    <p>The core model holds up well: the incumbents' enterprise features are mostly layers to build later, wf's error/compensation/testing semantics beat the iPaaS tier outright, and HITL fits the existing signal primitive cleanly.</p>
+    <p>The real v1 gaps are <strong>operational, not conceptual</strong>: cancel, trigger bindings, rate limits, secret references, signal buffering, and actor metadata all touch engine semantics — they belong in the spec now, not in the platform later.</p>
+  </div>
+</section>
+
+<footer>wf project — conversation summary · generated July 3, 2026</footer>
+</main>
+</body>
+</html>

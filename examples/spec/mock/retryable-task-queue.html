@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Retryable Task Queue</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #f9f8fb; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #e2dfeb; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f5f3f8; border: 1px solid #e5e1ec; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #f0eef3; border: 1px solid #e0dce8; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Retryable Task Queue</h1>
+      <p class="meta">A fake queue workflow for testing leases, retries, backoff, poison messages, and worker cancellation.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Consume deterministic messages from an in-memory queue, process each message with configured failure scripts, retry transient failures
+        with fake-clock backoff, send poison messages to a dead-letter queue, and stop cleanly when cancelled.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>In-memory queue with deterministic lease expiration.</li>
+        <li>Scripted processor returning <code>ok</code>, <code>transient_error</code>, or <code>permanent_error</code>.</li>
+        <li>Fake clock for backoff and lease timeout tests.</li>
+        <li>Dead-letter list as a local JSON artifact.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Start worker group] --> B[Lease next message]
+  B --> C{Message available?}
+  C -- no --> D[Wait for poll interval]
+  D --> B
+  C -- yes --> E[Run scripted processor]
+  E --> F{Result}
+  F -- ok --> G[Ack message]
+  F -- transient --> H[Schedule retry with backoff]
+  F -- permanent --> I[Dead-letter message]
+  H --> J{Attempts exhausted?}
+  J -- no --> B
+  J -- yes --> I
+  G --> K{Cancel signal?}
+  I --> K
+  K -- no --> B
+  K -- yes --> L[Release leases and summarize]</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "queueId": "mock-queue-001",
+  "maxAttempts": 3,
+  "messages": [
+    { "id": "m1", "payload": { "n": 2 }, "script": ["ok"] },
+    { "id": "m2", "payload": { "n": 3 }, "script": ["transient_error", "ok"] },
+    { "id": "m3", "payload": { "n": 4 }, "script": ["transient_error", "transient_error", "transient_error"] },
+    { "id": "m4", "payload": { "n": 5 }, "script": ["permanent_error"] }
+  ],
+  "cancelAfterMessages": null
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "queueId": "mock-queue-001",
+  "status": "drained",
+  "acked": ["m1", "m2"],
+  "deadLettered": [
+    { "id": "m3", "reason": "attempts_exhausted" },
+    { "id": "m4", "reason": "permanent_error" }
+  ],
+  "attempts": { "m1": 1, "m2": 2, "m3": 3, "m4": 1 },
+  "virtualTimeAdvancedMs": 9000
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "worker cancellation releases active lease",
+    "input": {
+      "queueId": "mock-queue-cancel",
+      "messages": [{ "id": "m1", "script": ["ok"] }],
+      "cancelAfterMessages": 0
+    },
+    "output": {
+      "status": "cancelled",
+      "acked": [],
+      "releasedLeases": ["m1"]
+    }
+  },
+  {
+    "case": "empty queue waits once then exits",
+    "input": {
+      "queueId": "mock-queue-empty",
+      "messages": [],
+      "maxEmptyPolls": 1
+    },
+    "output": {
+      "status": "idle",
+      "acked": [],
+      "pollWaits": 1
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">polling wait</span>
+      <span class="pill">leases</span>
+      <span class="pill">retry backoff</span>
+      <span class="pill">dead letter</span>
+      <span class="pill">cancellation</span>
+      <span class="pill">worker loop</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

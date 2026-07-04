@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Employee Offboarding and Access Revocation</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f7f8fa; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #d9dee7; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef2f7; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #c9d3df; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfcfe; }
+    .mermaid { background: #fbfcfe; border: 1px solid #e4e9f1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Employee Offboarding and Access Revocation</h1>
+      <p class="meta">Business workflow for scheduled, immediate, and sensitive offboarding across HR, IT, legal, and finance systems.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Coordinate a departing employee's account deactivation, device recovery, data transfer, payroll tasks, legal holds, and manager handoff.
+        The workflow must handle both planned departures and urgent involuntary terminations with strict timing.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>People Systems</strong><br>HRIS, payroll, benefits, background check notes, manager approval.</div>
+        <div><strong>Access Systems</strong><br>Identity provider, MDM, password manager, Git hosting, cloud consoles, VPN, SaaS admin APIs.</div>
+        <div><strong>Operations</strong><br>Asset inventory, shipping provider, legal hold system, shared drive ownership transfer, ticket tracker.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[HR creates offboarding event] --> B{Departure type}
+  B -- planned --> C[Schedule tasks relative to last day]
+  B -- immediate --> D[Start emergency revocation timer]
+  B -- sensitive --> E[Restrict visibility and notify legal]
+  C --> F[Manager selects data owners and handoff plan]
+  D --> G[Disable SSO, VPN, and privileged access]
+  E --> G
+  F --> H[Prepare access revocation batch]
+  H --> I[Last-day trigger fires]
+  I --> G
+  G --> J[Revoke SaaS and infrastructure access in parallel]
+  J --> K[Lock or wipe managed devices]
+  K --> L[Transfer files, calendars, repos, and tickets]
+  L --> M{Assets returned?}
+  M -- no --> N[Create shipping and reminder loop]
+  N --> M
+  M -- yes --> O[Close payroll, benefits, and compliance tasks]
+  O --> P[Generate final audit report]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Employee owns production resources and revocation must wait until ownership transfer is confirmed.</li>
+        <li>Legal hold prevents deletion or wipe of specific data while still requiring account lockout.</li>
+        <li>Third-party SaaS API rate limits require batched revocation with progress tracking.</li>
+        <li>Manager is unavailable, so data ownership defaults to department head after a deadline.</li>
+        <li>Device is offline and the wipe command must remain pending until the device checks in.</li>
+        <li>Immediate termination requires most access revoked within minutes while noncritical cleanup continues for days.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "employeeId": "E-2841",
+  "employeeEmail": "jordan@company.example",
+  "managerEmail": "renee@company.example",
+  "departureType": "planned",
+  "lastWorkingDay": "2026-07-03",
+  "sensitivity": "standard",
+  "ownedResources": ["github:team-data-api", "gcp:project-analytics-prod"],
+  "assignedAssets": ["laptop-MBP-4421", "yubikey-9912"],
+  "legalHold": false
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "offboardingId": "OFF-2026-0703-2841",
+  "status": "access_revoked_cleanup_pending",
+  "revocationSummary": {
+    "sso": "disabled",
+    "vpn": "disabled",
+    "saasAccountsRevoked": 37,
+    "privilegedRolesRemoved": 5
+  },
+  "handoff": {
+    "newRepoOwner": "renee@company.example",
+    "newCloudProjectOwner": "platform-leads@company.example"
+  },
+  "assets": [
+    { "assetId": "laptop-MBP-4421", "status": "return_box_sent" },
+    { "assetId": "yubikey-9912", "status": "not_returned" }
+  ],
+  "auditReport": "reports/OFF-2026-0703-2841.pdf"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">scheduled timers</span>
+      <span class="pill">confidential workflow</span>
+      <span class="pill">parallel revocation</span>
+      <span class="pill">rate limits</span>
+      <span class="pill">pending device command</span>
+      <span class="pill">ownership transfer</span>
+      <span class="pill">visibility rules</span>
+      <span class="pill">audit report</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

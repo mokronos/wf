@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Local Media Ingest and Backup</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f8f8f6; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #d9ddd8; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #dfe4dc; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef2ed; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #c9d3ca; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfcfa; }
+    .mermaid { background: #fbfcfa; border: 1px solid #e4e9e1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Local Media Ingest and Backup</h1>
+      <p class="meta">Complex local PC workflow for importing camera cards, deduplicating assets, transcoding proxies, and verifying backups.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Watch for a camera card or phone mount, copy media to a project library, verify checksums, extract metadata, create editing proxies,
+        update a local catalog, back up to NAS and cloud storage, then safely eject the source only after all required copies are verified.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Local Tools</strong><br>udev or launchd, exiftool, ffmpeg, rsync or robocopy, SQLite, desktop notifications.</div>
+        <div><strong>Storage</strong><br>Removable SD card, local NVMe library, NAS share, cloud bucket, cold archive disk.</div>
+        <div><strong>Optional Apps</strong><br>Lightroom, DaVinci Resolve, PhotoPrism, Syncthing, checksum manifest viewer.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Detect mounted camera card] --> B[Read volume identity and free space]
+  B --> C{Known source?}
+  C -- no --> D[Ask user for project, creator, and import policy]
+  C -- yes --> E[Load saved import policy]
+  D --> F[Scan media and calculate source checksums]
+  E --> F
+  F --> G{Duplicates found?}
+  G -- yes --> H[Skip exact duplicates and flag conflicts]
+  G -- no --> I[Copy originals to local library]
+  H --> I
+  I --> J[Verify copied checksums]
+  J --> K{Verification passed?}
+  K -- no --> L[Retry copy or quarantine failed files]
+  L --> J
+  K -- yes --> M[Extract EXIF, GPS, audio, and codec metadata]
+  M --> N[Generate thumbnails and proxy files]
+  N --> O[Update local catalog database]
+  O --> P[Back up to NAS and cloud in parallel]
+  P --> Q{All required backups verified?}
+  Q -- no --> R[Notify user and keep card mounted]
+  Q -- yes --> S[Write import manifest and safely eject card]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Two files have the same name but different hashes, requiring deterministic renaming and conflict reporting.</li>
+        <li>The NAS is offline, so the workflow completes local import but remains pending for backup verification.</li>
+        <li>Large video transcoding should run with limited CPU usage and resume after sleep or reboot.</li>
+        <li>User removes the card early, causing partial import detection and a resumable manifest.</li>
+        <li>Cloud upload hits a quota limit and asks the user whether to skip cloud backup or pause until space is available.</li>
+        <li>GPS metadata may be stripped for privacy when exporting sharing copies while originals remain untouched.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "mountPath": "/media/maya/CANON_DC",
+  "volumeSerial": "CANON-9F22-A71B",
+  "project": "2026-iceland-field-shoot",
+  "importPolicy": {
+    "copyOriginals": true,
+    "generateProxies": true,
+    "backupTargets": ["nas://studio/archive", "s3://photo-cold-storage"],
+    "ejectWhenVerified": true
+  },
+  "files": [
+    { "path": "DCIM/100EOS/R5C00123.CR3", "sizeBytes": 48293210 },
+    { "path": "DCIM/100EOS/R5C00124.MP4", "sizeBytes": 8234112384 }
+  ]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "importId": "media-import-20260621-154455",
+  "status": "completed_with_warning",
+  "libraryPath": "/srv/media/2026-iceland-field-shoot/originals",
+  "importedFiles": 284,
+  "skippedDuplicates": 3,
+  "proxyJobs": { "completed": 62, "pending": 0, "failed": 0 },
+  "backups": [
+    { "target": "nas://studio/archive", "status": "verified" },
+    { "target": "s3://photo-cold-storage", "status": "verified" }
+  ],
+  "manifest": "manifests/media-import-20260621-154455.json",
+  "safeToEject": true
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">file watchers</span>
+      <span class="pill">local process execution</span>
+      <span class="pill">large artifacts</span>
+      <span class="pill">checksums</span>
+      <span class="pill">resumable jobs</span>
+      <span class="pill">parallel copy</span>
+      <span class="pill">resource throttling</span>
+      <span class="pill">desktop notifications</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: File Batch Transform</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #f8faf8; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #dfe8e1; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f3f7f4; border: 1px solid #dde8e0; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #eef3f0; border: 1px solid #dce6e0; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>File Batch Transform</h1>
+      <p class="meta">A local file workflow using tiny text fixtures to test watchers, manifests, retries, quarantine, and resumability.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Pretend a folder watcher found CSV files. Validate headers, normalize rows, calculate checksums, write output files, quarantine bad files,
+        and resume correctly if the run is interrupted halfway through.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>Fixture directory such as <code>fixtures/inbox/*.csv</code>.</li>
+        <li>Fake file watcher event list instead of OS notifications.</li>
+        <li>Temporary directory or in-memory filesystem for transformed outputs.</li>
+        <li>Manifest JSON file for resume and idempotency checks.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Receive file events] --> B[Deduplicate paths]
+  B --> C[For each file validate header]
+  C --> D{Valid?}
+  D -- no --> E[Move to quarantine and record reason]
+  D -- yes --> F[Normalize rows]
+  F --> G[Write output temp file]
+  G --> H[Checksum output]
+  H --> I[Atomic rename to done]
+  E --> J[Update manifest]
+  I --> J
+  J --> K{More files?}
+  K -- yes --> C
+  K -- no --> L[Emit summary]</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "runId": "file-run-001",
+  "events": ["inbox/a.csv", "inbox/b.csv", "inbox/a.csv", "inbox/bad.csv"],
+  "files": {
+    "inbox/a.csv": "name,amount\nAda,10\nLinus,20\n",
+    "inbox/b.csv": "name,amount\nGrace,30\n",
+    "inbox/bad.csv": "wrong,columns\nx,y\n"
+  },
+  "resumeManifest": null
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "runId": "file-run-001",
+  "status": "completed",
+  "processed": ["inbox/a.csv", "inbox/b.csv"],
+  "quarantined": [{ "path": "inbox/bad.csv", "reason": "missing required headers: name, amount" }],
+  "outputs": [
+    { "path": "done/a.ndjson", "checksum": "sha256:mock-a" },
+    { "path": "done/b.ndjson", "checksum": "sha256:mock-b" }
+  ],
+  "manifest": "memory://manifests/file-run-001.json"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "resume skips already processed file",
+    "input": {
+      "runId": "file-run-resume",
+      "events": ["inbox/a.csv", "inbox/c.csv"],
+      "resumeManifest": { "processed": ["inbox/a.csv"] }
+    },
+    "output": {
+      "status": "completed",
+      "processed": ["inbox/a.csv", "inbox/c.csv"],
+      "skippedFromManifest": ["inbox/a.csv"]
+    }
+  },
+  {
+    "case": "all files invalid",
+    "input": {
+      "runId": "file-run-invalid",
+      "events": ["inbox/bad-1.csv", "inbox/bad-2.csv"]
+    },
+    "output": {
+      "status": "completed_with_quarantine",
+      "processed": [],
+      "quarantinedCount": 2
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Executable Fixture Contract</h2>
+      <p>
+        Fully specified node-by-node cases for this workflow live in
+        <code>fixtures/fully-specified-workflows.json</code> under <code>file-batch-transform</code>.
+        The tests assert dedupe, validation, normalization, checksums, summary output, and cache replay.
+      </p>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">file events</span>
+      <span class="pill">dedupe</span>
+      <span class="pill">quarantine</span>
+      <span class="pill">atomic commit</span>
+      <span class="pill">resume manifest</span>
+      <span class="pill">checksums</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

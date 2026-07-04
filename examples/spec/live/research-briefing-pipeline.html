@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Research Briefing Pipeline</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f7f7fb; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #ddddea; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #e1e2ec; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef0f8; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #cdd0df; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfbfe; }
+    .mermaid { background: #fbfbfe; border: 1px solid #e6e7f1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Research Briefing Pipeline</h1>
+      <p class="meta">Knowledge workflow for collecting sources, extracting claims, reviewing summaries, and publishing a briefing.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Build a daily or weekly briefing from many sources, track citations, remove duplicate stories, summarize with reviewer approval,
+        publish to multiple destinations, and preserve the source bundle for later audit.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Inputs</strong><br>RSS feeds, email newsletters, PDFs, web pages, shared folders, internal notes.</div>
+        <div><strong>Processing</strong><br>Browser fetcher, OCR, PDF parser, LLM summarizer, embedding index, citation validator.</div>
+        <div><strong>Outputs</strong><br>Notion or Confluence, Markdown repo, email campaign tool, Slack channel, archive bucket.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Scheduled briefing window opens] --> B[Collect source candidates]
+  B --> C[Normalize HTML, PDF, email, and note formats]
+  C --> D[Extract title, author, date, entities, and claims]
+  D --> E[Cluster duplicate and related items]
+  E --> F{Enough high-quality sources?}
+  F -- no --> G[Ask analyst to add sources or skip topic]
+  G --> E
+  F -- yes --> H[Draft topic summaries with citations]
+  H --> I[Run citation and quote checks]
+  I --> J{Reviewer approves?}
+  J -- changes requested --> K[Return section to drafting queue]
+  K --> H
+  J -- approved --> L[Assemble final briefing]
+  L --> M[Publish to docs, email, and chat]
+  M --> N[Archive source bundle and decision log]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Source date is missing or ambiguous, requiring confidence metadata and human review.</li>
+        <li>Two sources disagree on a key fact, so the briefing must mark the conflict instead of hiding it.</li>
+        <li>Paywalled sources fail to fetch automatically and require browser-assisted capture.</li>
+        <li>Reviewer approves some sections while sending others back for revision.</li>
+        <li>Publishing to one destination fails, but the workflow should not duplicate already published destinations on retry.</li>
+        <li>A correction arrives after publication and must update all destinations with a version trail.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "briefingDate": "2026-06-21",
+  "topics": ["semiconductor supply chain", "enterprise AI regulation"],
+  "sources": [
+    { "type": "rss", "url": "https://example.com/industry.xml" },
+    { "type": "mailbox", "label": "Research/Newsletters" },
+    { "type": "folder", "path": "/home/maya/research/pdfs" }
+  ],
+  "reviewers": ["analyst@company.example", "editor@company.example"],
+  "publishTargets": ["confluence:Market Briefings", "slack:#market-intel"]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "briefingId": "brief-2026-06-21-market-intel",
+  "status": "published",
+  "sections": [
+    {
+      "topic": "semiconductor supply chain",
+      "sourceCount": 18,
+      "claimCount": 42,
+      "reviewStatus": "approved"
+    },
+    {
+      "topic": "enterprise AI regulation",
+      "sourceCount": 11,
+      "claimCount": 27,
+      "reviewStatus": "approved_with_note"
+    }
+  ],
+  "publishedUrls": [
+    "https://confluence.example/pages/brief-2026-06-21",
+    "slack://channel/market-intel/message/1718970123"
+  ],
+  "archiveBundle": "archive://briefings/2026/06/21/source-bundle.zip"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">scheduled trigger</span>
+      <span class="pill">heterogeneous inputs</span>
+      <span class="pill">LLM steps</span>
+      <span class="pill">citation tracking</span>
+      <span class="pill">partial approval</span>
+      <span class="pill">multi-destination publish</span>
+      <span class="pill">versioning</span>
+      <span class="pill">human review</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

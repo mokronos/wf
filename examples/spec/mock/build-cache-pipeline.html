@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Build Cache Pipeline</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #f7f8fa; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f2f5f8; border: 1px solid #e0e6ed; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #eef3f0; border: 1px solid #dce6e0; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Build Cache Pipeline</h1>
+      <p class="meta">A local-only CI/CD-shaped workflow with fake commands, dependency ordering, cache hits, flaky tests, and rollback.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Run a miniature build graph with deterministic command results. Skip cached tasks, retry flaky tests, publish artifacts only after all
+        dependencies pass, and roll back the publish marker if post-publish verification fails.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>Fake command runner that reads scripted results instead of executing shell commands.</li>
+        <li>In-memory cache keyed by task input hashes.</li>
+        <li>Artifact store represented by local JSON objects.</li>
+        <li>Post-publish verifier that can be scripted to fail.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Load build graph] --> B[Topologically sort tasks]
+  B --> C{Task cache hit?}
+  C -- yes --> D[Reuse artifact]
+  C -- no --> E[Run fake command]
+  E --> F{Command result}
+  F -- pass --> G[Store task artifact]
+  F -- flaky_fail --> H[Retry task]
+  H --> E
+  F -- fail --> I[Fail pipeline]
+  D --> J{All dependencies complete?}
+  G --> J
+  J -- no --> C
+  J -- yes --> K[Publish release marker]
+  K --> L[Run post-publish verification]
+  L --> M{Verified?}
+  M -- yes --> N[Complete]
+  M -- no --> O[Rollback marker and fail]</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "buildId": "build-001",
+  "tasks": [
+    { "id": "compile", "deps": [], "hash": "h1", "script": ["pass"] },
+    { "id": "unit-test", "deps": ["compile"], "hash": "h2", "script": ["flaky_fail", "pass"] },
+    { "id": "package", "deps": ["unit-test"], "hash": "h3", "script": ["pass"] }
+  ],
+  "cache": { "h1": "artifact://compile-cached" },
+  "postPublishScript": ["pass"]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "buildId": "build-001",
+  "status": "published",
+  "taskResults": [
+    { "id": "compile", "source": "cache" },
+    { "id": "unit-test", "source": "executed", "attempts": 2 },
+    { "id": "package", "source": "executed", "attempts": 1 }
+  ],
+  "releaseMarker": "memory://releases/build-001",
+  "rolledBack": false
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "post-publish verification fails and rolls back",
+    "input": {
+      "buildId": "build-rollback",
+      "tasks": [{ "id": "package", "deps": [], "hash": "h9", "script": ["pass"] }],
+      "postPublishScript": ["fail"]
+    },
+    "output": {
+      "status": "failed",
+      "releaseMarker": "memory://releases/build-rollback",
+      "rolledBack": true
+    }
+  },
+  {
+    "case": "all tasks are cache hits",
+    "input": {
+      "buildId": "build-all-cache",
+      "tasks": [{ "id": "compile", "deps": [], "hash": "h1", "script": ["pass"] }],
+      "cache": { "h1": "artifact://compile-cached" }
+    },
+    "output": {
+      "status": "published",
+      "taskResults": [{ "id": "compile", "source": "cache" }],
+      "executedCommands": 0
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Executable Fixture Contract</h2>
+      <p>
+        Fully specified node-by-node cases for this workflow live in
+        <code>fixtures/fully-specified-workflows.json</code> under <code>build-cache-pipeline</code>.
+        The tests assert DAG ordering, cache hits, flaky retries, publish verification, and replay behavior.
+      </p>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">DAG execution</span>
+      <span class="pill">cache</span>
+      <span class="pill">flaky retry</span>
+      <span class="pill">publish gate</span>
+      <span class="pill">rollback</span>
+      <span class="pill">scripted runner</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Security Incident Response</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f6f7f9; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #d8dee8; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #dfe4ec; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eef2f7; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #c9d3df; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfcfe; }
+    .mermaid { background: #fbfcfe; border: 1px solid #e4e9f1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Security Incident Response</h1>
+      <p class="meta">Business workflow for triage, containment, evidence collection, customer communication, and postmortem closure.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        React to a high-confidence security alert, create an incident room, gather evidence, coordinate responders, run containment steps,
+        decide whether notification obligations apply, and close with a postmortem and control improvements.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Detection</strong><br>SIEM, EDR, cloud audit logs, identity provider logs, vulnerability scanner.</div>
+        <div><strong>Coordination</strong><br>PagerDuty, Slack or Teams, incident management system, ticket tracker, status page.</div>
+        <div><strong>Governance</strong><br>Legal hold storage, customer comms tool, data inventory, evidence bucket, postmortem docs.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[SIEM raises high-confidence alert] --> B[Create incident and page commander]
+  B --> C[Open war room and evidence folder]
+  C --> D[Collect account, host, network, and app context]
+  D --> E{Confirmed incident?}
+  E -- no --> F[Close as false positive with tuning task]
+  E -- yes --> G{Severity}
+  G -- sev3 --> H[Contain affected assets]
+  G -- sev2 --> I[Contain and page security lead]
+  G -- sev1 --> J[Contain, page execs, notify legal]
+  H --> K[Forensic snapshot and timeline]
+  I --> K
+  J --> K
+  K --> L{Customer data exposed?}
+  L -- unknown --> M[Run data scope investigation]
+  M --> L
+  L -- yes --> N[Prepare legal and customer notification]
+  L -- no --> O[Document no-notification rationale]
+  N --> P[Eradicate, recover, monitor]
+  O --> P
+  P --> Q[Postmortem, action items, control updates]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>Alert contains multiple affected accounts, causing dynamic fan-out containment per identity.</li>
+        <li>Containment action fails for a cloud account because break-glass credentials are required.</li>
+        <li>Data exposure cannot be determined immediately, so the workflow holds an SLA deadline while investigation continues.</li>
+        <li>Incident severity changes mid-flight and triggers additional responders and communication obligations.</li>
+        <li>Evidence collection must preserve immutable timestamps and hashes for chain of custody.</li>
+        <li>Postmortem action items must be tracked until completion, not merely created.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "alertId": "siem-2026-06-21-00917",
+  "rule": "Impossible travel followed by privileged cloud action",
+  "confidence": 0.94,
+  "principal": "alex.admin@company.example",
+  "sourceIps": ["203.0.113.42", "198.51.100.19"],
+  "affectedResources": ["prod-billing-db", "iam-role/billing-admin"],
+  "firstSeen": "2026-06-21T08:41:12Z",
+  "rawEventsLocation": "s3://security-evidence/incoming/siem-00917.json"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "incidentId": "INC-2026-044",
+  "severity": "sev2",
+  "commander": "sam.security@company.example",
+  "containment": [
+    { "action": "disable_user_sessions", "status": "succeeded" },
+    { "action": "rotate_cloud_keys", "status": "succeeded" },
+    { "action": "isolate_database_network", "status": "manual_approval_required" }
+  ],
+  "customerNotificationRequired": "undetermined",
+  "evidenceBundle": "s3://security-evidence/incidents/INC-2026-044/",
+  "nextDeadline": "2026-06-21T12:00:00Z"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">event trigger</span>
+      <span class="pill">dynamic fan-out</span>
+      <span class="pill">SLA timers</span>
+      <span class="pill">escalation</span>
+      <span class="pill">mutable severity</span>
+      <span class="pill">evidence artifacts</span>
+      <span class="pill">manual decision gates</span>
+      <span class="pill">long-running follow-up</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

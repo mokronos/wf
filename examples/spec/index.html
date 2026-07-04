@@ -1,0 +1,474 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Example Specs</title>
+  <style>
+    :root {
+      --ink: #162033;
+      --muted: #59677a;
+      --paper: #fbfaf7;
+      --panel: #ffffff;
+      --line: #dbe2ea;
+      --mock: #176c65;
+      --live: #9a4932;
+      --tag: #edf4f2;
+      --shadow: 0 18px 48px rgba(22, 32, 51, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(22, 32, 51, 0.035) 1px, transparent 1px),
+        linear-gradient(rgba(22, 32, 51, 0.035) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: Avenir Next, Segoe UI, sans-serif;
+      line-height: 1.5;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 52px 24px 72px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 430px);
+      gap: 28px;
+      align-items: end;
+      border-bottom: 2px solid var(--ink);
+      padding-bottom: 24px;
+      margin-bottom: 26px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Georgia, Times, serif;
+      font-size: clamp(2.4rem, 6vw, 5.7rem);
+      line-height: 0.92;
+      letter-spacing: 0;
+      max-width: 760px;
+    }
+
+    .intro {
+      margin: 0;
+      color: var(--muted);
+      font-size: 1rem;
+    }
+
+    .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 0 0 34px;
+    }
+
+    .summary span {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.82);
+      border-radius: 999px;
+      color: #344255;
+      font-size: 0.9rem;
+      padding: 6px 12px;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: end;
+      margin: 34px 0 14px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-family: Georgia, Times, serif;
+      font-size: 2rem;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 560px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 18px;
+    }
+
+    .compact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 12px;
+    }
+
+    a.card,
+    a.live-link {
+      color: inherit;
+      text-decoration: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+    }
+
+    a.card {
+      display: flex;
+      min-height: 268px;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 22px;
+    }
+
+    a.live-link {
+      display: block;
+      padding: 16px 18px;
+      min-height: 128px;
+    }
+
+    a.card:hover,
+    a.card:focus-visible,
+    a.live-link:hover,
+    a.live-link:focus-visible {
+      transform: translateY(-3px);
+      outline: none;
+    }
+
+    a.card:hover,
+    a.card:focus-visible {
+      border-color: var(--mock);
+      box-shadow: 0 22px 60px rgba(23, 108, 101, 0.14);
+    }
+
+    a.live-link:hover,
+    a.live-link:focus-visible {
+      border-color: var(--live);
+      box-shadow: 0 18px 44px rgba(154, 73, 50, 0.12);
+    }
+
+    .kicker {
+      color: var(--mock);
+      font-size: 0.76rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .live-link .kicker { color: var(--live); }
+
+    h3 {
+      margin: 8px 0 10px;
+      font-family: Georgia, Times, serif;
+      font-size: 1.42rem;
+      line-height: 1.12;
+      letter-spacing: 0;
+    }
+
+    .live-link h3 {
+      font-size: 1.12rem;
+      margin-bottom: 8px;
+    }
+
+    p { margin: 0; color: var(--muted); }
+
+    .tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 18px;
+    }
+
+    .tags span {
+      background: var(--tag);
+      border: 1px solid #dce8e5;
+      border-radius: 999px;
+      color: #30524d;
+      font-size: 0.8rem;
+      padding: 3px 8px;
+      white-space: nowrap;
+    }
+
+    .arrow {
+      align-self: flex-end;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--ink);
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: var(--ink);
+      font-size: 1.2rem;
+      transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+    }
+
+    a.card:hover .arrow,
+    a.card:focus-visible .arrow {
+      color: #fff;
+      background: var(--mock);
+      border-color: var(--mock);
+    }
+
+    footer {
+      margin-top: 30px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    @media (max-width: 780px) {
+      main { padding: 34px 16px 48px; }
+      header { grid-template-columns: 1fr; align-items: start; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 8px; }
+      a.card { min-height: 238px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Workflow Example Specs</h1>
+      <p class="intro">
+        Mock-first scenarios for exercising workflow engine features with deterministic fixtures, fake clocks, local artifacts, and test signals.
+        Realistic live-style scenarios are still linked below as reference targets.
+      </p>
+    </header>
+
+    <div class="summary" aria-label="Catalog summary">
+      <span>9 mock specs</span>
+      <span>executable fixture contract</span>
+      <span>9 live reference specs</span>
+      <span>no external services required for mocks</span>
+      <span>example inputs and outputs</span>
+      <span>Mermaid source diagrams</span>
+    </div>
+
+    <section aria-label="Mock workflow examples">
+      <div class="section-head">
+        <h2>Mockable Specs</h2>
+        <p>Use these first for implementation and tests. They cover the hard workflow semantics without depending on real APIs, accounts, devices, or flaky infrastructure.</p>
+      </div>
+
+      <div class="grid">
+        <a class="card" href="mock/fully-specified-fixtures.html">
+          <div>
+            <div class="kicker">Executable Contract</div>
+            <h3>Fully Specified Fixtures</h3>
+            <p>Workflow input/output plus every node input, output, cache key, and cacheability for direct test generation.</p>
+            <div class="tags">
+              <span>node outputs</span>
+              <span>cache replay</span>
+              <span>Bun tests</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/arithmetic-approval-lab.html">
+          <div>
+            <div class="kicker">Math and Review</div>
+            <h3>Arithmetic Approval Lab</h3>
+            <p>Fan out math problems, route suspicious answers to a reviewer, wait on fake-clock deadlines, and persist a score report.</p>
+            <div class="tags">
+              <span>fan-out/fan-in</span>
+              <span>human signal</span>
+              <span>idempotency</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/file-batch-transform.html">
+          <div>
+            <div class="kicker">Local Files</div>
+            <h3>File Batch Transform</h3>
+            <p>Process tiny CSV fixtures with deduped events, validation, quarantine, checksums, atomic output, and resume manifests.</p>
+            <div class="tags">
+              <span>file events</span>
+              <span>quarantine</span>
+              <span>resume</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/retryable-task-queue.html">
+          <div>
+            <div class="kicker">Queue Worker</div>
+            <h3>Retryable Task Queue</h3>
+            <p>Consume scripted messages with leases, retry backoff, poison handling, dead letters, polling waits, and cancellation.</p>
+            <div class="tags">
+              <span>retries</span>
+              <span>backoff</span>
+              <span>dead letter</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/tournament-bracket-scheduler.html">
+          <div>
+            <div class="kicker">Signals and DAGs</div>
+            <h3>Tournament Bracket Scheduler</h3>
+            <p>Schedule dependent matches, wait for score signals, handle disputes, accept moderator overrides, and recurse through rounds.</p>
+            <div class="tags">
+              <span>dependency graph</span>
+              <span>waits</span>
+              <span>override</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/text-redaction-review.html">
+          <div>
+            <div class="kicker">Text Fixtures</div>
+            <h3>Text Redaction Review</h3>
+            <p>Classify spans in a string, apply policy branches, request reviewer patches, validate changes, and store versioned artifacts.</p>
+            <div class="tags">
+              <span>classification</span>
+              <span>review loop</span>
+              <span>versioning</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/package-delivery-simulator.html">
+          <div>
+            <div class="kicker">Saga Simulator</div>
+            <h3>Package Delivery Simulator</h3>
+            <p>Reserve inventory, simulate carrier events, notify subscribers, and run compensation or replacement branches.</p>
+            <div class="tags">
+              <span>saga</span>
+              <span>compensation</span>
+              <span>event stream</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/recipe-timer-orchestrator.html">
+          <div>
+            <div class="kicker">Timers and Locks</div>
+            <h3>Recipe Timer Orchestrator</h3>
+            <p>Run parallel prep timers, acquire equipment locks, ask for taste feedback, replan dynamically, or cancel cleanly.</p>
+            <div class="tags">
+              <span>timers</span>
+              <span>resource locks</span>
+              <span>replanning</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/toy-loan-risk-review.html">
+          <div>
+            <div class="kicker">Policy Engine</div>
+            <h3>Toy Loan Risk Review</h3>
+            <p>Validate fields, calculate a deterministic score, request more info, route borderline cases, and audit explanations.</p>
+            <div class="tags">
+              <span>policy branch</span>
+              <span>more-info wait</span>
+              <span>auditability</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+
+        <a class="card" href="mock/build-cache-pipeline.html">
+          <div>
+            <div class="kicker">Fake CI</div>
+            <h3>Build Cache Pipeline</h3>
+            <p>Execute a build DAG with cache hits, flaky fake commands, publish gates, verification, and rollback.</p>
+            <div class="tags">
+              <span>DAG</span>
+              <span>cache</span>
+              <span>rollback</span>
+            </div>
+          </div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    <section aria-label="Live reference workflow examples">
+      <div class="section-head">
+        <h2>Live Reference Specs</h2>
+        <p>These are more realistic targets with external systems and harder mocks. Keep them around for product shape and integration ambition.</p>
+      </div>
+
+      <div class="compact-grid">
+        <a class="live-link" href="live/vendor-onboarding-procurement.html">
+          <div class="kicker">Procurement</div>
+          <h3>Vendor Onboarding and Procurement</h3>
+          <p>Risk checks, approvals, contracts, ERP setup, and purchase orders.</p>
+        </a>
+
+        <a class="live-link" href="live/security-incident-response.html">
+          <div class="kicker">Security</div>
+          <h3>Security Incident Response</h3>
+          <p>Triage, containment, evidence collection, notification, and postmortems.</p>
+        </a>
+
+        <a class="live-link" href="live/local-media-ingest-backup.html">
+          <div class="kicker">Local PC</div>
+          <h3>Local Media Ingest and Backup</h3>
+          <p>Camera cards, checksums, proxies, NAS/cloud backup, and safe eject.</p>
+        </a>
+
+        <a class="live-link" href="live/research-briefing-pipeline.html">
+          <div class="kicker">Knowledge Work</div>
+          <h3>Research Briefing Pipeline</h3>
+          <p>Source collection, citation checks, review, publishing, and archive.</p>
+        </a>
+
+        <a class="live-link" href="live/employee-offboarding-access.html">
+          <div class="kicker">HR and IT</div>
+          <h3>Employee Offboarding and Access Revocation</h3>
+          <p>Access revocation, assets, legal holds, handoff, and audit reports.</p>
+        </a>
+
+        <a class="live-link" href="live/invoice-reconciliation-payment.html">
+          <div class="kicker">Finance</div>
+          <h3>Invoice Reconciliation and Payment</h3>
+          <p>Extraction, three-way matching, exception routing, payment, and settlement.</p>
+        </a>
+
+        <a class="live-link" href="live/personal-knowledge-archive.html">
+          <div class="kicker">Local PC</div>
+          <h3>Personal Knowledge Archive</h3>
+          <p>Capture, OCR, transcript, privacy labels, indexing, and encrypted backup.</p>
+        </a>
+
+        <a class="live-link" href="live/release-train-deployment.html">
+          <div class="kicker">Engineering</div>
+          <h3>Release Train Deployment</h3>
+          <p>Readiness checks, progressive rollout, monitoring, rollback, and notes.</p>
+        </a>
+
+        <a class="live-link" href="live/smart-home-energy-optimizer.html">
+          <div class="kicker">Home Automation</div>
+          <h3>Smart Home Energy Optimizer</h3>
+          <p>Solar, battery, EV charging, HVAC, tariffs, and manual overrides.</p>
+        </a>
+      </div>
+    </section>
+
+    <footer>
+      Open this file directly in a browser, or serve the repository root and visit <code>examples/spec/</code>.
+    </footer>
+  </main>
+</body>
+</html>

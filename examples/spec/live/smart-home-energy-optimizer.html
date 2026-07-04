@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Workflow Spec: Smart Home Energy Optimizer</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f7f8f5; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 48px 24px 64px; }
+    header { border-bottom: 1px solid #dbe1d5; margin-bottom: 28px; padding-bottom: 20px; }
+    h1 { margin: 0 0 8px; font-size: 2rem; line-height: 1.15; }
+    h2 { margin-top: 32px; font-size: 1.2rem; }
+    section { background: #fff; border: 1px solid #e0e7dc; border-radius: 8px; padding: 20px 22px; margin: 18px 0; }
+    ul, ol { padding-left: 1.35rem; }
+    code { background: #eff4ec; padding: 0.1rem 0.3rem; border-radius: 4px; }
+    .meta { color: #566274; margin: 0; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+    .pill { display: inline-block; border: 1px solid #cbd7c4; border-radius: 999px; padding: 2px 9px; margin: 2px 4px 2px 0; font-size: 0.9rem; background: #fbfdf9; }
+    .mermaid { background: #fbfdf9; border: 1px solid #e5ece1; border-radius: 8px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Smart Home Energy Optimizer</h1>
+      <p class="meta">Local and cloud workflow for home energy scheduling across solar, battery, EV charging, HVAC, and dynamic pricing.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Forecast household energy production and demand, choose an operating plan, control devices safely, respect manual overrides,
+        and explain why actions were taken. It should continue in degraded mode when cloud services are unavailable.
+      </p>
+    </section>
+
+    <section>
+      <h2>Programs and Services Involved</h2>
+      <div class="grid">
+        <div><strong>Devices</strong><br>Home Assistant, smart meter, solar inverter, battery, EV charger, thermostat, smart plugs.</div>
+        <div><strong>Data</strong><br>Weather forecast, electricity tariff API, occupancy sensors, calendar, historical consumption database.</div>
+        <div><strong>Controls</strong><br>Local MQTT, device vendor APIs, notification app, manual override dashboard, safety limits.</div>
+      </div>
+    </section>
+
+    <section>
+      <h2>Workflow Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Every 15 minutes or sensor event] --> B[Read meter, solar, battery, EV, HVAC, and occupancy state]
+  B --> C[Fetch weather and price forecast]
+  C --> D{Cloud data available?}
+  D -- no --> E[Use cached forecast and conservative rules]
+  D -- yes --> F[Build optimized energy plan]
+  E --> G[Validate plan against safety and comfort constraints]
+  F --> G
+  G --> H{Manual override active?}
+  H -- yes --> I[Respect override and record skipped actions]
+  H -- no --> J[Dispatch device commands]
+  J --> K[Verify device state changes]
+  K --> L{Command failed?}
+  L -- yes --> M[Retry local path, then notify user]
+  M --> N[Update plan state]
+  L -- no --> N
+  I --> N
+  N --> O[Log explanation and projected savings]
+      </pre>
+    </section>
+
+    <section>
+      <h2>Important Branches and Edge Cases</h2>
+      <ul>
+        <li>EV must be charged by a user-defined departure time even if electricity prices remain high.</li>
+        <li>Battery reserve must be preserved during storm warnings or grid outage risk.</li>
+        <li>Device command succeeds through local MQTT but vendor cloud state lags behind, requiring reconciliation.</li>
+        <li>Occupancy sensors are contradictory, so HVAC comfort rules take precedence over savings.</li>
+        <li>Dynamic tariff API is down, so the workflow must fall back to cached rates and avoid risky arbitrage.</li>
+        <li>User manually turns on a device and the workflow must avoid fighting the override for a configured window.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "timestamp": "2026-06-21T16:15:00+02:00",
+  "homeState": {
+    "solarKw": 4.8,
+    "homeLoadKw": 1.7,
+    "batterySocPercent": 62,
+    "evSocPercent": 38,
+    "indoorTempC": 24.1,
+    "occupied": true
+  },
+  "forecast": {
+    "nextHighPriceWindow": "2026-06-21T19:00:00+02:00",
+    "stormRisk": "low",
+    "solarForecastKwhRemaining": 7.4
+  },
+  "constraints": {
+    "evReadyBy": "2026-06-22T07:30:00+02:00",
+    "minimumBatteryReservePercent": 25,
+    "comfortTempRangeC": [21, 25]
+  }
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "planId": "energy-plan-20260621-1615",
+  "status": "commands_dispatched",
+  "actions": [
+    { "device": "battery", "command": "charge_from_solar", "targetSocPercent": 80 },
+    { "device": "ev_charger", "command": "start", "maxKw": 3.7 },
+    { "device": "hvac", "command": "pre_cool", "targetTempC": 23 }
+  ],
+  "skippedActions": [],
+  "estimatedSavingsEur": 2.14,
+  "explanation": "Use surplus solar before the evening price spike while preserving comfort and EV readiness.",
+  "verification": [
+    { "device": "battery", "stateMatched": true },
+    { "device": "ev_charger", "stateMatched": true },
+    { "device": "hvac", "stateMatched": true }
+  ]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">periodic trigger</span>
+      <span class="pill">sensor events</span>
+      <span class="pill">optimization step</span>
+      <span class="pill">local plus cloud control</span>
+      <span class="pill">degraded mode</span>
+      <span class="pill">manual overrides</span>
+      <span class="pill">state verification</span>
+      <span class="pill">explainability log</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Tournament Bracket Scheduler</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #faf9f4; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #e6e0d2; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f6f2e8; border: 1px solid #e8dfcf; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #f2eee5; border: 1px solid #e1d8c8; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Tournament Bracket Scheduler</h1>
+      <p class="meta">A pure-data event workflow for testing dependency graphs, delayed starts, score signals, and manual overrides.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Schedule a toy tournament where match N depends on earlier winners. It waits for score submissions, handles disputes, lets a moderator
+        override a result, and emits the final bracket. No real calendar, chat, or game server is required.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>Participant list fixture.</li>
+        <li>Fake clock for match start delays and score deadlines.</li>
+        <li>Score submission signals from test code.</li>
+        <li>Moderator override signal for disputed matches.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Seed participants] --> B[Create round one matches]
+  B --> C[Wait until match start]
+  C --> D[Accept score signal]
+  D --> E{Disputed?}
+  E -- no --> F[Advance winner]
+  E -- yes --> G[Open moderator review]
+  G --> H{Override received before deadline?}
+  H -- no --> I[Use deterministic tie-break]
+  H -- yes --> F
+  I --> F
+  F --> J{Round complete?}
+  J -- no --> C
+  J -- yes --> K{Champion known?}
+  K -- no --> L[Create next round]
+  L --> C
+  K -- yes --> M[Publish bracket]</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "tournamentId": "toy-cup",
+  "participants": ["Ada", "Grace", "Linus", "Katherine"],
+  "matchDurationSeconds": 10,
+  "scoreSignals": [
+    { "matchId": "r1-m1", "score": { "Ada": 3, "Grace": 1 } },
+    { "matchId": "r1-m2", "score": { "Linus": 2, "Katherine": 2 }, "disputed": true },
+    { "matchId": "final", "score": { "Ada": 1, "Katherine": 4 } }
+  ],
+  "moderatorSignals": [
+    { "matchId": "r1-m2", "winner": "Katherine", "reason": "fixture override" }
+  ]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "tournamentId": "toy-cup",
+  "status": "completed",
+  "champion": "Katherine",
+  "matches": [
+    { "id": "r1-m1", "winner": "Ada", "source": "score" },
+    { "id": "r1-m2", "winner": "Katherine", "source": "moderator_override" },
+    { "id": "final", "winner": "Katherine", "source": "score" }
+  ],
+  "virtualTimeAdvancedSeconds": 30
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "score deadline uses deterministic tie-break",
+    "input": {
+      "participants": ["Ada", "Grace"],
+      "scoreSignals": [],
+      "scoreDeadlineSeconds": 10
+    },
+    "output": {
+      "status": "completed",
+      "champion": "Ada",
+      "decisionSource": "tie_break",
+      "virtualTimeAdvancedSeconds": 10
+    }
+  },
+  {
+    "case": "moderator rejects invalid override",
+    "input": {
+      "participants": ["Ada", "Grace"],
+      "scoreSignals": [{ "matchId": "r1-m1", "score": { "Ada": 1, "Grace": 1 }, "disputed": true }],
+      "moderatorSignals": [{ "matchId": "r1-m1", "winner": "Unknown" }]
+    },
+    "output": {
+      "status": "review_failed",
+      "invalidSignals": ["winner_not_in_match"]
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">dependency graph</span>
+      <span class="pill">waits</span>
+      <span class="pill">signals</span>
+      <span class="pill">manual override</span>
+      <span class="pill">recursive rounds</span>
+      <span class="pill">deterministic tie-break</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>

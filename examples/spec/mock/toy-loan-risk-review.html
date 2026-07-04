@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mock Workflow: Toy Loan Risk Review</title>
+  <style>
+    body { margin: 0; font-family: Avenir Next, Segoe UI, sans-serif; color: #172033; background: #f8f8fb; line-height: 1.55; }
+    main { max-width: 980px; margin: 0 auto; padding: 44px 22px 60px; }
+    header { border-bottom: 2px solid #172033; padding-bottom: 18px; margin-bottom: 22px; }
+    h1 { margin: 0 0 8px; font-family: Georgia, Times, serif; font-size: 2.4rem; line-height: 1; }
+    h2 { margin-top: 28px; font-size: 1.15rem; }
+    section { background: #fff; border: 1px solid #e1e2ec; border-radius: 8px; padding: 18px 20px; margin: 16px 0; }
+    pre { overflow: auto; background: #f3f4f9; border: 1px solid #e1e3ee; border-radius: 8px; padding: 14px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.92rem; }
+    .meta { color: #5a6678; margin: 0; }
+    .pill { display: inline-block; background: #eef0f6; border: 1px solid #dfe2ee; border-radius: 999px; padding: 2px 8px; margin: 2px; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>Toy Loan Risk Review</h1>
+      <p class="meta">A fake finance workflow for testing scoring, policy explanations, manual exceptions, and decision auditability.</p>
+    </header>
+
+    <section>
+      <h2>What It Should Do</h2>
+      <p>
+        Score a small loan application using deterministic arithmetic, approve low-risk cases, reject high-risk cases, and route borderline cases
+        to a reviewer who can request more information or grant an exception.
+      </p>
+    </section>
+
+    <section>
+      <h2>Mocked Programs and Services</h2>
+      <ul>
+        <li>Applicant fixture JSON.</li>
+        <li>Pure scoring function with no credit bureau dependency.</li>
+        <li>Reviewer signal queue for exception decisions.</li>
+        <li>Generated decision letter as local text artifact.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>Mermaid Diagram</h2>
+      <pre class="mermaid">
+flowchart TD
+  A[Load application] --> B[Validate fields]
+  B --> C{Missing data?}
+  C -- yes --> D[Request more info]
+  D --> E{Info received before deadline?}
+  E -- no --> F[Close incomplete]
+  E -- yes --> B
+  C -- no --> G[Calculate toy risk score]
+  G --> H{Decision band}
+  H -- approve --> I[Generate approval letter]
+  H -- reject --> J[Generate rejection letter]
+  H -- review --> K[Open reviewer task]
+  K --> L{Reviewer decision}
+  L -- approve_exception --> I
+  L -- reject --> J
+  I --> M[Persist decision package]
+  J --> M</pre>
+    </section>
+
+    <section>
+      <h2>Example Inputs</h2>
+      <pre><code>{
+  "applicationId": "loan-001",
+  "amount": 500,
+  "income": 2200,
+  "existingDebt": 600,
+  "historyPoints": 4,
+  "requestedTermMonths": 6,
+  "reviewSignals": [
+    { "decision": "approve_exception", "reason": "small amount and stable income fixture" }
+  ]
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Example Outputs</h2>
+      <pre><code>{
+  "applicationId": "loan-001",
+  "status": "approved",
+  "riskScore": 58,
+  "decisionSource": "reviewer_exception",
+  "explanations": ["debt_to_income_mid", "short_term", "positive_history"],
+  "letterArtifact": "memory://letters/loan-001-approval.txt",
+  "auditArtifact": "memory://loan-decisions/loan-001.json"
+}</code></pre>
+    </section>
+
+    <section>
+      <h2>Additional Example Pairs</h2>
+      <pre><code>[
+  {
+    "case": "missing income requests more info",
+    "input": {
+      "applicationId": "loan-missing-income",
+      "amount": 400,
+      "existingDebt": 100,
+      "moreInfoSignals": [{ "income": 1800 }]
+    },
+    "output": {
+      "status": "approved",
+      "decisionSource": "automatic_after_more_info"
+    }
+  },
+  {
+    "case": "high risk automatic rejection",
+    "input": {
+      "applicationId": "loan-reject",
+      "amount": 5000,
+      "income": 1200,
+      "existingDebt": 900,
+      "historyPoints": 0
+    },
+    "output": {
+      "status": "rejected",
+      "decisionSource": "policy",
+      "explanations": ["debt_to_income_high", "amount_too_high", "thin_history"]
+    }
+  }
+]</code></pre>
+    </section>
+
+    <section>
+      <h2>Feature Coverage Target</h2>
+      <span class="pill">validation</span>
+      <span class="pill">policy decision</span>
+      <span class="pill">more-info wait</span>
+      <span class="pill">manual exception</span>
+      <span class="pill">explainability</span>
+      <span class="pill">decision package</span>
+    </section>
+  </main>
+  <script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    mermaid.initialize({ startOnLoad: true, theme: "neutral" });
+  </script>
+</body>
+</html>
