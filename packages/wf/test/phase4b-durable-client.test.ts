@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Schema } from "effect"
-import { createWorkflowClient, createWorkflowRuntime, defineWorkflow } from "../src"
+import { createWorkflowClient, createWorkflowRuntime, defineStep, defineWorkflow } from "../src"
 
 const dbPath = () => path.join(mkdtempSync(path.join(tmpdir(), "wf-phase4b-")), "wf.sqlite")
 
@@ -37,6 +37,20 @@ const waitForHistoryEvent = async (
   throw new Error(`Timed out waiting for history event ${type}`)
 }
 
+const withTimeout = async <A>(promise: Promise<A>, ms: number): Promise<A> => {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer !== undefined) {
+      clearTimeout(timer)
+    }
+  }
+}
+
 describe("Phase 4b durable workflow client", () => {
   test("sqlite backend uses fresh execution IDs and explicit idempotency", async () => {
     const workflow = defineWorkflow({
@@ -59,6 +73,10 @@ describe("Phase 4b durable workflow client", () => {
     const keyedFirst = await client.start(workflow, { value: "same" }, { idempotencyKey: "same" })
     const keyedSecond = await client.start(workflow, { value: "same" }, { idempotencyKey: "same" })
     expect(keyedSecond).toEqual(keyedFirst)
+
+    await expect(client.result(first.executionId)).resolves.toEqual({ type: "completed", value: "same" })
+    await expect(client.result(second.executionId)).resolves.toEqual({ type: "completed", value: "same" })
+    await expect(client.result(keyedFirst.executionId)).resolves.toEqual({ type: "completed", value: "same" })
   })
 
   test("sqlite backend lifecycle: start, durable sleep, suspend on signal, deliver, result", async () => {
@@ -130,5 +148,44 @@ describe("Phase 4b durable workflow client", () => {
       type: "completed",
       value: "resumed"
     })
+  })
+
+  test("sqlite backend retries exponential step failures to completion", async () => {
+    let attempts = 0
+    const flaky = defineStep({
+      name: "sqliteExponentialRetry",
+      input: Schema.Struct({ id: Schema.String }),
+      output: Schema.Struct({ id: Schema.String, attempts: Schema.Number }),
+      retry: { attempts: 3, backoff: "exponential" },
+      execute: async (input) => {
+        attempts++
+        if (attempts < 3) {
+          throw new Error(`transient ${attempts}`)
+        }
+        return { id: input.id, attempts }
+      }
+    })
+    const workflow = defineWorkflow({
+      name: "sqliteExponentialRetryWorkflow",
+      version: 1,
+      input: Schema.Struct({ id: Schema.String }),
+      output: Schema.Struct({ id: Schema.String, attempts: Schema.Number }),
+      run: function* (input, ctx) {
+        return yield* ctx.run(flaky, input)
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const handle = await client.start(workflow, { id: "retry-1" })
+    await expect(withTimeout(client.result(handle.executionId), 3_000)).resolves.toEqual({
+      type: "completed",
+      value: { id: "retry-1", attempts: 3 }
+    })
+    const failedAttempts = (await client.history(handle.executionId)).filter(
+      (record) => record.event.type === "step.failed"
+    )
+    expect(failedAttempts).toHaveLength(2)
   })
 })

@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { ClusterWorkflowEngine, SingleRunner } from "@effect/cluster"
 import { NodeRuntime } from "@effect/platform-node"
 import { SqliteClient } from "@effect/sql-sqlite-bun"
-import { DurableDeferred, WorkflowEngine } from "@effect/workflow"
 import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
+import { ClusterWorkflowEngine, SingleRunner } from "effect/unstable/cluster"
+import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
 import { currentSecretResolver, removeExecutionSecretResolver, setExecutionSecretResolver } from "./core"
 import type { DefinedWorkflow, SecretResolver } from "./core"
 import {
@@ -92,7 +92,7 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     const workflowLayers = Array.from(workflows.values()).map((workflow) => workflow.layer)
     const base =
       options.backend === "sqlite"
-        ? makeEngineLayer({ databasePath })
+        ? makeEngineLayer(databasePath === undefined ? {} : { databasePath })
         : WorkflowEngine.layerMemory
     return workflowLayers.reduce((layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer), base)
   }
@@ -117,15 +117,15 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
   const runEffect = <A>(effect: Effect.Effect<A, unknown, any>, onEvent?: WorkflowEventSink) =>
     getManagedRuntime().runPromise(
       effect.pipe(
-        Effect.locally(currentWorkflowEventSink, onEvent),
-        Effect.locally(currentSecretResolver, options.secrets)
+        Effect.provideService(currentWorkflowEventSink, onEvent),
+        Effect.provideService(currentSecretResolver, options.secrets)
       ) as Effect.Effect<A, unknown, never>
     )
 
   return {
     backend: options.backend,
-    databasePath,
-    secrets: options.secrets,
+    ...(databasePath === undefined ? {} : { databasePath }),
+    ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
 
     register(registered) {
       for (const workflow of registered) {
@@ -158,7 +158,7 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     },
 
     execute({ workflow, payload, executionId, onEvent }) {
-      const workflowName = String(workflow.workflow.name ?? workflow.engineName)
+      const workflowName = String(workflow.workflow._tag ?? workflow.engineName)
       if (onEvent !== undefined) {
         setExecutionEventSink(executionId, onEvent)
       }
@@ -195,7 +195,7 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
         const engine = yield* WorkflowEngine.WorkflowEngine
         const deferred = DurableDeferred.make(deferredName, { success: Schema.Unknown })
         yield* engine.deferredDone(deferred, {
-          workflowName: workflow.workflow.name,
+          workflowName: workflow.workflow._tag,
           executionId,
           deferredName,
           exit: Exit.succeed(payload)
@@ -231,9 +231,11 @@ export const makeWorkflowEffect = (
   options: ExecuteWorkflowOptions = {}
 ) => {
   const env = wf.layer.pipe(
-    Layer.provideMerge(makeEngineLayer({ databasePath: options.engineDatabasePath }))
+    Layer.provideMerge(makeEngineLayer(
+      options.engineDatabasePath === undefined ? {} : { databasePath: options.engineDatabasePath }
+    ))
   )
-  const workflowName = String(wf.workflow.name ?? "Workflow")
+  const workflowName = String(wf.workflow._tag ?? wf.engineName ?? "Workflow")
   const execution = Effect.gen(function* () {
     yield* emitWorkflowEvent({ type: "workflow.started", workflowName, payload })
     const result = yield* wf.workflow.execute(payload).pipe(
@@ -249,7 +251,7 @@ export const makeWorkflowEffect = (
 
   return execution.pipe(
     Effect.provide(env),
-    Effect.locally(currentWorkflowEventSink, options.onEvent)
+    Effect.provideService(currentWorkflowEventSink, options.onEvent)
   )
 }
 

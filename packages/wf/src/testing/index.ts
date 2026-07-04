@@ -1,4 +1,4 @@
-import type { DurationInput } from "effect/Duration"
+import type * as Duration from "effect/Duration"
 import type {
   DefinedWorkflow,
   InMemoryDeterminismState,
@@ -47,7 +47,7 @@ export interface TestRuntime {
   status(executionId: string): Promise<WorkflowExecutionStatus>
   history(executionId: string): Promise<ReadonlyArray<WorkflowHistoryRecord>>
   cancel(executionId: string, opts?: { readonly compensate?: boolean; readonly actor?: string }): Promise<void>
-  advanceTime(duration: DurationInput): Promise<void>
+  advanceTime(duration: Duration.Input): Promise<void>
   /** Register a secret value so SecretRef inputs resolve inside step execute. */
   setSecret(name: string, value: string): void
 }
@@ -74,7 +74,7 @@ interface VirtualTimer {
 const nowIso = () => new Date().toISOString()
 const executionId = () => crypto.randomUUID()
 
-const parseDurationMs = (duration: DurationInput): number => {
+const parseDurationMs = (duration: Duration.Input): number => {
   if (typeof duration === "number") {
     return duration
   }
@@ -155,7 +155,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
     return execution
   }
 
-  const makeDelay = (duration: DurationInput): Promise<void> => {
+  const makeDelay = (duration: Duration.Input): Promise<void> => {
     if (timeSkipping) {
       return new Promise((resolve) => setTimeout(resolve, 0))
     }
@@ -242,7 +242,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
       workflowName: workflow.name,
       version: workflow.version,
       payload,
-      actor: opts.actor
+      ...(opts.actor === undefined ? {} : { actor: opts.actor })
     })
     launch(workflow, payload, record)
     return record
@@ -271,7 +271,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
           return { executionId: existingId, version: workflow.version }
         }
       }
-      const record = createExecution(workflow, payload, { actor: opts.actor })
+      const record = createExecution(workflow, payload, opts.actor === undefined ? {} : { actor: opts.actor })
       if (opts.idempotencyKey !== undefined) {
         idempotencyKeys.set(`${workflowKey}:${opts.idempotencyKey}`, record.executionId)
       }
@@ -310,7 +310,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
         type: "execution.cancelled",
         executionId,
         compensate,
-        actor: opts.actor
+        ...(opts.actor === undefined ? {} : { actor: opts.actor })
       })
       if (compensate) {
         record.status = "compensating"

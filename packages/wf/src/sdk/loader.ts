@@ -15,10 +15,12 @@ export const isDefinedWorkflow = (value: unknown): value is DefinedWorkflow => {
     return false
   }
 
-  const workflow = value.workflow
+  // The engine workflow is a callable object (a function with workflow fields
+  // assigned), so accept both shapes.
+  const workflow = value.workflow as Record<string, unknown> | ((...args: Array<unknown>) => unknown) | undefined
   return (
-    isRecord(workflow) &&
-    typeof workflow.execute === "function" &&
+    (isRecord(workflow) || typeof workflow === "function") &&
+    typeof (workflow as Record<string, unknown>).execute === "function" &&
     "layer" in value &&
     typeof value.execute === "function"
   )

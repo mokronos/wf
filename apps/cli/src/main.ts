@@ -107,8 +107,8 @@ const parseCreateWorkflowOptions = (
   return {
     id,
     name,
-    source,
-    sourceFile,
+    ...(source === undefined ? {} : { source }),
+    ...(sourceFile === undefined ? {} : { sourceFile }),
     version,
     force
   }

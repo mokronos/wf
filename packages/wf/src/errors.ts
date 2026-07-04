@@ -13,11 +13,7 @@ export const defineError = <
   tag: Tag,
   fields: Fields
 ) => {
-  // The self-referential generic of `Schema.TaggedError` is awkward to thread
+  // The self-referential generic of `Schema.TaggedErrorClass` is awkward to thread
   // through a generic factory; the cast is purely to satisfy that phantom type.
-  return Schema.TaggedError<any>()(tag, fields) as Schema.TaggedErrorClass<
-    any,
-    Tag,
-    { readonly _tag: Schema.tag<Tag> } & Fields
-  >
+  return Schema.TaggedErrorClass<any>()(tag, fields) as any
 }

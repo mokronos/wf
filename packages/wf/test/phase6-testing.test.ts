@@ -10,6 +10,10 @@ import { createTestRuntime } from "../src/testing"
 const Approval = Schema.Struct({ approved: Schema.Boolean })
 const Rejected = Schema.TaggedStruct("Rejected", { reason: Schema.String })
 
+class TestCrash extends Error {
+  readonly _tag = "TestCrash"
+}
+
 const delay = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms))
 
 const waitForStatus = async (
@@ -251,7 +255,7 @@ describe("Phase 6 test runtime", () => {
         const now = yield* ctx.now()
         const random = yield* ctx.random()
         observed.push({ now, random })
-        yield* ctx.effect(Effect.fail(new Error("crash")))
+        yield* ctx.effect(Effect.fail(new TestCrash("crash")))
         return {}
       }
     })

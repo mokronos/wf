@@ -7,6 +7,10 @@ import {
   NonDeterminismError
 } from "../src/core"
 
+class SimulatedCrash extends Error {
+  readonly _tag = "SimulatedCrash"
+}
+
 describe("Phase 2 determinism", () => {
   test("ctx.now and ctx.random replay identical values across crash and resume", async () => {
     const determinism = createInMemoryDeterminismState()
@@ -30,7 +34,7 @@ describe("Phase 2 determinism", () => {
         const now = yield* ctx.now()
         const random = yield* ctx.random()
         observedBeforeCrash.push({ now, random })
-        yield* ctx.effect(Effect.fail(new Error("simulated crash between steps")))
+        yield* ctx.effect(Effect.fail(new SimulatedCrash("simulated crash between steps")))
       }
     })
 

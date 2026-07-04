@@ -1,8 +1,10 @@
 {
+  "$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
   "compilerOptions": {
     // Environment setup & latest features
     "lib": ["ESNext"],
     "target": "ESNext",
+    "ignoreDeprecations": "6.0",
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
@@ -16,15 +18,26 @@
       "wf": ["packages/wf/src/index.ts"]
     },
     "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
+    "incremental": true,
+    "composite": true,
+    "sourceMap": true,
+    "declarationMap": true,
 
     // Best practices
     "strict": true,
+    "exactOptionalPropertyTypes": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "plugins": [
+      {
+        "name": "@effect/language-service"
+      }
+    ],
 
     // Some stricter flags (disabled by default)
     "noUnusedLocals": false,

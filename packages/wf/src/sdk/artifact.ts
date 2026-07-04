@@ -141,14 +141,16 @@ const normalizeArtifact = (rootDir: string, value: unknown, label: string): Work
   const artifact = asRecord(value, label)
   const source = optionalString(artifact, "source", label)
   const entrypoint = optionalString(artifact, "entrypoint", label)
+  const exportName = optionalString(artifact, "exportName", label)
+  const createdAt = optionalString(artifact, "createdAt", label)
 
   return {
     id: requiredString(artifact, "id", label),
     name: requiredString(artifact, "name", label),
     version: requiredString(artifact, "version", label),
     source: source ?? readLegacySource(rootDir, entrypoint, label),
-    exportName: optionalString(artifact, "exportName", label),
-    createdAt: optionalString(artifact, "createdAt", label)
+    ...(exportName === undefined ? {} : { exportName }),
+    ...(createdAt === undefined ? {} : { createdAt })
   }
 }
 

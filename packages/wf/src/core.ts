@@ -1,9 +1,11 @@
 import { createHash } from "node:crypto"
-import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "@effect/workflow"
-import { Cause, Effect, Exit, FiberRef, Option, Schedule, Schema } from "effect"
-import type { DurationInput } from "effect/Duration"
+import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
+import { Cause, Context, Effect, Exit, Option, Schedule, Schema } from "effect"
+import type * as Duration from "effect/Duration"
 import { currentWorkflowEventSink, emitWorkflowEvent } from "./events"
 import { awaitSignal, registerSignalSchema, SignalDeliveryError, takeBufferedSignal } from "./signal"
+
+type AnySchema<A = any> = Schema.Codec<A, any, any, any>
 
 const TerminalFailureTypeId: unique symbol = Symbol.for("wf/TerminalFailure")
 
@@ -30,9 +32,9 @@ export interface StepConcurrency<I> {
 
 export interface Step<I, O, E = never> {
   readonly name: string
-  readonly input: Schema.Schema<I, any, any>
-  readonly output: Schema.Schema<O, any, any>
-  readonly errors: Schema.Schema<E, any, any>
+  readonly input: AnySchema<I>
+  readonly output: AnySchema<O>
+  readonly errors: AnySchema<E>
   readonly execute: (input: I, step: StepContext<E>) => Promise<O | TerminalFailure<E>>
   readonly compensate?: (result: O, input: I, reason: unknown) => unknown | Promise<unknown>
   readonly retry?: StepRetryPolicy
@@ -41,18 +43,38 @@ export interface Step<I, O, E = never> {
 
 export interface DefineStepConfig<I, O, E> {
   readonly name: string
-  readonly input: Schema.Schema<I, any, any>
-  readonly output: Schema.Schema<O, any, any>
-  readonly errors?: Schema.Schema<E, any, any>
+  readonly input: AnySchema<I>
+  readonly output: AnySchema<O>
+  readonly errors?: AnySchema<E>
   readonly execute: (input: I, step: StepContext<E>) => Promise<O | TerminalFailure<E>>
   readonly compensate?: (result: O, input: I, reason: unknown) => unknown | Promise<unknown>
   readonly retry?: StepRetryPolicy
   readonly concurrency?: StepConcurrency<I>
 }
 
-export const defineStep = <I, O, E = never>(config: DefineStepConfig<I, O, E>): Step<I, O, E> => ({
+export const defineStep = <
+  const Input extends AnySchema,
+  const Output extends AnySchema,
+  const Errors extends AnySchema = typeof Schema.Never
+>(config: {
+  readonly name: string
+  readonly input: Input
+  readonly output: Output
+  readonly errors?: Errors
+  readonly execute: (
+    input: Schema.Schema.Type<Input>,
+    step: StepContext<Schema.Schema.Type<Errors>>
+  ) => Promise<Schema.Schema.Type<Output> | TerminalFailure<Schema.Schema.Type<Errors>>>
+  readonly compensate?: (
+    result: Schema.Schema.Type<Output>,
+    input: Schema.Schema.Type<Input>,
+    reason: unknown
+  ) => unknown | Promise<unknown>
+  readonly retry?: StepRetryPolicy
+  readonly concurrency?: StepConcurrency<Schema.Schema.Type<Input>>
+}): Step<Schema.Schema.Type<Input>, Schema.Schema.Type<Output>, Schema.Schema.Type<Errors>> => ({
   ...config,
-  errors: config.errors ?? (Schema.Never as unknown as Schema.Schema<E, any, any>)
+  errors: config.errors ?? Schema.Never
 })
 
 declare const SecretRefBrand: unique symbol
@@ -72,10 +94,13 @@ export const isSecretRef = (value: unknown): value is SecretRef =>
 
 const secretName = (value: SecretRef): string => value.slice(SecretRefPrefix.length)
 
-export const currentSecretResolver = FiberRef.unsafeMake<SecretResolver | undefined>(undefined)
+export const currentSecretResolver = Context.Reference<SecretResolver | undefined>(
+  "wf/currentSecretResolver",
+  { defaultValue: () => undefined }
+)
 
 // Durable executions run on engine entity fibers that don't inherit the
-// caller's FiberRef, so the runtime also registers resolvers per execution.
+// caller's context reference, so the runtime also registers resolvers per execution.
 const executionSecretResolvers = new Map<string, SecretResolver>()
 
 export const setExecutionSecretResolver = (executionId: string, resolver: SecretResolver): void => {
@@ -143,11 +168,11 @@ export class NonDeterminismError extends Error {
 export interface WorkflowContext<WErrors> {
   readonly executionId: string
   run<I, O, E>(step: Step<I, O, E>, input: I): WorkflowValue<O, E | NonDeterminismError>
-  sleep(duration: DurationInput, name?: string): WorkflowValue<void, NonDeterminismError>
+  sleep(duration: Duration.Input, name?: string): WorkflowValue<void, NonDeterminismError>
   waitForSignal<T>(
     name: string,
-    schema: Schema.Schema<T, any, any>,
-    opts?: { readonly timeout?: DurationInput }
+    schema: AnySchema<T>,
+    opts?: { readonly timeout?: Duration.Input }
   ): WorkflowValue<SignalOutcome<T>, NonDeterminismError | SignalDeliveryError>
   now(): WorkflowValue<Date, NonDeterminismError>
   random(): WorkflowValue<number, NonDeterminismError>
@@ -158,9 +183,9 @@ export interface WorkflowContext<WErrors> {
 export interface DefineWorkflowConfig<I, O, WErrors = never> {
   readonly name: string
   readonly version: number
-  readonly input: Schema.Schema<I, any, any>
-  readonly output: Schema.Schema<O, any, any>
-  readonly errors?: Schema.Schema<WErrors, any, any>
+  readonly input: AnySchema<I>
+  readonly output: AnySchema<O>
+  readonly errors?: AnySchema<WErrors>
   readonly run: (input: I, ctx: WorkflowContext<WErrors>) => Generator<any, O, any>
 }
 
@@ -169,9 +194,9 @@ export interface DefinedWorkflow<I = any, O = any, WErrors = any> {
   readonly version: number
   readonly engineName: string
   readonly sourceHash: string
-  readonly input: Schema.Schema<I, any, any>
-  readonly output: Schema.Schema<O, any, any>
-  readonly errors: Schema.Schema<WErrors, any, any>
+  readonly input: AnySchema<I>
+  readonly output: AnySchema<O>
+  readonly errors: AnySchema<WErrors>
   readonly workflow: any
   readonly layer: any
   readonly execute: (payload: I) => Effect.Effect<O, WErrors | unknown, any>
@@ -186,12 +211,12 @@ export interface InMemoryExecutionOptions {
   readonly sleep?: (options: {
     readonly executionId: string
     readonly name: string
-    readonly duration: DurationInput
+    readonly duration: Duration.Input
   }) => Promise<void>
   readonly signalTimeout?: (options: {
     readonly executionId: string
     readonly name: string
-    readonly duration: DurationInput
+    readonly duration: Duration.Input
   }) => Promise<void>
   readonly secrets?: SecretResolver
 }
@@ -213,8 +238,25 @@ type ActivityFailure =
   | { readonly _wfFailureType: "terminal"; readonly error: unknown }
   | { readonly _wfFailureType: "transient"; readonly error: unknown }
 
-const OrchestrationCallSchema: Schema.Schema<OrchestrationCall, any, never> = Schema.Struct({
-  kind: Schema.Literal("step", "sleep", "signal", "now", "random"),
+class AsyncFailure extends Error {
+  readonly _tag = "AsyncFailure"
+  readonly error: unknown
+
+  constructor(error: unknown) {
+    super(error instanceof Error ? error.message : "Async operation failed")
+    this.name = "AsyncFailure"
+    this.error = error
+  }
+}
+
+const OrchestrationCallSchema: AnySchema<OrchestrationCall> = Schema.Struct({
+  kind: Schema.Union([
+    Schema.Literal("step"),
+    Schema.Literal("sleep"),
+    Schema.Literal("signal"),
+    Schema.Literal("now"),
+    Schema.Literal("random")
+  ]),
   name: Schema.String,
   counter: Schema.Number
 })
@@ -258,6 +300,9 @@ const isActivityFailure = (value: unknown): value is ActivityFailure =>
 const unwrapActivityFailure = (error: unknown): unknown =>
   isActivityFailure(error) ? error.error : error
 
+const unwrapAsyncFailure = (error: unknown): unknown =>
+  error instanceof AsyncFailure ? error.error : error
+
 const makeStepContext = <E>(executionId: string, attempt: number): StepContext<E> => ({
   attempt,
   executionId,
@@ -270,11 +315,11 @@ const nextInvocation = (counters: Map<string, number>, name: string): number => 
   return invocation
 }
 
-const decodeSync = <A>(schema: Schema.Schema<A, any, any>, value: unknown): A =>
-  Schema.decodeUnknownSync(schema as Schema.Schema<A, any, never>)(value)
+const decodeSync = <A>(schema: AnySchema<A>, value: unknown): A =>
+  Schema.decodeUnknownSync(schema as any)(value) as A
 
-const encodeSync = <A>(schema: Schema.Schema<A, any, any>, value: A): unknown =>
-  Schema.encodeSync(schema as Schema.Schema<A, any, never>)(value)
+const encodeSync = <A>(schema: AnySchema<A>, value: A): unknown =>
+  Schema.encodeSync(schema as any)(value)
 
 const resolveSecretRefs = async <A>(value: A, resolver: SecretResolver | undefined): Promise<A> => {
   if (isSecretRef(value)) {
@@ -357,10 +402,10 @@ const raceDurable = (
     const engine = yield* WorkflowEngine.WorkflowEngine
     const exit = yield* Workflow.wrapActivityResult(
       engine.deferredResult(deferred),
-      (value) => value === undefined
+      Option.isNone
     )
-    if (exit !== undefined) {
-      return yield* exit
+    if (Option.isSome(exit)) {
+      return yield* exit.value as Exit.Exit<any, any>
     }
     return yield* DurableDeferred.into(Effect.raceAll(effects) as any, deferred as any)
   })
@@ -368,7 +413,9 @@ const raceDurable = (
 const retrySchedule = (retry: StepRetryPolicy | undefined) => {
   const attempts = Math.max(1, retry?.attempts ?? 1)
   const recurs = Schedule.recurs(attempts - 1)
-  return retry?.backoff === "exponential" ? recurs.pipe(Schedule.addDelay(() => "100 millis")) : recurs
+  return retry?.backoff === "exponential"
+    ? Schedule.exponential("10 millis").pipe(Schedule.both(recurs))
+    : recurs
 }
 
 const transientAttempts = (retry: StepRetryPolicy | undefined): number =>
@@ -377,7 +424,7 @@ const transientAttempts = (retry: StepRetryPolicy | undefined): number =>
 const makeCtx = <WErrors>(
   wf: any,
   executionId: string,
-  workflowErrors: Schema.Schema<WErrors, any, any>
+  workflowErrors: AnySchema<WErrors>
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
   let journalPosition = 0
@@ -418,7 +465,7 @@ const makeCtx = <WErrors>(
         type: "cancellation.received",
         executionId,
         compensate: outcome.compensate,
-        actor: outcome.actor
+        ...(outcome.actor === undefined ? {} : { actor: outcome.actor })
       })
       // A plain failure exit: withCompensation finalizers run for compensate:
       // true. compensate: false never reaches here (the client interrupts the
@@ -447,8 +494,8 @@ const makeCtx = <WErrors>(
           input
         })
 
-        const resolver =
-          getExecutionSecretResolver(executionId) ?? (yield* FiberRef.get(currentSecretResolver))
+        const contextResolver = yield* currentSecretResolver
+        const resolver = getExecutionSecretResolver(executionId) ?? contextResolver
         const result = yield* Effect.tryPromise({
           try: async () => {
             const release = await acquireConcurrency(step, input)
@@ -530,7 +577,7 @@ const makeCtx = <WErrors>(
               })
               yield* Effect.tryPromise({
                 try: () => Promise.resolve(step.compensate!(value as any, input, cause)),
-                catch: (error) => error
+                catch: (error) => new AsyncFailure(error)
               }).pipe(
                 Effect.tapError((error) =>
                   emitWorkflowEvent({
@@ -539,7 +586,7 @@ const makeCtx = <WErrors>(
                     stepName: step.name,
                     invocation,
                     activityName,
-                    error
+                    error: unwrapAsyncFailure(error)
                   })
                 ),
                 Effect.orDie
@@ -719,7 +766,7 @@ const makeCtx = <WErrors>(
 
 const makeInMemoryCtx = <WErrors>(
   executionId: string,
-  workflowErrors: Schema.Schema<WErrors, any, any>,
+  workflowErrors: AnySchema<WErrors>,
   compensations: CompensationEntry[],
   determinism: InMemoryDeterminismState,
   emit: (event: unknown) => Promise<void>,
@@ -817,8 +864,8 @@ const makeInMemoryCtx = <WErrors>(
 
           throw lastTransient
         },
-        catch: (error) => error
-      }) as Effect.Effect<any, any, any>
+        catch: (error) => new AsyncFailure(error)
+      }).pipe(Effect.mapError(unwrapAsyncFailure)) as Effect.Effect<any, any, any>
     },
 
     sleep(duration, name) {
@@ -926,8 +973,8 @@ const makeInMemoryCtx = <WErrors>(
           })
           return { type: "signal", value } as const
         },
-        catch: (error) => error
-      }) as Effect.Effect<any, any, any>
+        catch: (error) => new AsyncFailure(error)
+      }).pipe(Effect.mapError(unwrapAsyncFailure)) as Effect.Effect<any, any, any>
     },
 
     now() {
@@ -972,7 +1019,7 @@ const makeInMemoryCtx = <WErrors>(
   }
 }
 
-const isDeclaredTerminal = <E>(schema: Schema.Schema<E, any, any>, error: unknown): boolean => {
+const isDeclaredTerminal = <E>(schema: AnySchema<E>, error: unknown): boolean => {
   try {
     decodeSync(schema, error)
     return true
@@ -981,10 +1028,22 @@ const isDeclaredTerminal = <E>(schema: Schema.Schema<E, any, any>, error: unknow
   }
 }
 
-export const defineWorkflow = <I, O, WErrors = never>(
-  config: DefineWorkflowConfig<I, O, WErrors>
-): DefinedWorkflow<I, O, WErrors> => {
-  const errors = config.errors ?? (Schema.Unknown as unknown as Schema.Schema<WErrors, any, any>)
+export const defineWorkflow = <
+  const Input extends AnySchema,
+  const Output extends AnySchema,
+  const Errors extends AnySchema = typeof Schema.Never
+>(config: {
+  readonly name: string
+  readonly version: number
+  readonly input: Input
+  readonly output: Output
+  readonly errors?: Errors
+  readonly run: (
+    input: Schema.Schema.Type<Input>,
+    ctx: WorkflowContext<Schema.Schema.Type<Errors>>
+  ) => Generator<any, Schema.Schema.Type<Output>, any>
+}): DefinedWorkflow<Schema.Schema.Type<Input>, Schema.Schema.Type<Output>, Schema.Schema.Type<Errors>> => {
+  const errors = config.errors ?? Schema.Never
   const engineName = `${config.name}@v${config.version}`
   const sourceHash = createHash("sha256")
     .update(config.name)
@@ -994,8 +1053,7 @@ export const defineWorkflow = <I, O, WErrors = never>(
     .update(config.run.toString())
     .digest("hex")
 
-  const workflow = Workflow.make({
-    name: engineName,
+  const workflow = Workflow.make(engineName, {
     payload: config.input as any,
     idempotencyKey: (payload: any) => JSON.stringify(payload),
     success: config.output,
@@ -1003,7 +1061,7 @@ export const defineWorkflow = <I, O, WErrors = never>(
   })
 
   const layer = workflow.toLayer(
-    Effect.fn(function* (payload: I, executionId: string) {
+    Effect.fn(function* (payload: Schema.Schema.Type<Input>, executionId: string) {
       const input = decodeSync(config.input, payload)
       const result = yield* config.run(input, makeCtx(workflow, executionId, errors)) as any
       return decodeSync(config.output, result)
@@ -1011,9 +1069,9 @@ export const defineWorkflow = <I, O, WErrors = never>(
   )
 
   const executeInMemory = async (
-    payload: I,
+    payload: Schema.Schema.Type<Input>,
     options: InMemoryExecutionOptions = {}
-  ): Promise<O> => {
+  ): Promise<Schema.Schema.Type<Output>> => {
     const executionId = options.executionId ?? `memory-${crypto.randomUUID()}`
     const compensations: CompensationEntry[] = []
     const determinism = options.determinism ?? createInMemoryDeterminismState()
@@ -1022,17 +1080,17 @@ export const defineWorkflow = <I, O, WErrors = never>(
       await options.onEvent?.(event)
     }
     const ctx = makeInMemoryCtx(executionId, errors, compensations, determinism, emit, {
-      stepExecutors: options.stepExecutors,
-      sleep: options.sleep,
-      signalTimeout: options.signalTimeout,
-      secrets: options.secrets
+      ...(options.stepExecutors === undefined ? {} : { stepExecutors: options.stepExecutors }),
+      ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+      ...(options.signalTimeout === undefined ? {} : { signalTimeout: options.signalTimeout }),
+      ...(options.secrets === undefined ? {} : { secrets: options.secrets })
     })
 
     const effect = Effect.gen(function* () {
       return yield* config.run(input, ctx) as any
     }).pipe(
       Effect.map((result) => decodeSync(config.output, result)),
-      Effect.catchAll((error) =>
+      Effect.catch((error) =>
         Effect.gen(function* () {
           if (skipsCompensation(error)) {
             return yield* Effect.fail(error)
@@ -1080,16 +1138,16 @@ export const defineWorkflow = <I, O, WErrors = never>(
 
     const exit = await Effect.runPromiseExit(
       effect.pipe(
-        Effect.locally(
+        Effect.provideService(
           currentWorkflowEventSink,
           options.onEvent as any
         )
-      ) as Effect.Effect<O, unknown, never>
+      ) as Effect.Effect<Schema.Schema.Type<Output>, unknown, never>
     )
     if (Exit.isSuccess(exit)) {
       return exit.value
     }
-    const failure = Option.getOrUndefined(Cause.failureOption(exit.cause))
+    const failure = Option.getOrUndefined(Cause.findErrorOption(exit.cause))
     throw failure ?? Cause.squash(exit.cause)
   }
 
@@ -1103,7 +1161,12 @@ export const defineWorkflow = <I, O, WErrors = never>(
     errors,
     workflow,
     layer,
-    execute: (payload) => workflow.execute(payload as any) as Effect.Effect<O, WErrors | unknown, any>,
+    execute: (payload) =>
+      workflow.execute(payload as any) as Effect.Effect<
+        Schema.Schema.Type<Output>,
+        Schema.Schema.Type<Errors> | unknown,
+        any
+      >,
     executeInMemory
   }
 }

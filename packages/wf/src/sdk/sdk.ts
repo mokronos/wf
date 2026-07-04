@@ -139,6 +139,12 @@ const executionId = () => crypto.randomUUID()
 const nowIso = () => new Date().toISOString()
 const encodeStoredValue = (value: unknown): string => JSON.stringify({ value })
 const decodeStoredValue = (json: string): unknown => (JSON.parse(json) as { value: unknown }).value
+const optionalActor = (actor: string | undefined): { readonly actor?: string } =>
+  actor === undefined ? {} : { actor }
+const optionalFinishedAt = (finishedAt: string | undefined): { readonly finishedAt?: string } =>
+  finishedAt === undefined ? {} : { finishedAt }
+const optionalCursor = (cursor: string | undefined): { readonly cursor?: string } =>
+  cursor === undefined ? {} : { cursor }
 
 export const createWorkflowClient = (
   runtime: WorkflowRuntime = createWorkflowRuntime({ backend: "memory" })
@@ -217,14 +223,14 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
         workflowName: workflow.name,
         version: workflow.version,
         payload,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
 
       void workflow
         .executeInMemory(payload, {
           executionId: id,
           determinism: createInMemoryDeterminismState(),
-          secrets: runtime?.secrets,
+          ...(runtime?.secrets === undefined ? {} : { secrets: runtime.secrets }),
           onEvent: async (event) => {
             appendHistory(execution, event as WorkflowEvent)
             const nextStatus = statusFromEvent(event as WorkflowEvent)
@@ -262,7 +268,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
         executionId: id,
         name,
         payload,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
     },
 
@@ -291,9 +297,9 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
           version: execution.workflow.version,
           status: execution.status,
           startedAt: execution.startedAt,
-          finishedAt: execution.finishedAt
+          ...optionalFinishedAt(execution.finishedAt)
         })),
-        cursor: next
+        ...optionalCursor(next)
       }
     },
 
@@ -308,7 +314,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
         type: "execution.cancelled",
         executionId: id,
         compensate,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
       if (compensate) {
         execution.status = "compensating"
@@ -591,7 +597,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         workflowName: selectedWorkflow.name,
         version: selectedWorkflow.version,
         payload,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
 
       void runToTerminal(getRow(id))
@@ -626,7 +632,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         executionId,
         name,
         payload,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
       updateStatus(executionId, "running")
     },
@@ -651,6 +657,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       const start = opts.cursor === undefined ? 0 : Number.parseInt(opts.cursor, 10)
       const limit = opts.limit ?? rows.length
       const page = rows.slice(start, start + limit)
+      const next = start + limit < rows.length ? String(start + limit) : undefined
       return {
         executions: page.map((row) => ({
           executionId: row.id,
@@ -658,9 +665,9 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
           version: row.workflow_version,
           status: row.status,
           startedAt: row.started_at,
-          finishedAt: row.finished_at ?? undefined
+          ...optionalFinishedAt(row.finished_at ?? undefined)
         })),
-        cursor: start + limit < rows.length ? String(start + limit) : undefined
+        ...optionalCursor(next)
       }
     },
 
@@ -686,7 +693,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         type: "execution.cancelled",
         executionId,
         compensate,
-        actor: opts.actor
+        ...optionalActor(opts.actor)
       })
       if (compensate) {
         // Complete the reserved cancellation deferred: the execution wakes at
@@ -700,6 +707,13 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
           payload: { compensate: true, ...(opts.actor === undefined ? {} : { actor: opts.actor }) },
           onEvent: makeEventSink(executionId)
         })
+        db.query<unknown, [string, string, string]>(`
+          UPDATE wf_client_executions
+          SET status = 'failed',
+            error_json = ?,
+            finished_at = ?
+          WHERE id = ?
+        `).run(toJsonText(new Cancelled({ compensate: true })), nowIso(), executionId)
       } else {
         // Hard kill: engine-level interrupt, no unwind.
         updateStatus(executionId, "failed")

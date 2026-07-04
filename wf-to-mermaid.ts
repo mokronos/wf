@@ -150,10 +150,11 @@ function extractSteps(code: string): {
         } else if (method === "sleep") {
           steps.push({ kind: "sleep", duration: literalText(args[0]) ?? "?" })
         } else if (method === "completeSignalAfter") {
+          const after = literalText(args[1])
           steps.push({
             kind: "signal_fork",
             signal: signalLabel(args[0]),
-            after: literalText(args[1])
+            ...(after === undefined ? {} : { after })
           })
         } else if (method === "waitForSignal") {
           steps.push({ kind: "signal_await", signal: signalLabel(args[0]) })
@@ -188,7 +189,7 @@ function buildGraph(steps: Step[], wfName: string, payloadStr: string): {
   let pendingLabel: string | undefined
 
   function advance(to: string) {
-    edges.push({ from: lastId, to, label: pendingLabel })
+    edges.push({ from: lastId, to, ...(pendingLabel === undefined ? {} : { label: pendingLabel }) })
     pendingLabel = undefined
     lastId = to
   }

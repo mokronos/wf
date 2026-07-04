@@ -52,6 +52,11 @@ const defaultDatabasePath = (rootDir: string) => path.join(rootDir, ".wf", "wf.s
 
 const nowIso = () => new Date().toISOString()
 
+const optionalStringField = <K extends string>(
+  key: K,
+  value: string | undefined
+): { readonly [P in K]?: string } => value === undefined ? {} : { [key]: value } as { readonly [P in K]?: string }
+
 const toArtifact = (rootDir: string, row: WorkflowRow): WorkflowArtifact => ({
   id: row.id,
   name: row.name,
@@ -59,8 +64,8 @@ const toArtifact = (rootDir: string, row: WorkflowRow): WorkflowArtifact => ({
   source: row.source !== null && row.source.length > 0
     ? row.source
     : legacySourceFromEntrypoint(rootDir, row.entrypoint),
-  exportName: row.export_name ?? undefined,
-  createdAt: row.created_at ?? undefined
+  ...optionalStringField("exportName", row.export_name ?? undefined),
+  ...optionalStringField("createdAt", row.created_at ?? undefined)
 })
 
 const legacySourceFromEntrypoint = (rootDir: string, entrypoint: string | null | undefined): string => {
@@ -84,7 +89,7 @@ const toRunRecord = (row: WorkflowRunRow): WorkflowRunRecord => ({
   result: parseJsonText(row.result_json),
   error: parseJsonText(row.error_json),
   startedAt: row.started_at,
-  finishedAt: row.finished_at ?? undefined
+  ...optionalStringField("finishedAt", row.finished_at ?? undefined)
 })
 
 const toRunEventRecord = (row: WorkflowRunEventRow): WorkflowRunEventRecord => ({

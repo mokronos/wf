@@ -10,12 +10,15 @@
   "scripts": {
     "cli": "bun run apps/cli/src/main.ts",
     "example:email": "bun run examples/email/main.ts",
+    "example:quickstart": "bun run examples/quickstart/main.ts",
+    "prepare": "effect-language-service patch",
+    "typecheck": "tsc --build --noEmit",
     "test": "bun test"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@effect/language-service": "^0.86.4",
+    "@types/bun": "latest",
+    "effect-solutions": "^0.5.3",
+    "typescript": "^6.0.3"
   }
 }

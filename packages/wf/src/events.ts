@@ -1,4 +1,4 @@
-import { Effect, FiberRef } from "effect"
+import { Context, Effect } from "effect"
 
 export type WorkflowEvent =
   | {
@@ -116,12 +116,13 @@ export type WorkflowEvent =
 
 export type WorkflowEventSink = (event: WorkflowEvent) => void | Promise<void>
 
-export const currentWorkflowEventSink = FiberRef.unsafeMake<WorkflowEventSink | undefined>(
-  undefined
+export const currentWorkflowEventSink = Context.Reference<WorkflowEventSink | undefined>(
+  "wf/currentWorkflowEventSink",
+  { defaultValue: () => undefined }
 )
 
 // Durable-engine executions run on entity fibers created when the engine
-// layer is built, so they do not inherit the caller's FiberRef. Events that
+// layer is built, so they do not inherit the caller's context reference. Events that
 // carry an executionId are routed through this registry instead.
 const executionEventSinks = new Map<string, WorkflowEventSink>()
 
@@ -134,7 +135,7 @@ export const removeExecutionEventSink = (executionId: string): void => {
 }
 
 export const emitWorkflowEvent = (event: WorkflowEvent): Effect.Effect<void> =>
-  Effect.flatMap(FiberRef.get(currentWorkflowEventSink), (fiberSink) => {
+  Effect.flatMap(currentWorkflowEventSink, (fiberSink) => {
     const executionId = (event as { readonly executionId?: string }).executionId
     const sink = (executionId !== undefined ? executionEventSinks.get(executionId) : undefined) ?? fiberSink
     if (sink === undefined) {

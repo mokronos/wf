@@ -1,25 +1,33 @@
 #!/usr/bin/env bun
-import * as BunRuntime from "@effect/platform-bun/BunRuntime"
-import * as BunContext from "@effect/platform-bun/BunContext"
-import * as Args from "@effect/cli/Args"
-import * as Command from "@effect/cli/Command"
-import * as Options from "@effect/cli/Options"
+import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Console, Effect, Option } from "effect"
+import { Argument, Command, Flag } from "effect/unstable/cli"
 import { discover } from "wf"
 import type { IntegrationKind, IntegrationSearchResult } from "wf"
 
-const kind = Options.choice("kind", ["mcp", "openapi", "graphql", "cli"] as const).pipe(
-  Options.optional,
-  Options.withDescription("Limit results to one integration surface kind")
+class IntegrationDiscoveryError extends Error {
+  readonly _tag = "IntegrationDiscoveryError"
+  readonly originalError: unknown
+
+  constructor(error: unknown) {
+    super(error instanceof Error ? error.message : "Integration discovery failed")
+    this.name = "IntegrationDiscoveryError"
+    this.originalError = error
+  }
+}
+
+const kind = Flag.choice("kind", ["mcp", "openapi", "graphql", "cli"] as const).pipe(
+  Flag.optional,
+  Flag.withDescription("Limit results to one integration surface kind")
 )
 
-const limit = Options.integer("limit").pipe(
-  Options.withDefault(20),
-  Options.withDescription("Maximum number of results to return")
+const limit = Flag.integer("limit").pipe(
+  Flag.withDefault(20),
+  Flag.withDescription("Maximum number of results to return")
 )
 
-const searchTerm = Args.text({ name: "search_term" }).pipe(
-  Args.withDescription("Service, domain, or integration capability to search for")
+const searchTerm = Argument.string("search_term").pipe(
+  Argument.withDescription("Service, domain, or integration capability to search for")
 )
 
 const formatKinds = (kinds: ReadonlyArray<IntegrationKind>): string => kinds.join(", ")
@@ -32,8 +40,14 @@ const discoverCommand = Command.make(
   { kind, limit, searchTerm },
   ({ kind, limit, searchTerm }) =>
     Effect.tryPromise({
-      try: () => discover(searchTerm, { kind: Option.getOrUndefined(kind), limit }),
-      catch: (error) => error
+      try: () => {
+        const selectedKind = Option.getOrUndefined(kind)
+        return discover(searchTerm, {
+          ...(selectedKind === undefined ? {} : { kind: selectedKind }),
+          limit
+        })
+      },
+      catch: (error) => new IntegrationDiscoveryError(error)
     }).pipe(
       Effect.flatMap(({ results }) =>
         Effect.gen(function* () {
@@ -55,7 +69,7 @@ const app = Command.make("integrations", {}).pipe(
   Command.withSubcommands([discoverCommand] as const)
 )
 
-Command.run(app, { name: "integrations", version: "0.0.0" })(process.argv).pipe(
-  Effect.provide(BunContext.layer),
+Command.run(app, { version: "0.0.0" }).pipe(
+  Effect.provide(BunServices.layer),
   BunRuntime.runMain
 )

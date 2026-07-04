@@ -1,5 +1,7 @@
 import { Schema } from "effect"
 
+type AnySchema<A = any> = Schema.Codec<A, any, any, any>
+
 export class SignalDeliveryError extends Error {
   readonly _tag = "SignalDeliveryError"
 
@@ -11,20 +13,20 @@ export class SignalDeliveryError extends Error {
 }
 
 interface SignalWaiter {
-  readonly schema: Schema.Schema<any, any, any>
+  readonly schema: AnySchema
   readonly resolve: (value: unknown) => void
   readonly reject: (error: unknown) => void
 }
 
-const schemas = new Map<string, Schema.Schema<any, any, any>>()
+const schemas = new Map<string, AnySchema>()
 const buffers = new Map<string, unknown[]>()
 const waiters = new Map<string, SignalWaiter[]>()
 
 const keyOf = (executionId: string, name: string): string => `${executionId}\0${name}`
 
-const decodeSignal = <T>(schema: Schema.Schema<T, any, any>, value: unknown): T => {
+const decodeSignal = <T>(schema: AnySchema<T>, value: unknown): T => {
   try {
-    return Schema.decodeUnknownSync(schema as Schema.Schema<T, any, never>)(value)
+    return Schema.decodeUnknownSync(schema as any)(value) as T
   } catch (cause) {
     throw new SignalDeliveryError("Signal payload failed schema validation", { cause })
   }
@@ -33,7 +35,7 @@ const decodeSignal = <T>(schema: Schema.Schema<T, any, any>, value: unknown): T 
 export const registerSignalSchema = <T>(
   executionId: string,
   name: string,
-  schema: Schema.Schema<T, any, any>
+  schema: AnySchema<T>
 ) => {
   schemas.set(keyOf(executionId, name), schema)
 }
@@ -64,7 +66,7 @@ export const deliverSignal = async (
 export const takeBufferedSignal = <T>(
   executionId: string,
   name: string,
-  schema: Schema.Schema<T, any, any>
+  schema: AnySchema<T>
 ): T | undefined => {
   registerSignalSchema(executionId, name, schema)
   const key = keyOf(executionId, name)
@@ -83,7 +85,7 @@ export const takeBufferedSignal = <T>(
 export const awaitSignal = <T>(
   executionId: string,
   name: string,
-  schema: Schema.Schema<T, any, any>
+  schema: AnySchema<T>
 ): Promise<T> => {
   const buffered = takeBufferedSignal(executionId, name, schema)
   if (buffered !== undefined) {
