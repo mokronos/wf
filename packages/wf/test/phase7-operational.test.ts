@@ -8,6 +8,7 @@ import {
   createWorkflowRuntime,
   defineStep,
   defineWorkflow,
+  envSecretResolver,
   secret
 } from "../src"
 import { createTestRuntime } from "../src/testing"
@@ -118,6 +119,48 @@ describe("Phase 7 concurrency limits", () => {
 })
 
 describe("Phase 7 secret references", () => {
+  test("envSecretResolver resolves default and explicit environment mappings", async () => {
+    const originalDefault = process.env.X_BEARER_TOKEN
+    const originalMapped = process.env.CUSTOM_STRIPE_KEY
+    try {
+      process.env.X_BEARER_TOKEN = "x-token"
+      process.env.CUSTOM_STRIPE_KEY = "stripe-token"
+
+      await expect(Promise.resolve(envSecretResolver().resolve("x-bearer-token"))).resolves.toBe("x-token")
+      await expect(Promise.resolve(envSecretResolver({
+        mapping: { "stripe-key": "CUSTOM_STRIPE_KEY" }
+      }).resolve("stripe-key"))).resolves.toBe("stripe-token")
+    } finally {
+      if (originalDefault === undefined) {
+        delete process.env.X_BEARER_TOKEN
+      } else {
+        process.env.X_BEARER_TOKEN = originalDefault
+      }
+      if (originalMapped === undefined) {
+        delete process.env.CUSTOM_STRIPE_KEY
+      } else {
+        process.env.CUSTOM_STRIPE_KEY = originalMapped
+      }
+    }
+  })
+
+  test("envSecretResolver supports fallback and clear missing-secret errors", async () => {
+    const original = process.env.MISSING_SECRET
+    try {
+      delete process.env.MISSING_SECRET
+      await expect(Promise.resolve(envSecretResolver({ fallback: "" }).resolve("missing-secret"))).resolves.toBe("")
+      await expect(Promise.resolve().then(() => envSecretResolver().resolve("missing-secret"))).rejects.toThrow(
+        'Secret "missing-secret" not found: set env var MISSING_SECRET'
+      )
+    } finally {
+      if (original === undefined) {
+        delete process.env.MISSING_SECRET
+      } else {
+        process.env.MISSING_SECRET = original
+      }
+    }
+  })
+
   const makeSecretFixtures = () => {
     const seenByExecute: string[] = []
 
@@ -239,5 +282,66 @@ describe("Phase 7 secret references", () => {
     const serialized = JSON.stringify(history)
     expect(serialized).toContain("secret:stripe-key")
     expect(serialized).not.toContain("test-secret-value")
+  })
+
+  test("signal-delivery resume resolves secrets in the delivering runtime", async () => {
+    const seenByExecute: string[] = []
+    const callApi = defineStep({
+      name: "callApiAfterSignal",
+      input: Schema.Struct({ apiKey: Schema.String }),
+      output: Schema.Struct({ ok: Schema.Boolean }),
+      execute: async (input) => {
+        seenByExecute.push(input.apiKey)
+        return { ok: true }
+      }
+    })
+    const workflow = defineWorkflow({
+      name: "secretAfterSignal",
+      version: 1,
+      input: Schema.Struct({}),
+      output: Schema.Boolean,
+      run: function* (_input, ctx) {
+        const approval = yield* ctx.waitForSignal("go", Schema.Struct({ ok: Schema.Boolean }), {
+          timeout: "1 minute"
+        })
+        if (approval.type === "timeout") {
+          return false
+        }
+        const result = yield* ctx.run(callApi, { apiKey: secret("zen-key") })
+        return result.ok
+      }
+    })
+
+    const databasePath = dbPath()
+    // The starter has no secret resolver: this simulates the real repro where
+    // the starting process exited before the signal arrives (per-execution
+    // resolvers live in an in-process map), so the replay triggered by the
+    // second runtime's signal delivery must install its own resolver.
+    const starter = createWorkflowRuntime({ backend: "sqlite", databasePath })
+    starter.register([workflow])
+    const startClient = createWorkflowClient(starter)
+    const handle = await startClient.start(workflow, {})
+    for (let index = 0; index < 100; index++) {
+      const history = await startClient.history(handle.executionId)
+      if (history.some((record) => record.event.type === "signal.waiting")) {
+        break
+      }
+      await sleep(10)
+    }
+
+    const signaler = createWorkflowRuntime({
+      backend: "sqlite",
+      databasePath,
+      secrets: { resolve: (name) => `resolved-${name}-value` }
+    })
+    signaler.register([workflow])
+    const signalClient = createWorkflowClient(signaler)
+    await signalClient.signal(handle.executionId, "go", { ok: true })
+
+    await expect(signalClient.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: true
+    })
+    expect(seenByExecute).toEqual(["resolved-zen-key-value"])
   })
 })

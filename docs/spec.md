@@ -238,6 +238,10 @@ const executions = await client.list(OrderWorkflow, {
 const history = await client.history(handle.executionId)
 // → ordered events: step-started / step-completed / step-failed /
 //   compensation-run / slept / signal-received / … with payloads
+
+const pending = await client.pendingSignals(handle.executionId)
+// → currently open signal waits, ordered by history:
+//   { name, invocation, activityName, timeout? }
 ```
 
 ---
@@ -294,10 +298,16 @@ Runtime knobs: `timeSkipping: true` (default) or `rt.advanceTime("1 hour")` for 
 const engine = createWorkflowRuntime({
   backend: "sqlite",            // or "memory" for local dev
   databasePath: env.WF_DB_PATH,
-  secrets: { resolve: (name) => vault.get(name) },   // SecretRef resolver
+  secrets: envSecretResolver(),  // secret name -> env var, e.g. stripe-key -> STRIPE_KEY
+  sqliteBusyTimeoutMs: 5000,     // default; concurrent SQLite writers wait
 })
 engine.register([OrderWorkflow, OrderWorkflow_v1, RefundWorkflow])
 ```
+
+SQLite is intended to have one live workflow owner process per database file in
+v1. A second process may open the same file to deliver a signal and resume after
+the starter has suspended or exited; `sqliteBusyTimeoutMs` reduces lock races but
+does not provide distributed ownership.
 
 **Secret references.** Credentials in step inputs are *references*, never values:
 

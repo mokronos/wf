@@ -37,6 +37,7 @@ export type {
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
   WorkflowListResult,
+  PendingSignal,
   WorkflowResult,
   RunWorkflowOptions,
   WorkflowRunResult,

@@ -119,6 +119,32 @@ describe("Phase 4b durable workflow client", () => {
     )
   })
 
+  test("sqlite backend pendingSignals excludes timeout-consumed waits", async () => {
+    const workflow = defineWorkflow({
+      name: "sqlitePendingSignalTimeout",
+      version: 1,
+      input: Schema.Struct({}),
+      output: Schema.String,
+      run: function* (_, ctx) {
+        const signal = yield* ctx.waitForSignal("approval", Schema.Struct({ approved: Schema.Boolean }), {
+          timeout: "1 millis"
+        })
+        return signal.type === "timeout" ? "timed-out" : "signaled"
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const handle = await client.start(workflow, {})
+    await waitForHistoryEvent(client, handle.executionId, "signal.waiting")
+    await expect(client.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: "timed-out"
+    })
+    expect(await client.pendingSignals(handle.executionId)).toEqual([])
+  })
+
   test("sqlite backend can resume a suspended signal wait from a new runtime over the same file", async () => {
     const workflow = defineWorkflow({
       name: "sqliteRestart",

@@ -1,6 +1,6 @@
 // The workflow authoring surface. An authored workflow imports ONLY from here
 // (plus pure helper functions it defines) — never `effect` or `@effect/*`.
-export { createInMemoryDeterminismState, defineStep, defineWorkflow, isSecretRef, NonDeterminismError, secret } from "./core"
+export { createInMemoryDeterminismState, defineStep, defineWorkflow, envSecretResolver, isSecretRef, NonDeterminismError, secret } from "./core"
 export type {
   DefinedWorkflow,
   InMemoryDeterminismState,
@@ -39,6 +39,7 @@ export type {
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
   WorkflowListResult,
+  PendingSignal,
   WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStatus,

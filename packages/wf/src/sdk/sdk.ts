@@ -63,6 +63,13 @@ export interface WorkflowHistoryRecord {
   readonly event: WorkflowHistoryEvent
 }
 
+export interface PendingSignal {
+  readonly name: string
+  readonly invocation: number
+  readonly activityName: string
+  readonly timeout?: unknown
+}
+
 export interface WorkflowListResult {
   readonly executions: ReadonlyArray<{
     readonly executionId: string
@@ -99,6 +106,7 @@ export interface WorkflowClient {
     }
   ): Promise<WorkflowListResult>
   history(executionId: string): Promise<ReadonlyArray<WorkflowHistoryRecord>>
+  pendingSignals(executionId: string): Promise<ReadonlyArray<PendingSignal>>
   cancel(
     executionId: string,
     opts?: { readonly compensate?: boolean; readonly actor?: string }
@@ -145,6 +153,35 @@ const optionalFinishedAt = (finishedAt: string | undefined): { readonly finished
   finishedAt === undefined ? {} : { finishedAt }
 const optionalCursor = (cursor: string | undefined): { readonly cursor?: string } =>
   cursor === undefined ? {} : { cursor }
+const signalKey = (event: { readonly name: string; readonly invocation: number }) =>
+  `${event.name}:${event.invocation}`
+const optionalTimeout = (timeout: unknown): { readonly timeout?: unknown } =>
+  timeout === undefined ? {} : { timeout }
+
+export const pendingSignalsFromHistory = (
+  history: ReadonlyArray<WorkflowHistoryRecord>
+): ReadonlyArray<PendingSignal> => {
+  const consumed = new Set<string>()
+  for (const record of history) {
+    const event = record.event
+    if (event.type === "signal.received" || event.type === "signal.timeout") {
+      consumed.add(signalKey(event))
+    }
+  }
+
+  return history.flatMap((record) => {
+    const event = record.event
+    if (event.type !== "signal.waiting" || consumed.has(signalKey(event))) {
+      return []
+    }
+    return [{
+      name: event.name,
+      invocation: event.invocation,
+      activityName: event.activityName,
+      ...optionalTimeout(event.timeout)
+    }]
+  })
+}
 
 export const createWorkflowClient = (
   runtime: WorkflowRuntime = createWorkflowRuntime({ backend: "memory" })
@@ -305,6 +342,10 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
 
     async history(id) {
       return requireExecution(id).history
+    },
+
+    async pendingSignals(id) {
+      return pendingSignalsFromHistory(requireExecution(id).history)
     },
 
     async cancel(id, opts = {}) {
@@ -517,6 +558,20 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     }
   }
 
+  const readHistory = (executionId: string): ReadonlyArray<WorkflowHistoryRecord> => {
+    getRow(executionId)
+    return db.query<DurableHistoryRow, [string]>(`
+      SELECT sequence, event_json, created_at
+      FROM wf_client_history
+      WHERE execution_id = ?
+      ORDER BY sequence
+    `).all(executionId).map((row) => ({
+      sequence: row.sequence,
+      createdAt: row.created_at,
+      event: JSON.parse(row.event_json) as WorkflowHistoryEvent
+    }))
+  }
+
   const runToTerminal = async (row: DurableExecutionRow): Promise<WorkflowResult> => {
     if (row.status === "completed") {
       return { type: "completed", value: parseJsonText(row.result_json) }
@@ -607,23 +662,16 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     async signal(executionId, name, payload, opts = {}) {
       const row = getRow(executionId)
       const workflow = workflowFor(row)
-      const waiting = db.query<DurableHistoryRow, [string]>(`
-        SELECT sequence, event_json, created_at
-        FROM wf_client_history
-        WHERE execution_id = ?
-        ORDER BY sequence DESC
-      `).all(executionId).find((record) => {
-        const event = JSON.parse(record.event_json) as WorkflowHistoryEvent
-        return event.type === "signal.waiting" && event.name === name
-      })
+      const waiting = pendingSignalsFromHistory(readHistory(executionId))
+        .filter((signal) => signal.name === name)
+        .at(-1)
       if (waiting === undefined) {
         throw new Error(`Execution ${executionId} is not waiting for signal ${name}`)
       }
-      const waitingEvent = JSON.parse(waiting.event_json) as Extract<WorkflowEvent, { type: "signal.waiting" }>
       await runtime.deliverSignal({
         workflow,
         executionId,
-        deferredName: `signal:${waitingEvent.activityName}`,
+        deferredName: `signal:${waiting.activityName}`,
         payload,
         onEvent: makeEventSink(executionId)
       })
@@ -672,17 +720,11 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     },
 
     async history(executionId) {
-      getRow(executionId)
-      return db.query<DurableHistoryRow, [string]>(`
-        SELECT sequence, event_json, created_at
-        FROM wf_client_history
-        WHERE execution_id = ?
-        ORDER BY sequence
-      `).all(executionId).map((row) => ({
-        sequence: row.sequence,
-        createdAt: row.created_at,
-        event: JSON.parse(row.event_json) as WorkflowHistoryEvent
-      }))
+      return readHistory(executionId)
+    },
+
+    async pendingSignals(executionId) {
+      return pendingSignalsFromHistory(readHistory(executionId))
     },
 
     async cancel(executionId, opts = {}) {

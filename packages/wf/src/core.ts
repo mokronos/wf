@@ -89,6 +89,26 @@ const SecretRefPrefix = "secret:"
 
 export const secret = (name: string): SecretRef => `${SecretRefPrefix}${name}` as SecretRef
 
+const defaultSecretEnvName = (name: string): string =>
+  name.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()
+
+export const envSecretResolver = (options: {
+  readonly mapping?: Record<string, string>
+  readonly fallback?: string
+} = {}): SecretResolver => ({
+  resolve: (name) => {
+    const envName = options.mapping?.[name] ?? defaultSecretEnvName(name)
+    const value = process.env[envName]
+    if (value !== undefined) {
+      return value
+    }
+    if (options.fallback !== undefined) {
+      return options.fallback
+    }
+    throw new Error(`Secret "${name}" not found: set env var ${envName}`)
+  }
+})
+
 export const isSecretRef = (value: unknown): value is SecretRef =>
   typeof value === "string" && value.startsWith(SecretRefPrefix)
 

@@ -4,6 +4,7 @@ import { NodeRuntime } from "@effect/platform-node"
 import { SqliteClient } from "@effect/sql-sqlite-bun"
 import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 import { ClusterWorkflowEngine, SingleRunner } from "effect/unstable/cluster"
+import { SqlClient } from "effect/unstable/sql"
 import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
 import { currentSecretResolver, removeExecutionSecretResolver, setExecutionSecretResolver } from "./core"
 import type { DefinedWorkflow, SecretResolver } from "./core"
@@ -26,6 +27,7 @@ export interface WorkflowRuntimeOptions {
   /** Resolves SecretRef inputs to their values at step execution time.
    *  Only the reference string is ever persisted. */
   readonly secrets?: SecretResolver
+  readonly sqliteBusyTimeoutMs?: number
 }
 
 export interface WorkflowRuntime {
@@ -72,13 +74,20 @@ const defaultEngineDatabasePath = () => path.join(process.cwd(), ".wf", "engine.
 // the cluster engine, the runner, or the backing store.
 export const makeEngineLayer = (options: {
   readonly databasePath?: string
+  readonly sqliteBusyTimeoutMs?: number
 } = {}) => {
   const databasePath = path.resolve(options.databasePath ?? defaultEngineDatabasePath())
+  const sqliteBusyTimeoutMs = Math.max(0, Math.trunc(options.sqliteBusyTimeoutMs ?? 5000))
   mkdirSync(path.dirname(databasePath), { recursive: true })
+  const sqliteLayer = SqliteClient.layer({ filename: databasePath })
+  const configuredSqliteLayer = Layer.effectDiscard(Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient
+    yield* sql.unsafe(`PRAGMA busy_timeout = ${sqliteBusyTimeoutMs}`)
+  })).pipe(Layer.provideMerge(sqliteLayer))
 
   return ClusterWorkflowEngine.layer.pipe(
     Layer.provideMerge(SingleRunner.layer()),
-    Layer.provide(SqliteClient.layer({ filename: databasePath }))
+    Layer.provide(configuredSqliteLayer)
   )
 }
 
@@ -92,7 +101,10 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     const workflowLayers = Array.from(workflows.values()).map((workflow) => workflow.layer)
     const base =
       options.backend === "sqlite"
-        ? makeEngineLayer(databasePath === undefined ? {} : { databasePath })
+        ? makeEngineLayer({
+            ...(databasePath === undefined ? {} : { databasePath }),
+            ...(options.sqliteBusyTimeoutMs === undefined ? {} : { sqliteBusyTimeoutMs: options.sqliteBusyTimeoutMs })
+          })
         : WorkflowEngine.layerMemory
     return workflowLayers.reduce((layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer), base)
   }
@@ -190,6 +202,11 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     deliverSignal({ workflow, executionId, deferredName, payload, onEvent }) {
       if (onEvent !== undefined) {
         setExecutionEventSink(executionId, onEvent)
+      }
+      // The resumed replay may execute steps in THIS process (see the resume
+      // note below), so it needs the secret resolver just like execute().
+      if (options.secrets !== undefined) {
+        setExecutionSecretResolver(executionId, options.secrets)
       }
       const effect = Effect.gen(function* () {
         const engine = yield* WorkflowEngine.WorkflowEngine

@@ -20,6 +20,79 @@ const waitForStatus = async (
 }
 
 describe("Phase 4 workflow client", () => {
+  test("pendingSignals reports waits and removes delivered waits", async () => {
+    const workflow = defineWorkflow({
+      name: "pendingSignalsMemory",
+      version: 1,
+      input: Schema.Void,
+      output: Schema.String,
+      run: function* (_, ctx) {
+        const signal = yield* ctx.waitForSignal("approval", Schema.Struct({ approved: Schema.Boolean }))
+        return signal.type === "signal" && signal.value.approved ? "approved" : "rejected"
+      }
+    })
+    const client = createWorkflowClient()
+
+    const handle = await client.start(workflow, undefined)
+    expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
+    expect(await client.pendingSignals(handle.executionId)).toEqual([
+      {
+        name: "approval",
+        invocation: 1,
+        activityName: "approval#1"
+      }
+    ])
+
+    await client.signal(handle.executionId, "approval", { approved: true })
+    await expect(client.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: "approved"
+    })
+    expect(await client.pendingSignals(handle.executionId)).toEqual([])
+  })
+
+  test("pendingSignals disambiguates sequential waits with the same name", async () => {
+    const workflow = defineWorkflow({
+      name: "pendingSignalsSequentialMemory",
+      version: 1,
+      input: Schema.Void,
+      output: Schema.String,
+      run: function* (_, ctx) {
+        yield* ctx.waitForSignal("approval", Schema.Struct({ ok: Schema.Boolean }))
+        yield* ctx.waitForSignal("approval", Schema.Struct({ ok: Schema.Boolean }))
+        return "done"
+      }
+    })
+    const client = createWorkflowClient()
+
+    const handle = await client.start(workflow, undefined)
+    expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
+    expect(await client.pendingSignals(handle.executionId)).toEqual([
+      {
+        name: "approval",
+        invocation: 1,
+        activityName: "approval#1"
+      }
+    ])
+
+    await client.signal(handle.executionId, "approval", { ok: true })
+    expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
+    expect(await client.pendingSignals(handle.executionId)).toEqual([
+      {
+        name: "approval",
+        invocation: 2,
+        activityName: "approval#2"
+      }
+    ])
+
+    await client.signal(handle.executionId, "approval", { ok: true })
+    await expect(client.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: "done"
+    })
+    expect(await client.pendingSignals(handle.executionId)).toEqual([])
+  })
+
   test("fresh starts get distinct execution IDs; idempotencyKey deduplicates", async () => {
     const workflow = defineWorkflow({
       name: "freshStarts",
