@@ -1,0 +1,13 @@
+{
+  "name": "@wf-examples/x-engagement",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run main.ts",
+    "review": "bun run review.ts"
+  },
+  "dependencies": {
+    "wf": "workspace:*"
+  }
+}

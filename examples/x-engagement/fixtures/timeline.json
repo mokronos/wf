@@ -1,0 +1,50 @@
+[
+  {
+    "id": "193950001001",
+    "author": "Maya Srinivasan",
+    "text": "Shipping a small durable workflow example today reminded me how much easier HITL gets once timeouts are modeled as values instead of errors.",
+    "createdAt": "2026-07-04T08:15:00.000Z"
+  },
+  {
+    "id": "193950001002",
+    "author": "Build Systems Daily",
+    "text": "RT @compiler_notes: Incremental builds are only fast when invalidation is boring.",
+    "createdAt": "2026-07-04T08:12:00.000Z"
+  },
+  {
+    "id": "193950001003",
+    "author": "Lena Ortiz",
+    "text": "The best AI coding sessions I have had include a real acceptance test before the first edit. The second-best include an honest friction log.",
+    "createdAt": "2026-07-04T08:07:00.000Z"
+  },
+  {
+    "id": "193950001004",
+    "author": "Cloud Cart",
+    "text": "Promoted: Scale your checkout with our all-in-one conversion suite. Book a demo today.",
+    "createdAt": "2026-07-04T08:02:00.000Z"
+  },
+  {
+    "id": "193950001005",
+    "author": "Noah Kim",
+    "text": "@someone I think the key difference is whether retries are owned by the caller or by the durable boundary.",
+    "createdAt": "2026-07-04T07:56:00.000Z"
+  },
+  {
+    "id": "193950001006",
+    "author": "Priya Raman",
+    "text": "Question for teams using workflow engines: what event do you wish you had captured before your first production incident?",
+    "createdAt": "2026-07-04T07:49:00.000Z"
+  },
+  {
+    "id": "193950001007",
+    "author": "Ops Notes",
+    "text": "A cancellation path without an audit actor is just a future incident review with fewer facts.",
+    "createdAt": "2026-07-04T07:42:00.000Z"
+  },
+  {
+    "id": "193950001008",
+    "author": "Dev Tools Weekly",
+    "text": "New post: a tour of tiny CLIs that make local agent workflows less mysterious.",
+    "createdAt": "2026-07-04T07:35:00.000Z"
+  }
+]
