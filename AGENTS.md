@@ -1,3 +1,9 @@
+When im using these words im talking about the following:
+- "you": i mean you, the coding agent helping me implement and design this system
+- "agent": i'm talking about the agent that is using this library/system to create workflows, etc.
+- "user": i'm talking about the user of the agent
+
+
 <!-- effect-solutions:start -->
 ## Effect Best Practices
 
