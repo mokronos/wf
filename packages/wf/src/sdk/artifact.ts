@@ -40,6 +40,7 @@ export interface WorkflowRunEventRecord {
 }
 
 export interface WorkflowRunStore {
+  getRun(id: string): Promise<WorkflowRunRecord | undefined>
   startRun(options: {
     readonly id: string
     readonly workflow: WorkflowArtifact

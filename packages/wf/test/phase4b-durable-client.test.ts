@@ -119,6 +119,41 @@ describe("Phase 4b durable workflow client", () => {
     )
   })
 
+  test("sqlite backend single-flights overlapping start and result execution", async () => {
+    const slowStep = defineStep({
+      name: "sqliteSingleFlightStep",
+      input: Schema.Struct({ value: Schema.String }),
+      output: Schema.String,
+      execute: async (input) => {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+        return input.value
+      }
+    })
+    const workflow = defineWorkflow({
+      name: "sqliteSingleFlightWorkflow",
+      version: 1,
+      input: Schema.Struct({ value: Schema.String }),
+      output: Schema.String,
+      run: function* (input, ctx) {
+        return yield* ctx.run(slowStep, input)
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const handle = await client.start(workflow, { value: "done" })
+    await expect(client.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: "done"
+    })
+
+    const startedEvents = (await client.history(handle.executionId)).filter(
+      (record) => record.event.type === "workflow.started"
+    )
+    expect(startedEvents).toHaveLength(1)
+  })
+
   test("sqlite backend pendingSignals excludes timeout-consumed waits", async () => {
     const workflow = defineWorkflow({
       name: "sqlitePendingSignalTimeout",

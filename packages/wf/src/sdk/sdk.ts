@@ -442,6 +442,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
   }
   const db = new Database(databasePath, { create: true, readwrite: true })
   migrateClientDb(db)
+  const runPromises = new Map<string, Promise<WorkflowResult>>()
 
   const registerCatalog = (workflow: DefinedWorkflow) => {
     const existing = db.query<DurableWorkflowCatalogRow, [string, number]>(`
@@ -580,31 +581,46 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       return { type: "failed", error: parseJsonText(row.error_json) }
     }
 
-    const workflow = workflowFor(row)
+    const existing = runPromises.get(row.id)
+    if (existing !== undefined) {
+      return existing
+    }
+
+    const promise: Promise<WorkflowResult> = (async (): Promise<WorkflowResult> => {
+      const workflow = workflowFor(row)
+      try {
+        const value = await runtime.execute({
+          workflow,
+          payload: decodeStoredValue(row.payload_json),
+          executionId: row.id,
+          onEvent: makeEventSink(row.id)
+        })
+        db.query<unknown, [string, string, string]>(`
+          UPDATE wf_client_executions
+          SET status = 'completed',
+            result_json = ?,
+            finished_at = ?
+          WHERE id = ?
+        `).run(toJsonText(value), nowIso(), row.id)
+        return { type: "completed", value }
+      } catch (error) {
+        db.query<unknown, [string, string, string]>(`
+          UPDATE wf_client_executions
+          SET status = 'failed',
+            error_json = ?,
+            finished_at = ?
+          WHERE id = ?
+        `).run(toJsonText(error), nowIso(), row.id)
+        return { type: "failed", error }
+      }
+    })()
+    runPromises.set(row.id, promise)
     try {
-      const value = await runtime.execute({
-        workflow,
-        payload: decodeStoredValue(row.payload_json),
-        executionId: row.id,
-        onEvent: makeEventSink(row.id)
-      })
-      db.query<unknown, [string, string, string]>(`
-        UPDATE wf_client_executions
-        SET status = 'completed',
-          result_json = ?,
-          finished_at = ?
-        WHERE id = ?
-      `).run(toJsonText(value), nowIso(), row.id)
-      return { type: "completed", value }
-    } catch (error) {
-      db.query<unknown, [string, string, string]>(`
-        UPDATE wf_client_executions
-        SET status = 'failed',
-          error_json = ?,
-          finished_at = ?
-        WHERE id = ?
-      `).run(toJsonText(error), nowIso(), row.id)
-      return { type: "failed", error }
+      return await promise
+    } finally {
+      if (runPromises.get(row.id) === promise) {
+        runPromises.delete(row.id)
+      }
     }
   }
 

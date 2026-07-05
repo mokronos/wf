@@ -219,6 +219,15 @@ export const createSqliteWorkflowRepository = (
       return row === null ? undefined : toArtifact(rootDir, row)
     },
 
+    async getRun(id) {
+      const row = db.query<WorkflowRunRow, [string]>(`
+        SELECT *
+        FROM workflow_runs
+        WHERE id = ?
+      `).get(id)
+      return row === null ? undefined : toRunRecord(row)
+    },
+
     async startRun({ id, workflow, input }) {
       const startedAt = nowIso()
       db.query<unknown, [string, string, string, string, string]>(`

@@ -108,6 +108,11 @@ During execution, workflow events are printed to stderr:
 The final workflow result is printed to stdout. The deterministic run id is
 printed to stderr.
 
+If the workflow suspends waiting for a signal, `wf run` syncs events recorded so
+far, leaves the run row in `running` status, prints the pending signal name and a
+copy-pasteable `wf signal` command, then exits 0. Durable sleeps continue to wait
+inside the run process; only signal waits cause this early exit.
+
 What happens:
 
 - The CLI loads the workflow artifact by id from `.wf/wf.sqlite`.
@@ -117,6 +122,36 @@ What happens:
 - The workflow executes through the durable engine, which stores engine state in
   `.wf/engine.sqlite`.
 - Workflow events are appended to `.wf/wf.sqlite` as the run progresses.
+
+### `wf signal`
+
+Deliver a signal to a suspended workflow run.
+
+```bash
+bun run cli -- signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+```
+
+Examples:
+
+```bash
+bun run cli -- signal 018f6c7c-4c3b-7f12-91c8-88560b4b21a9 approval '{"approved":true}'
+bun run cli -- signal 018f6c7c-4c3b-7f12-91c8-88560b4b21a9 approval '{"approved":true}' --actor ops
+```
+
+What happens:
+
+- The CLI finds the run row in `.wf/wf.sqlite` and reloads the stored workflow
+  artifact.
+- The workflow is registered in a fresh SQLite runtime pointing at the same
+  `.wf/engine.sqlite` file.
+- The signal payload is delivered to the durable engine.
+- The signaling process drives the execution until it completes, fails, or
+  suspends again waiting for another signal.
+- New engine history is copied into `.wf/wf.sqlite` without duplicating events.
+
+If the workflow completes, the result is printed to stdout and the run row is
+marked `completed`. If it suspends on another signal, the command prints the next
+pending signal hint and exits 0.
 
 ### `wf runs`
 

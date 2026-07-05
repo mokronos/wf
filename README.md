@@ -154,12 +154,14 @@ bun test
 
 ## CLI
 
-The CLI stores workflow source in a local SQLite catalog and runs the stored
-source through the engine:
+The CLI stores workflow source in a local SQLite catalog, runs the stored source
+through the durable engine, and can resume signal-suspended runs from another
+process:
 
 ```bash
 bun run cli -- create email --file examples/email/email.ts
 bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
+bun run cli -- signal <run-id> approval '{"approved":true}'
 bun run cli -- list             # stored workflow artifacts
 bun run cli -- runs             # persisted executions
 bun run cli -- events <run-id>  # step/sleep/signal events for one run
