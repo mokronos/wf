@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/Effect-TS/language-service/refs/heads/main/schema.json",
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM"],
     "target": "ESNext",
     "ignoreDeprecations": "6.0",
     "module": "Preserve",
@@ -15,7 +15,8 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "wf": ["packages/wf/src/index.ts"]
+      "wf": ["packages/wf/src/index.ts"],
+      "@/*": ["apps/web/src/*"]
     },
     "allowImportingTsExtensions": true,
     "rewriteRelativeImportExtensions": true,
