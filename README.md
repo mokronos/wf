@@ -14,8 +14,145 @@ bun install
 
 ## Quickstart
 
-One workflow that touches the whole authoring surface
-([examples/quickstart/order.ts](examples/quickstart/order.ts)):
+A tiny workflow is just a typed step plus a typed workflow that calls it:
+
+```ts
+import { defineStep, defineWorkflow, run, t } from "wf"
+
+const printMessage = defineStep({
+  name: "PrintMessage",
+  input: t.struct({ message: t.string }),
+  output: t.void,
+  execute: async (input) => {
+    console.log(input.message)
+  }
+})
+
+export const HelloWorkflow = defineWorkflow({
+  name: "HelloWorkflow",
+  version: 1,
+  input: t.struct({ message: t.string }),
+  output: t.void,
+  run: function* (input, ctx) {
+    yield* ctx.run(printMessage, {
+      message: input.message.trim()
+    })
+  }
+})
+
+run(HelloWorkflow, { message: "hello from wf" })
+```
+
+For a runnable version of the same standalone style, see
+[examples/email](examples/email):
+
+```bash
+bun run example:email
+```
+
+## CLI
+
+Run CLI commands from the repository root:
+
+```bash
+bun run cli -- <command>
+```
+
+### `create`
+
+Create or import a workflow into the local SQLite catalog:
+
+```bash
+bun run cli -- create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
+```
+
+Examples:
+
+```bash
+bun run cli -- create welcome-email
+bun run cli -- create email --file examples/email/email.ts
+bun run cli -- create invoice-sync --file workflows/invoice-sync.ts --version v1
+```
+
+With no `--source` or `--file`, the CLI stores a generated starter workflow.
+With `--file`, it reads the file once and stores the source in `.wf/wf.sqlite`.
+Use `--force` to replace an existing workflow id.
+
+### `list`
+
+List registered workflow artifacts:
+
+```bash
+bun run cli -- list
+```
+
+### `run`
+
+Run a registered workflow by id with optional JSON input:
+
+```bash
+bun run cli -- run <workflow-id> [json-input]
+```
+
+Examples:
+
+```bash
+bun run cli -- run welcome-email '{"message":"hello"}'
+bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
+```
+
+If a workflow suspends waiting for a signal, the command records the pending
+state, prints the signal name plus a copy-pasteable `signal` command, and exits
+0.
+
+### `signal`
+
+Deliver a signal to a suspended run:
+
+```bash
+bun run cli -- signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+```
+
+Examples:
+
+```bash
+bun run cli -- signal <run-id> approval '{"approved":true}'
+bun run cli -- signal <run-id> approval '{"approved":true}' --actor ops
+```
+
+### `runs`
+
+List persisted workflow runs:
+
+```bash
+bun run cli -- runs
+```
+
+### `history` / `events`
+
+List persisted events for one run:
+
+```bash
+bun run cli -- history <run-id>
+bun run cli -- events <run-id>
+```
+
+### `help`
+
+Print command help:
+
+```bash
+bun run cli -- help
+```
+
+See [apps/cli/README.md](apps/cli/README.md) for more detail on CLI storage,
+outputs, and run resumption.
+
+## Full-featured example
+
+This workflow touches the full authoring surface: typed errors, retries,
+concurrency, compensation, deterministic time/randomness, durable sleeps, and
+signals ([examples/quickstart/order.ts](examples/quickstart/order.ts)):
 
 ```ts
 import { defineStep, defineWorkflow, t } from "wf"
@@ -133,14 +270,6 @@ The client also exposes `status`, `history`, and cancellation; because all
 engine state lives in SQLite, a new process pointed at the same database can
 deliver the signal and resume a suspended execution.
 
-For a workflow that needs no external signals, `run(workflow, payload)`
-executes it engine-backed as a standalone script — see
-[examples/email](examples/email):
-
-```bash
-bun run example:email
-```
-
 ## Testing workflows
 
 `createTestRuntime` (from `wf/testing`) and `workflow.executeInMemory` run
@@ -151,23 +280,6 @@ signals to in-memory executions.
 ```bash
 bun test
 ```
-
-## CLI
-
-The CLI stores workflow source in a local SQLite catalog, runs the stored source
-through the durable engine, and can resume signal-suspended runs from another
-process:
-
-```bash
-bun run cli -- create email --file examples/email/email.ts
-bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
-bun run cli -- signal <run-id> approval '{"approved":true}'
-bun run cli -- list             # stored workflow artifacts
-bun run cli -- runs             # persisted executions
-bun run cli -- events <run-id>  # step/sleep/signal events for one run
-```
-
-See [apps/cli/README.md](apps/cli/README.md) for the full reference.
 
 ## Storage
 
