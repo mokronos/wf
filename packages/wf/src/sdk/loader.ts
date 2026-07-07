@@ -56,7 +56,7 @@ const compileWorkflowSource = async (artifact: WorkflowArtifact): Promise<string
 }
 
 const rewriteWfImports = (source: string): string => {
-  const wfModuleUrl = new URL("../index.ts", import.meta.url).href
+  const wfModuleUrl = new URL("../authoring.ts", import.meta.url).href
   return source
     .replaceAll(`from "wf"`, `from "${wfModuleUrl}"`)
     .replaceAll(`from 'wf'`, `from '${wfModuleUrl}'`)

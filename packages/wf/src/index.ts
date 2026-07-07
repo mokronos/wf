@@ -45,6 +45,13 @@ export type {
   WorkflowRunStatus,
   WorkflowRunStore,
   SqliteWorkflowRepositoryOptions,
+  WorkflowArtifactGraph,
+  WorkflowGraph,
+  WorkflowGraphEdge,
+  WorkflowGraphNode,
+  WorkflowGraphNodeSchemas,
+  WorkflowGraphNodeKind,
+  WorkflowGraphOptions,
   DiscoverIntegrationsOptions,
   DiscoverIntegrationsResult,
   IntegrationKind,
@@ -60,6 +67,9 @@ export {
   seedSqliteWorkflowRepository,
   loadWorkflowArtifact,
   createWorkflowSdk,
+  sampleValueForSchema,
+  workflowArtifactToGraph,
+  workflowToGraph,
   discover
 } from "./sdk"
 export { createTestRuntime } from "./testing"

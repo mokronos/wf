@@ -1,6 +1,5 @@
 import { mkdirSync, readFileSync } from "node:fs"
 import path from "node:path"
-import { Database } from "bun:sqlite"
 import type { WorkflowEvent } from "../events"
 import type {
   WorkflowArtifact,
@@ -41,6 +40,17 @@ interface WorkflowRunEventRow {
   readonly type: string
   readonly event_json: string
   readonly created_at: string
+}
+
+interface SqliteStatement<Row> {
+  get(...params: ReadonlyArray<unknown>): Row | null
+  all(...params: ReadonlyArray<unknown>): Row[]
+  run(...params: ReadonlyArray<unknown>): unknown
+}
+
+interface SqliteDatabase {
+  exec(sql: string): unknown
+  prepare<Row>(sql: string): SqliteStatement<Row>
 }
 
 export interface SqliteWorkflowRepositoryOptions {
@@ -101,7 +111,47 @@ const toRunEventRecord = (row: WorkflowRunEventRow): WorkflowRunEventRecord => (
   createdAt: row.created_at
 })
 
-const migrate = (db: Database) => {
+const normalizeParams = (params: ReadonlyArray<unknown>) =>
+  params.map((param) => param === undefined ? null : param)
+
+const createBunDatabase = async (databasePath: string): Promise<SqliteDatabase> => {
+  const { Database } = await import("bun:sqlite")
+  const db = new Database(databasePath, { create: true, readwrite: true })
+  return {
+    exec: (sql) => db.exec(sql),
+    prepare: <Row>(sql: string): SqliteStatement<Row> => {
+      const statement = db.query<Row, any>(sql)
+      return {
+        get: (...params) => statement.get(...params as any[]) ?? null,
+        all: (...params) => statement.all(...params as any[]),
+        run: (...params) => statement.run(...params as any[])
+      }
+    }
+  }
+}
+
+const createNodeDatabase = async (databasePath: string): Promise<SqliteDatabase> => {
+  const { DatabaseSync } = await import("node:sqlite")
+  const db = new DatabaseSync(databasePath)
+  return {
+    exec: (sql) => db.exec(sql),
+    prepare: <Row>(sql: string): SqliteStatement<Row> => {
+      const statement = db.prepare(sql)
+      return {
+        get: (...params) => statement.get(...normalizeParams(params) as any[]) as Row | undefined ?? null,
+        all: (...params) => statement.all(...normalizeParams(params) as any[]) as Row[],
+        run: (...params) => statement.run(...normalizeParams(params) as any[])
+      }
+    }
+  }
+}
+
+const createDatabase = async (databasePath: string): Promise<SqliteDatabase> =>
+  process.versions.bun === undefined
+    ? createNodeDatabase(databasePath)
+    : createBunDatabase(databasePath)
+
+const migrate = (db: SqliteDatabase) => {
   db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -147,13 +197,13 @@ const migrate = (db: Database) => {
       ON workflow_run_events(run_id, sequence);
   `)
 
-  const columns = db.query<{ name: string }, []>("PRAGMA table_info(workflows)").all()
+  const columns = db.prepare<{ name: string }>("PRAGMA table_info(workflows)").all()
   const columnNames = new Set(columns.map((column) => column.name))
   if (!columnNames.has("source")) {
-    db.run("ALTER TABLE workflows ADD COLUMN source TEXT NOT NULL DEFAULT ''")
+    db.prepare("ALTER TABLE workflows ADD COLUMN source TEXT NOT NULL DEFAULT ''").run()
   }
 
-  db.run("CREATE UNIQUE INDEX IF NOT EXISTS workflows_name_version_idx ON workflows(name, version)")
+  db.prepare("CREATE UNIQUE INDEX IF NOT EXISTS workflows_name_version_idx ON workflows(name, version)").run()
 }
 
 export const createSqliteWorkflowRepository = (
@@ -163,12 +213,15 @@ export const createSqliteWorkflowRepository = (
   const databasePath = path.resolve(options.databasePath ?? defaultDatabasePath(rootDir))
   mkdirSync(path.dirname(databasePath), { recursive: true })
 
-  const db = new Database(databasePath, { create: true, readwrite: true })
-  migrate(db)
+  const dbPromise = createDatabase(databasePath).then((db) => {
+    migrate(db)
+    return db
+  })
 
   return {
     async upsertWorkflow(workflow) {
-      const existing = db.query<WorkflowRow, [string, string]>(`
+      const db = await dbPromise
+      const existing = db.prepare<WorkflowRow>(`
         SELECT id, name, version, source, entrypoint, export_name, created_at
         FROM workflows
         WHERE name = ?
@@ -187,7 +240,7 @@ export const createSqliteWorkflowRepository = (
         return
       }
 
-      db.query<unknown, [string, string, string, string, string, string | null, string]>(`
+      db.prepare<unknown>(`
         INSERT INTO workflows (id, name, version, source, entrypoint, export_name, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -202,7 +255,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async list() {
-      const rows = db.query<WorkflowRow, []>(`
+      const db = await dbPromise
+      const rows = db.prepare<WorkflowRow>(`
         SELECT id, name, version, source, entrypoint, export_name, created_at
         FROM workflows
         ORDER BY id
@@ -211,7 +265,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async get(id) {
-      const row = db.query<WorkflowRow, [string]>(`
+      const db = await dbPromise
+      const row = db.prepare<WorkflowRow>(`
         SELECT id, name, version, source, entrypoint, export_name, created_at
         FROM workflows
         WHERE id = ?
@@ -220,7 +275,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async getRun(id) {
-      const row = db.query<WorkflowRunRow, [string]>(`
+      const db = await dbPromise
+      const row = db.prepare<WorkflowRunRow>(`
         SELECT *
         FROM workflow_runs
         WHERE id = ?
@@ -229,8 +285,9 @@ export const createSqliteWorkflowRepository = (
     },
 
     async startRun({ id, workflow, input }) {
+      const db = await dbPromise
       const startedAt = nowIso()
-      db.query<unknown, [string, string, string, string, string]>(`
+      db.prepare<unknown>(`
         INSERT INTO workflow_runs (
           id,
           workflow_id,
@@ -249,7 +306,7 @@ export const createSqliteWorkflowRepository = (
           finished_at = NULL
       `).run(id, workflow.id, workflow.version, toJsonText(input), startedAt)
 
-      const row = db.query<WorkflowRunRow, [string]>(`
+      const row = db.prepare<WorkflowRunRow>(`
         SELECT *
         FROM workflow_runs
         WHERE id = ?
@@ -263,20 +320,22 @@ export const createSqliteWorkflowRepository = (
     },
 
     async appendRunEvent({ runId, type, event }) {
-      const nextSequence = db.query<{ sequence: number }, [string]>(`
+      const db = await dbPromise
+      const nextSequence = db.prepare<{ sequence: number }>(`
         SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
         FROM workflow_run_events
         WHERE run_id = ?
       `).get(runId)?.sequence ?? 1
 
-      db.query<unknown, [string, number, string, string, string]>(`
+      db.prepare<unknown>(`
         INSERT INTO workflow_run_events (run_id, sequence, type, event_json, created_at)
         VALUES (?, ?, ?, ?, ?)
       `).run(runId, nextSequence, type, toJsonText(event), nowIso())
     },
 
     async completeRun({ runId, result }) {
-      db.query<unknown, [string, string, string]>(`
+      const db = await dbPromise
+      db.prepare<unknown>(`
         UPDATE workflow_runs
         SET status = 'completed',
           result_json = ?,
@@ -287,7 +346,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async failRun({ runId, error }) {
-      db.query<unknown, [string, string, string]>(`
+      const db = await dbPromise
+      db.prepare<unknown>(`
         UPDATE workflow_runs
         SET status = 'failed',
           error_json = ?,
@@ -297,7 +357,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async listRuns() {
-      const rows = db.query<WorkflowRunRow, []>(`
+      const db = await dbPromise
+      const rows = db.prepare<WorkflowRunRow>(`
         SELECT *
         FROM workflow_runs
         ORDER BY started_at DESC
@@ -306,7 +367,8 @@ export const createSqliteWorkflowRepository = (
     },
 
     async listRunEvents(runId) {
-      const rows = db.query<WorkflowRunEventRow, [string]>(`
+      const db = await dbPromise
+      const rows = db.prepare<WorkflowRunEventRow>(`
         SELECT *
         FROM workflow_run_events
         WHERE run_id = ?

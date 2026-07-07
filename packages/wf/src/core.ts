@@ -2,8 +2,8 @@ import { createHash } from "node:crypto"
 import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
 import { Cause, Context, Effect, Exit, Option, Schedule, Schema } from "effect"
 import type * as Duration from "effect/Duration"
-import { currentWorkflowEventSink, emitWorkflowEvent } from "./events"
-import { awaitSignal, registerSignalSchema, SignalDeliveryError, takeBufferedSignal } from "./signal"
+import { currentWorkflowEventSink, emitWorkflowEvent } from "./events.ts"
+import { awaitSignal, registerSignalSchema, SignalDeliveryError, takeBufferedSignal } from "./signal.ts"
 
 type AnySchema<A = any> = Schema.Codec<A, any, any, any>
 
@@ -136,13 +136,27 @@ export const getExecutionSecretResolver = (executionId: string): SecretResolver 
 
 export type WorkflowValue<A, E = never> = Effect.Effect<A, E, any>
 
-export type OrchestrationKind = "step" | "sleep" | "signal" | "now" | "random"
+export type OrchestrationKind = "step" | "sleep" | "signal" | "now" | "random" | "code" | "all"
 
 export interface OrchestrationCall {
   readonly kind: OrchestrationKind
   readonly name: string
   readonly counter: number
+  readonly branches?: number
 }
+
+type WorkflowValueSuccess<EffectValue> =
+  EffectValue extends WorkflowValue<infer A, any> ? A : never
+
+type WorkflowValueError<EffectValue> =
+  EffectValue extends WorkflowValue<any, infer E> ? E : never
+
+type WorkflowAllSuccess<Effects extends ReadonlyArray<WorkflowValue<any, any>>> = {
+  -readonly [K in keyof Effects]: WorkflowValueSuccess<Effects[K]>
+}
+
+type WorkflowAllError<Effects extends ReadonlyArray<WorkflowValue<any, any>>> =
+  WorkflowValueError<Effects[number]>
 
 export type SignalOutcome<T> =
   | { readonly type: "signal"; readonly value: T }
@@ -196,6 +210,14 @@ export interface WorkflowContext<WErrors> {
   ): WorkflowValue<SignalOutcome<T>, NonDeterminismError | SignalDeliveryError>
   now(): WorkflowValue<Date, NonDeterminismError>
   random(): WorkflowValue<number, NonDeterminismError>
+  code<T>(name: string, options: {
+    readonly reason?: string
+    readonly run: () => T | Promise<T>
+  }): WorkflowValue<T, NonDeterminismError>
+  all<const Effects extends ReadonlyArray<WorkflowValue<any, any>>>(
+    effects: Effects,
+    options?: { readonly name?: string; readonly concurrency?: number | "unbounded" }
+  ): WorkflowValue<WorkflowAllSuccess<Effects>, WorkflowAllError<Effects> | NonDeterminismError>
   fail(error: WErrors): WorkflowValue<never, WErrors>
   effect<A, E, R>(effect: Effect.Effect<A, E, R>): WorkflowValue<A, E>
 }
@@ -228,6 +250,13 @@ export interface InMemoryExecutionOptions {
   readonly determinism?: InMemoryDeterminismState
   readonly onEvent?: (event: unknown) => void | Promise<void>
   readonly stepExecutors?: ReadonlyMap<Step<any, any, any>, Step<any, any, any>["execute"]>
+  readonly stepExecutor?: (options: {
+    readonly step: Step<any, any, any>
+    readonly input: unknown
+    readonly invocation: number
+    readonly activityName: string
+    readonly context: StepContext<any>
+  }) => unknown | Promise<unknown>
   readonly sleep?: (options: {
     readonly executionId: string
     readonly name: string
@@ -238,11 +267,20 @@ export interface InMemoryExecutionOptions {
     readonly name: string
     readonly duration: Duration.Input
   }) => Promise<void>
+  readonly signalValue?: (options: {
+    readonly executionId: string
+    readonly name: string
+    readonly schema: AnySchema
+  }) => unknown | Promise<unknown>
   readonly secrets?: SecretResolver
 }
 
 export interface InMemoryDeterminismState {
   readonly calls: OrchestrationCall[]
+  readonly blocks: Array<{
+    readonly call: OrchestrationCall
+    readonly branches: ReadonlyArray<ReadonlyArray<OrchestrationCall>>
+  }>
   readonly values: Map<string, unknown>
 }
 
@@ -269,28 +307,35 @@ class AsyncFailure extends Error {
   }
 }
 
-const OrchestrationCallSchema: AnySchema<OrchestrationCall> = Schema.Struct({
+const OrchestrationCallSchema: AnySchema = Schema.Struct({
   kind: Schema.Union([
     Schema.Literal("step"),
     Schema.Literal("sleep"),
     Schema.Literal("signal"),
     Schema.Literal("now"),
-    Schema.Literal("random")
+    Schema.Literal("random"),
+    Schema.Literal("code"),
+    Schema.Literal("all")
   ]),
   name: Schema.String,
-  counter: Schema.Number
+  counter: Schema.Number,
+  branches: Schema.optional(Schema.Number)
 })
 
 export const createInMemoryDeterminismState = (): InMemoryDeterminismState => ({
   calls: [],
+  blocks: [],
   values: new Map()
 })
 
 const formatCall = (call: OrchestrationCall): string =>
-  `${call.kind}:${call.name}#${call.counter}`
+  `${call.kind}:${call.name}#${call.counter}${call.branches === undefined ? "" : ` branches=${call.branches}`}`
 
 const callsEqual = (left: OrchestrationCall, right: OrchestrationCall): boolean =>
-  left.kind === right.kind && left.name === right.name && left.counter === right.counter
+  left.kind === right.kind &&
+  left.name === right.name &&
+  left.counter === right.counter &&
+  left.branches === right.branches
 
 const verifyCall = (expected: OrchestrationCall, actual: OrchestrationCall) => {
   if (!callsEqual(expected, actual)) {
@@ -448,11 +493,15 @@ const makeCtx = <WErrors>(
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
   let journalPosition = 0
+  let parallelDepth = 0
 
   const recordCall = (actual: OrchestrationCall): Effect.Effect<void, NonDeterminismError, any> => {
     const position = ++journalPosition
+    const activityName = parallelDepth > 0
+      ? `determinism:${actual.kind}:${actual.name}#${actual.counter}`
+      : `determinism#${position}`
     return Activity.make({
-      name: `determinism#${position}`,
+      name: activityName,
       success: OrchestrationCallSchema,
       execute: Effect.succeed(actual)
     }).pipe(
@@ -629,6 +678,53 @@ const makeCtx = <WErrors>(
       }) as Effect.Effect<any, any, any>
     },
 
+    all(effects, options) {
+      const name = options?.name ?? "all"
+      const invocation = nextInvocation(counters, name)
+      const activityName = `${name}#${invocation}`
+      const branches = effects.length
+      const call: OrchestrationCall = { kind: "all", name, counter: invocation, branches }
+      return Effect.gen(function* () {
+        yield* recordCall(call)
+        yield* emitWorkflowEvent({
+          type: "all.started",
+          executionId,
+          name,
+          invocation,
+          activityName,
+          branches
+        })
+        yield* Effect.sync(() => {
+          parallelDepth++
+        })
+        const combined = Effect.all(effects, {
+          concurrency: options?.concurrency ?? "unbounded"
+        }) as Effect.Effect<any, any, any>
+        return yield* combined.pipe(
+            Effect.ensuring(Effect.sync(() => {
+              parallelDepth--
+            })),
+            Effect.tap(() => emitWorkflowEvent({
+              type: "all.completed",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              branches
+            })),
+            Effect.tapError((error) => emitWorkflowEvent({
+              type: "all.failed",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              branches,
+              error
+            }))
+          ) as Effect.Effect<any, any, any>
+      }) as Effect.Effect<any, any, any>
+    },
+
     sleep(duration, name) {
       const baseName = name ?? `sleep:${String(duration)}`
       const invocation = nextInvocation(counters, baseName)
@@ -774,6 +870,58 @@ const makeCtx = <WErrors>(
       })
     },
 
+    code(name, options) {
+      const invocation = nextInvocation(counters, name)
+      const activityName = `${name}#${invocation}`
+      const call: OrchestrationCall = { kind: "code", name, counter: invocation }
+      const execute = Effect.gen(function* () {
+        yield* emitWorkflowEvent({
+          type: "code.started",
+          executionId,
+          name,
+          invocation,
+          activityName,
+          ...(options.reason === undefined ? {} : { reason: options.reason })
+        })
+        const result = yield* Effect.tryPromise({
+          try: async () => options.run(),
+          catch: (error) => new AsyncFailure(error)
+        })
+        yield* emitWorkflowEvent({
+          type: "code.completed",
+          executionId,
+          name,
+          invocation,
+          activityName,
+          ...(options.reason === undefined ? {} : { reason: options.reason }),
+          result
+        })
+        return result
+      }).pipe(
+        Effect.tapError((error) =>
+          emitWorkflowEvent({
+            type: "code.failed",
+            executionId,
+            name,
+            invocation,
+            activityName,
+            ...(options.reason === undefined ? {} : { reason: options.reason }),
+            error: unwrapAsyncFailure(error)
+          })
+        )
+      )
+      const activity = Activity.make({
+        name: activityName,
+        success: Schema.Unknown,
+        error: Schema.Unknown,
+        execute
+      }).pipe(Effect.mapError(unwrapAsyncFailure))
+      return Effect.gen(function* () {
+        yield* recordCall(call)
+        return yield* activity
+      }) as Effect.Effect<any, any, any>
+    },
+
     fail(error) {
       return Effect.fail(decodeSync(workflowErrors, error))
     },
@@ -790,31 +938,37 @@ const makeInMemoryCtx = <WErrors>(
   compensations: CompensationEntry[],
   determinism: InMemoryDeterminismState,
   emit: (event: unknown) => Promise<void>,
-  options: Pick<InMemoryExecutionOptions, "stepExecutors" | "sleep" | "signalTimeout" | "secrets"> = {}
+  options: Pick<
+    InMemoryExecutionOptions,
+    "stepExecutors" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "secrets"
+  > = {}
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
   let journalPosition = 0
+  let blockPosition = 0
+  const branchCollectors: Array<OrchestrationCall[]> = []
 
   const recordCall = async (actual: OrchestrationCall): Promise<void> => {
     const index = journalPosition++
     const expected = determinism.calls[index]
     if (expected === undefined) {
       determinism.calls.push(actual)
-      return
+    } else {
+      verifyCall(expected, actual)
     }
-    verifyCall(expected, actual)
+    branchCollectors[branchCollectors.length - 1]?.push(actual)
   }
 
   return {
     executionId,
 
     run(step, rawInput) {
+      const invocation = nextInvocation(counters, step.name)
+      const activityName = `${step.name}#${invocation}`
+      const input = decodeSync(step.input, rawInput)
       return Effect.tryPromise({
         try: async () => {
-          const invocation = nextInvocation(counters, step.name)
-          const activityName = `${step.name}#${invocation}`
           await recordCall({ kind: "step", name: step.name, counter: invocation })
-          const input = decodeSync(step.input, rawInput)
           const attempts = transientAttempts(step.retry)
           let lastTransient: unknown
 
@@ -830,11 +984,16 @@ const makeInMemoryCtx = <WErrors>(
             })
 
             try {
-              const executeStep = options.stepExecutors?.get(step) ?? step.execute
+              const stepContext = makeStepContext(executionId, attempt)
+              const executeStep = options.stepExecutors?.get(step)
               const release = await acquireConcurrency(step, input)
               try {
                 const executeInput = await resolveSecretRefs(input, options.secrets)
-                const value = await executeStep(executeInput, makeStepContext(executionId, attempt))
+                const value = await (
+                  options.stepExecutor?.({ step, input: executeInput, invocation, activityName, context: stepContext }) ??
+                  executeStep?.(executeInput, stepContext as any) ??
+                  step.execute(executeInput, stepContext as any)
+                )
                 if (isTerminalFailure(value)) {
                   const terminal = decodeSync(step.errors, value.error)
                   throw terminal
@@ -889,10 +1048,10 @@ const makeInMemoryCtx = <WErrors>(
     },
 
     sleep(duration, name) {
+      const baseName = name ?? `sleep:${String(duration)}`
+      const invocation = nextInvocation(counters, baseName)
+      const activityName = `${baseName}#${invocation}`
       return Effect.promise(async () => {
-        const baseName = name ?? `sleep:${String(duration)}`
-        const invocation = nextInvocation(counters, baseName)
-        const activityName = `${baseName}#${invocation}`
         await recordCall({ kind: "sleep", name: baseName, counter: invocation })
         await emit({
           type: "sleep.started",
@@ -915,10 +1074,10 @@ const makeInMemoryCtx = <WErrors>(
     },
 
     waitForSignal(name, schema, opts) {
+      const invocation = nextInvocation(counters, name)
+      const activityName = `${name}#${invocation}`
       return Effect.tryPromise({
         try: async () => {
-          const invocation = nextInvocation(counters, name)
-          const activityName = `${name}#${invocation}`
           await recordCall({ kind: "signal", name, counter: invocation })
           registerSignalSchema(executionId, name, schema)
           await emit({
@@ -941,6 +1100,19 @@ const makeInMemoryCtx = <WErrors>(
               payload: buffered
             })
             return { type: "signal", value: buffered } as const
+          }
+
+          if (options.signalValue !== undefined) {
+            const value = decodeSync(schema, await options.signalValue({ executionId, name, schema }))
+            await emit({
+              type: "signal.received",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              payload: value
+            })
+            return { type: "signal", value } as const
           }
 
           if (opts?.timeout !== undefined) {
@@ -998,9 +1170,9 @@ const makeInMemoryCtx = <WErrors>(
     },
 
     now() {
+      const invocation = nextInvocation(counters, "now")
+      const call: OrchestrationCall = { kind: "now", name: "now", counter: invocation }
       return Effect.promise(async () => {
-        const invocation = nextInvocation(counters, "now")
-        const call: OrchestrationCall = { kind: "now", name: "now", counter: invocation }
         await recordCall(call)
         const key = valueKey(call)
         const existing = determinism.values.get(key)
@@ -1014,9 +1186,9 @@ const makeInMemoryCtx = <WErrors>(
     },
 
     random() {
+      const invocation = nextInvocation(counters, "random")
+      const call: OrchestrationCall = { kind: "random", name: "random", counter: invocation }
       return Effect.promise(async () => {
-        const invocation = nextInvocation(counters, "random")
-        const call: OrchestrationCall = { kind: "random", name: "random", counter: invocation }
         await recordCall(call)
         const key = valueKey(call)
         const existing = determinism.values.get(key)
@@ -1027,6 +1199,140 @@ const makeInMemoryCtx = <WErrors>(
         determinism.values.set(key, value)
         return value
       })
+    },
+
+    code(name, options) {
+      const invocation = nextInvocation(counters, name)
+      const activityName = `${name}#${invocation}`
+      const call: OrchestrationCall = { kind: "code", name, counter: invocation }
+      return Effect.tryPromise({
+        try: async () => {
+          await recordCall(call)
+          await emit({
+            type: "code.started",
+            executionId,
+            name,
+            invocation,
+            activityName,
+            ...(options.reason === undefined ? {} : { reason: options.reason })
+          })
+
+          const key = valueKey(call)
+          if (determinism.values.has(key)) {
+            const result = determinism.values.get(key)
+            await emit({
+              type: "code.completed",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              result
+            })
+            return result as Awaited<ReturnType<typeof options.run>>
+          }
+
+          try {
+            const result = await options.run()
+            determinism.values.set(key, result)
+            await emit({
+              type: "code.completed",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              result
+            })
+            return result
+          } catch (error) {
+            await emit({
+              type: "code.failed",
+              executionId,
+              name,
+              invocation,
+              activityName,
+              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              error
+            })
+            throw error
+          }
+        },
+        catch: (error) => new AsyncFailure(error)
+      }).pipe(Effect.mapError(unwrapAsyncFailure)) as Effect.Effect<any, any, any>
+    },
+
+    all(effects, options) {
+      const name = options?.name ?? "all"
+      const invocation = nextInvocation(counters, name)
+      const activityName = `${name}#${invocation}`
+      const branches = effects.length
+      const call: OrchestrationCall = { kind: "all", name, counter: invocation, branches }
+      const record = Effect.tryPromise({
+        try: () => recordCall(call),
+        catch: (error): NonDeterminismError => error as NonDeterminismError
+      })
+      const emitEvent = (event: unknown) => Effect.promise(() => emit(event))
+      const persistBlock = (branchCalls: OrchestrationCall[][]) =>
+        Effect.sync(() => {
+          if (determinism.blocks[blockPosition++] === undefined) {
+            determinism.blocks.push({ call, branches: branchCalls })
+          }
+        })
+      return Effect.gen(function* () {
+        yield* record
+        yield* emitEvent({
+          type: "all.started",
+          executionId,
+          name,
+          invocation,
+          activityName,
+          branches
+        })
+        const branchCalls: OrchestrationCall[][] = []
+        const wrapped = effects.map((effect) =>
+          Effect.acquireUseRelease(
+            Effect.sync(() => {
+              const calls: OrchestrationCall[] = []
+              branchCalls.push(calls)
+              branchCollectors.push(calls)
+            }),
+            () => effect as Effect.Effect<any, any, any>,
+            () => Effect.sync(() => {
+              branchCollectors.pop()
+            })
+          )
+        )
+        return yield* (Effect.all(wrapped, { concurrency: 1 }) as Effect.Effect<any, any, any>).pipe(
+          Effect.tap(() =>
+            Effect.gen(function* () {
+              yield* persistBlock(branchCalls)
+              yield* emitEvent({
+                type: "all.completed",
+                executionId,
+                name,
+                invocation,
+                activityName,
+                branches
+              })
+            })
+          ),
+          Effect.tapError((error) =>
+            Effect.gen(function* () {
+              yield* persistBlock(branchCalls)
+              yield* emitEvent({
+                type: "all.failed",
+                executionId,
+                name,
+                invocation,
+                activityName,
+                branches,
+                error
+              })
+            })
+          )
+        )
+      }) as Effect.Effect<any, any, any>
     },
 
     fail(error) {
@@ -1101,8 +1407,10 @@ export const defineWorkflow = <
     }
     const ctx = makeInMemoryCtx(executionId, errors, compensations, determinism, emit, {
       ...(options.stepExecutors === undefined ? {} : { stepExecutors: options.stepExecutors }),
+      ...(options.stepExecutor === undefined ? {} : { stepExecutor: options.stepExecutor }),
       ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
       ...(options.signalTimeout === undefined ? {} : { signalTimeout: options.signalTimeout }),
+      ...(options.signalValue === undefined ? {} : { signalValue: options.signalValue }),
       ...(options.secrets === undefined ? {} : { secrets: options.secrets })
     })
 

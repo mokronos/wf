@@ -23,12 +23,15 @@ const sendEmail = defineStep({
 
 export const EmailWorkflow = defineWorkflow({
   name: "EmailWorkflow",
-  version: 1,
+  version: 2,
   input: t.struct({ id: t.string, to: t.string }),
   output: t.void,
   errors: SendEmailError,
   run: function* (input, ctx) {
-    const subject = `Welcome, ${input.to.split("@")[0]}!`
+    const subject = yield* ctx.code("build-subject", {
+      reason: "Derive a friendly subject from the recipient's email local part",
+      run: () => `Welcome, ${input.to.split("@")[0]}!`
+    })
 
     yield* ctx.run(sendEmail, {
       id: input.id,

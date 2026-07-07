@@ -108,6 +108,57 @@ export type WorkflowEvent =
       readonly timeout: unknown
     }
   | {
+      readonly type: "code.started"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly reason?: string
+    }
+  | {
+      readonly type: "code.completed"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly reason?: string
+      readonly result: unknown
+    }
+  | {
+      readonly type: "code.failed"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly reason?: string
+      readonly error: unknown
+    }
+  | {
+      readonly type: "all.started"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly branches: number
+    }
+  | {
+      readonly type: "all.completed"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly branches: number
+    }
+  | {
+      readonly type: "all.failed"
+      readonly executionId: string
+      readonly name: string
+      readonly invocation: number
+      readonly activityName: string
+      readonly branches: number
+      readonly error: unknown
+    }
+  | {
       readonly type: "cancellation.received"
       readonly executionId: string
       readonly compensate: boolean

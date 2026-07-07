@@ -154,6 +154,53 @@ describe("Phase 4b durable workflow client", () => {
     expect(startedEvents).toHaveLength(1)
   })
 
+  test("sqlite backend completes ctx.all branches with tuple results", async () => {
+    const charge = defineStep({
+      name: "sqliteAllCharge",
+      input: Schema.Struct({ orderId: Schema.String }),
+      output: Schema.Struct({ paymentId: Schema.String }),
+      execute: async (input) => ({ paymentId: `pay-${input.orderId}` })
+    })
+    const reserve = defineStep({
+      name: "sqliteAllReserve",
+      input: Schema.Struct({ orderId: Schema.String }),
+      output: Schema.Struct({ reservationId: Schema.String }),
+      execute: async (input) => ({ reservationId: `res-${input.orderId}` })
+    })
+    const workflow = defineWorkflow({
+      name: "sqliteAllWorkflow",
+      version: 1,
+      input: Schema.Struct({ orderId: Schema.String }),
+      output: Schema.Struct({
+        paymentId: Schema.String,
+        reservationId: Schema.String
+      }),
+      run: function* (input, ctx) {
+        const [payment, inventory] = yield* ctx.all([
+          ctx.run(charge, input),
+          ctx.run(reserve, input)
+        ], { name: "parallel" })
+        return {
+          paymentId: payment.paymentId,
+          reservationId: inventory.reservationId
+        }
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const handle = await client.start(workflow, { orderId: "123" })
+    await expect(client.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: { paymentId: "pay-123", reservationId: "res-123" }
+    })
+    const history = await client.history(handle.executionId)
+    expect(history.map((record) => record.event.type)).toEqual(
+      expect.arrayContaining(["all.started", "all.completed", "step.completed"])
+    )
+  })
+
   test("sqlite backend pendingSignals excludes timeout-consumed waits", async () => {
     const workflow = defineWorkflow({
       name: "sqlitePendingSignalTimeout",

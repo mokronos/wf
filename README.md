@@ -205,6 +205,13 @@ export const OrderWorkflow = defineWorkflow({
     // Durable step call: result is persisted, replays skip re-execution.
     const payment = yield* ctx.run(chargeCard, input)
 
+    // Raw TypeScript sections can be made visible and durable with ctx.code.
+    const auditLabel = yield* ctx.code("build-audit-label", {
+      reason: "Combine the order and payment ids for operator-friendly logs",
+      run: () => `${input.orderId}:${payment.paymentId}`
+    })
+    console.log(`audit label: ${auditLabel}`)
+
     // Time and randomness must go through ctx so replays see the same values.
     // (This log line prints once per resume — the workflow body replays after
     // each suspension, but the recorded values never change.)
@@ -231,6 +238,53 @@ export const OrderWorkflow = defineWorkflow({
   }
 })
 ```
+
+### Parallel composition
+
+Use `ctx.all([...], { name, concurrency })` like `Promise.all` for independent
+workflow calls. Results are tuple-typed and returned in array order:
+
+```ts
+const [payment, inventory] = yield* ctx.all([
+  ctx.run(chargeCard, input),
+  ctx.run(reserveInventory, input)
+], { name: "reserve-order", concurrency: "unbounded" })
+```
+
+The durable engine runs branches with Effect concurrency, and activity results are
+persisted by activity name, so completion order does not affect replay. The
+in-memory runner executes branches sequentially in array order; it is optimized
+for tests and graph tracing, where deterministic branch boundaries are more
+useful than actual parallelism.
+
+Each branch should be a single pre-built orchestration call such as `ctx.run`,
+`ctx.code`, `ctx.sleep`, or `ctx.waitForSignal`. Building additional `ctx.*`
+calls dynamically inside a branch, for example with `Effect.flatMap`, assigns
+invocation counters during interleaved durable execution and is not replay-safe
+yet. Sequencing inside a branch will be modeled with child workflows later.
+
+Inside a durable `ctx.all`, replay checks use call identity instead of global
+journal position because concurrent branches can interleave differently across
+runs. This still verifies matching branch calls by kind, name, counter, and the
+outer `ctx.all` branch count, but divergence detection inside parallel blocks is
+coarser than in sequential workflow code.
+
+### Raw TypeScript sections
+
+Use `ctx.code(name, { reason, run })` for pure TypeScript work between orchestration
+calls that should appear as a first-class workflow node. The optional `reason`
+explains the intent in traces and graphs:
+
+```ts
+const subject = yield* ctx.code("build-subject", {
+  reason: "Derive a friendly subject from the recipient's email local part",
+  run: () => `Welcome, ${input.to.split("@")[0]}!`
+})
+```
+
+The result is journaled, so replays reuse the recorded value. Return values must
+be JSON-serializable. Keep `run` free of external side effects; use `defineStep`
+for IO, service calls, and anything that needs retries or compensation.
 
 Run it through the durable engine with the workflow client
 ([examples/quickstart/main.ts](examples/quickstart/main.ts)):

@@ -22,6 +22,20 @@ export {
   loadWorkflowArtifact
 } from "./loader"
 export type { LoadedWorkflow } from "./loader"
+export {
+  sampleValueForSchema,
+  workflowArtifactToGraph,
+  workflowToGraph
+} from "./graph"
+export type {
+  WorkflowArtifactGraph,
+  WorkflowGraph,
+  WorkflowGraphEdge,
+  WorkflowGraphNode,
+  WorkflowGraphNodeKind,
+  WorkflowGraphNodeSchemas,
+  WorkflowGraphOptions
+} from "./graph"
 export { discover } from "./integrations"
 export type {
   DiscoverIntegrationsOptions,

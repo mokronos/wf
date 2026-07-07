@@ -331,6 +331,12 @@ const isPrintableWorkflowEvent = (event: WorkflowHistoryEvent): event is Workflo
     case "signal.waiting":
     case "signal.received":
     case "signal.timeout":
+    case "code.started":
+    case "code.completed":
+    case "code.failed":
+    case "all.started":
+    case "all.completed":
+    case "all.failed":
       return true
     default:
       return false
@@ -352,6 +358,9 @@ const stringifyEventValue = (value: unknown): string => {
     return String(value)
   }
 }
+
+const formatReason = (reason: string | undefined): string =>
+  reason === undefined ? "" : ` reason=${stringifyEventValue(reason)}`
 
 const printWorkflowEvent = (event: WorkflowEvent) => {
   switch (event.type) {
@@ -428,6 +437,36 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
     case "signal.timeout":
       console.error(
         `[signal] timeout ${event.activityName} timeout=${stringifyEventValue(event.timeout)}`
+      )
+      return
+
+    case "code.started":
+      console.error(`[code] started ${event.activityName}${formatReason(event.reason)}`)
+      return
+
+    case "code.completed":
+      console.error(
+        `[code] completed ${event.activityName}${formatReason(event.reason)} result=${stringifyEventValue(event.result)}`
+      )
+      return
+
+    case "code.failed":
+      console.error(
+        `[code] failed ${event.activityName}${formatReason(event.reason)} error=${stringifyEventValue(event.error)}`
+      )
+      return
+
+    case "all.started":
+      console.error(`[all] started ${event.activityName} branches=${event.branches}`)
+      return
+
+    case "all.completed":
+      console.error(`[all] completed ${event.activityName} branches=${event.branches}`)
+      return
+
+    case "all.failed":
+      console.error(
+        `[all] failed ${event.activityName} branches=${event.branches} error=${stringifyEventValue(event.error)}`
       )
       return
   }
