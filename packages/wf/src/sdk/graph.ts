@@ -4,10 +4,10 @@ import type {
   OrchestrationCall,
   SecretResolver,
   Step
-} from "../core"
+} from "../core.ts"
 import { Schema } from "effect"
-import { createInMemoryDeterminismState } from "../core"
-import type { WorkflowEvent } from "../events"
+import { createInMemoryDeterminismState } from "../core.ts"
+import type { WorkflowEvent } from "../events.ts"
 import {
   jsonSchemaOf,
   type JsonSchema,
@@ -19,9 +19,9 @@ import {
   type WorkflowGraphNodeMetadata,
   type WorkflowGraphNodeSchemas,
   type WorkflowGraphSchemas
-} from "../schemas"
-import type { WorkflowArtifact } from "./artifact"
-import { loadWorkflowArtifact } from "./loader"
+} from "../schemas.ts"
+import type { WorkflowArtifact } from "./artifact.ts"
+import { loadWorkflowArtifact } from "./loader.ts"
 
 interface SchemaAst {
   readonly _tag?: string

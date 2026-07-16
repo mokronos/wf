@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, t } from "wf"
+import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 // Typed errors are tagged structs so the engine can persist and replay them.
 const PaymentDeclined = t.taggedStruct("PaymentDeclined", { orderId: t.string })

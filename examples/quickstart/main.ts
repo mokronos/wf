@@ -1,4 +1,4 @@
-import { createWorkflowClient, createWorkflowRuntime } from "wf"
+import { createWorkflowClient, createWorkflowRuntime } from "@mokronos/wfkit"
 import { OrderWorkflow } from "./order"
 
 // The runtime persists engine state (activity results, timers, suspended

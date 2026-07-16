@@ -10,7 +10,7 @@ import {
   type WorkflowRunEventRecord,
   type WorkflowRunRecord,
   type WorkflowRunStatus
-} from "../schemas"
+} from "../schemas.ts"
 
 export type { WorkflowArtifact, WorkflowRunEventRecord, WorkflowRunRecord, WorkflowRunStatus }
 

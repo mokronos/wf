@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
-import { decodeJsonSchema, type JsonSchema } from "wf/schemas"
+import { decodeJsonSchema, type JsonSchema } from "@mokronos/wfkit/schemas"
 
 const isNumberEncoding = (items: ReadonlyArray<JsonSchema>): boolean => {
   if (items.length !== 4) {

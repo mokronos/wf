@@ -1,4 +1,4 @@
-import type { SecretRef } from "wf"
+import type { SecretRef } from "@mokronos/wfkit"
 
 export interface TimelinePost {
   readonly id: string

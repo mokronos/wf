@@ -1,5 +1,5 @@
-import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core"
-import type { WorkflowArtifact } from "./artifact"
+import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core.ts"
+import type { WorkflowArtifact } from "./artifact.ts"
 
 export interface LoadedWorkflow {
   readonly artifact: WorkflowArtifact
@@ -49,12 +49,13 @@ const compileWorkflowSource = async (artifact: WorkflowArtifact): Promise<string
 }
 
 const rewriteWfImports = (source: string): string => {
-  const wfModuleUrl = new URL("../authoring.ts", import.meta.url).href
+  const authoringModule = import.meta.url.endsWith(".ts") ? "../authoring.ts" : "../authoring.js"
+  const wfModuleUrl = new URL(authoringModule, import.meta.url).href
   return source
-    .replaceAll(`from "wf"`, `from "${wfModuleUrl}"`)
-    .replaceAll(`from 'wf'`, `from '${wfModuleUrl}'`)
-    .replaceAll(`import("wf")`, `import("${wfModuleUrl}")`)
-    .replaceAll(`import('wf')`, `import('${wfModuleUrl}')`)
+    .replaceAll(`from "@mokronos/wfkit"`, `from "${wfModuleUrl}"`)
+    .replaceAll(`from '@mokronos/wfkit'`, `from '${wfModuleUrl}'`)
+    .replaceAll(`import("@mokronos/wfkit")`, `import("${wfModuleUrl}")`)
+    .replaceAll(`import('@mokronos/wfkit')`, `import('${wfModuleUrl}')`)
 }
 
 export const loadWorkflowArtifact = async (

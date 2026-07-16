@@ -15,8 +15,9 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "wf": ["packages/wf/src/index.ts"],
-      "wf/schemas": ["packages/wf/src/schemas.ts"],
+      "@mokronos/wfkit": ["packages/wf/src/index.ts"],
+      "@mokronos/wfkit/schemas": ["packages/wf/src/schemas.ts"],
+      "@mokronos/wfkit/testing": ["packages/wf/src/testing/index.ts"],
       "@/*": ["apps/web/src/*"]
     },
     "allowImportingTsExtensions": true,
@@ -47,5 +48,5 @@
       }
     ]
   },
-  "exclude": ["apps/web/dist", "node_modules", "**/.tmp/**"]
+  "exclude": ["**/dist", "node_modules", "**/.tmp/**"]
 }

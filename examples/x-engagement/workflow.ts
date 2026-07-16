@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, secret, t } from "wf"
+import { defineStep, defineWorkflow, secret, t } from "@mokronos/wfkit"
 import {
   draftReply as draftReplyAdapter,
   fetchTimeline as fetchTimelineAdapter,

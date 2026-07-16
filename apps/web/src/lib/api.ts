@@ -2,7 +2,7 @@ import {
   decodeRunEventsResponse,
   decodeRunsResponse,
   decodeWorkflowsResponse
-} from "wf/schemas"
+} from "@mokronos/wfkit/schemas"
 import type {
   RunEventsResponse,
   RunsResponse,
@@ -19,7 +19,7 @@ import type {
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowsResponse
-} from "wf/schemas"
+} from "@mokronos/wfkit/schemas"
 
 export type {
   RunEventsResponse,

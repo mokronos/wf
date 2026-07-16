@@ -13,8 +13,8 @@
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { createWorkflowClient, createWorkflowRuntime } from "wf"
-import type { WorkflowClient, WorkflowHistoryRecord } from "wf"
+import { createWorkflowClient, createWorkflowRuntime } from "@mokronos/wfkit"
+import type { WorkflowClient, WorkflowHistoryRecord } from "@mokronos/wfkit"
 import { ExpenseApprovalWorkflow } from "./approval"
 
 const makeClient = (databasePath: string): WorkflowClient => {

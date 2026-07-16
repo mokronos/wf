@@ -2,26 +2,26 @@ import { Database } from "bun:sqlite"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { Schema } from "effect"
-import type { DefinedWorkflow } from "../core"
-import { Cancelled, cancellationDeferredName, createInMemoryDeterminismState } from "../core"
-import type { WorkflowEvent } from "../events"
-import { ExecutionId, WorkflowHistoryEvent as WorkflowHistoryEventSchema } from "../schemas"
-import type { JsonSchema, WorkflowHistoryEvent } from "../schemas"
-import { createWorkflowRuntime, executeWorkflow } from "../runtime"
-import type { ExecuteWorkflowOptions } from "../runtime"
-import type { WorkflowRuntime } from "../runtime"
-import { cancelSignalWaits, decodeSignal, deliverSignal, getSignalSchema } from "../signal"
+import type { DefinedWorkflow } from "../core.ts"
+import { Cancelled, cancellationDeferredName, createInMemoryDeterminismState } from "../core.ts"
+import type { WorkflowEvent } from "../events.ts"
+import { ExecutionId, WorkflowHistoryEvent as WorkflowHistoryEventSchema } from "../schemas.ts"
+import type { JsonSchema, WorkflowHistoryEvent } from "../schemas.ts"
+import { createWorkflowRuntime, executeWorkflow } from "../runtime.ts"
+import type { ExecuteWorkflowOptions } from "../runtime.ts"
+import type { WorkflowRuntime } from "../runtime.ts"
+import { cancelSignalWaits, decodeSignal, deliverSignal, getSignalSchema } from "../signal.ts"
 import type {
   WorkflowArtifact,
   WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStore,
   WorkflowStore
-} from "./artifact"
-import { createFileWorkflowStore } from "./artifact"
-import { parseJsonText, toJsonText } from "./json"
-import { loadWorkflowArtifact } from "./loader"
-import { replayDedupeKey } from "../replay"
+} from "./artifact.ts"
+import { createFileWorkflowStore } from "./artifact.ts"
+import { parseJsonText, toJsonText } from "./json.ts"
+import { loadWorkflowArtifact } from "./loader.ts"
+import { replayDedupeKey } from "../replay.ts"
 
 export type WorkflowExecutionStatus =
   | "running"
@@ -99,7 +99,7 @@ export interface WorkflowClient {
   ): Promise<void>
 }
 
-export { Cancelled } from "../core"
+export { Cancelled } from "../core.ts"
 
 export class MissingWorkflowVersionError extends Error {
   readonly _tag = "MissingWorkflowVersionError"

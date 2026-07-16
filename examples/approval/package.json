@@ -7,6 +7,6 @@
     "start": "bun run main.ts demo"
   },
   "dependencies": {
-    "wf": "workspace:*"
+    "@mokronos/wfkit": "workspace:*"
   }
 }

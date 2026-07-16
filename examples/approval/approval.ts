@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, t } from "wf"
+import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 // The payload a human reviewer sends to resume the workflow.
 export const ApprovalDecision = t.struct({

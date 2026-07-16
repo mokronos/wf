@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test"
-import { createTestRuntime } from "wf"
+import { createTestRuntime } from "@mokronos/wfkit"
 import { configureXEngagementAdapters, resetXEngagementAdapters } from "./adapters"
 import { XEngagementWorkflow } from "./workflow"
 

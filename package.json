@@ -8,7 +8,8 @@
     "examples/*"
   ],
   "scripts": {
-    "cli": "bun run apps/cli/src/main.ts",
+    "build": "bun run --cwd packages/wf build",
+    "cli": "bun run packages/wf/src/cli/main.ts",
     "example:email": "bun run examples/email/main.ts",
     "example:quickstart": "bun run examples/quickstart/main.ts",
     "example:order-saga": "cd examples/order-saga && bun run main.ts",

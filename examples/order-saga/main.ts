@@ -4,8 +4,8 @@
 
 import { rmSync } from "node:fs"
 import path from "node:path"
-import { createWorkflowClient, createWorkflowRuntime } from "wf"
-import type { WorkflowHistoryRecord } from "wf"
+import { createWorkflowClient, createWorkflowRuntime } from "@mokronos/wfkit"
+import type { WorkflowHistoryRecord } from "@mokronos/wfkit"
 import { startMockApi } from "./mock-api"
 import { OrderWorkflow } from "./order"
 

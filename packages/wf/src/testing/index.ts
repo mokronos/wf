@@ -5,18 +5,18 @@ import type {
   Step,
   StepContext,
   TerminalFailure
-} from "../core"
-import { createInMemoryDeterminismState } from "../core"
+} from "../core.ts"
+import { createInMemoryDeterminismState } from "../core.ts"
 import type {
   WorkflowExecutionHandle,
   WorkflowExecutionStatus,
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
   WorkflowResult
-} from "../sdk"
-import { Cancelled } from "../sdk"
-import { cancelSignalWaits, deliverSignal } from "../signal"
-import { ExecutionId } from "../schemas"
+} from "../sdk/index.ts"
+import { Cancelled } from "../sdk/index.ts"
+import { cancelSignalWaits, deliverSignal } from "../signal.ts"
+import { ExecutionId } from "../schemas.ts"
 
 export interface TestRuntimeOptions {
   readonly timeSkipping?: boolean

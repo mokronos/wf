@@ -28,7 +28,7 @@ Derivation: a `signal.waiting` history event is pending iff there is no later
 `signal.received` or `signal.timeout` event with the same `name` and
 `invocation`. Order results by history sequence.
 
-- Export `PendingSignal` type from `wf`.
+- Export `PendingSignal` type from `@mokronos/wfkit`.
 - Update `examples/x-engagement/review.ts` to use it instead of history
   scraping (both for finding the signal to send and for detecting
   re-suspension after a feedback decision).
@@ -45,7 +45,7 @@ Derivation: a `signal.waiting` history event is pending iff there is no later
 Problem: every app hand-writes a name→env-var resolver; mock mode needs
 empty-string fallbacks.
 
-Solution: export a resolver factory from `wf` (new code in `core.ts` or a
+Solution: export a resolver factory from `@mokronos/wfkit` (new code in `core.ts` or a
 small `secrets.ts` module, re-exported from `index.ts`):
 
 ```ts

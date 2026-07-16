@@ -5,7 +5,7 @@ import {
   WorkflowHistoryEvent as WorkflowHistoryEventSchema,
   WorkflowRunEventRecord as WorkflowRunEventRecordSchema,
   WorkflowRunRecord as WorkflowRunRecordSchema
-} from "../schemas"
+} from "../schemas.ts"
 import type {
   WorkflowArtifact,
   WorkflowRepository,
@@ -13,8 +13,8 @@ import type {
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowStore
-} from "./artifact"
-import { parseJsonText, toJsonText } from "./json"
+} from "./artifact.ts"
+import { parseJsonText, toJsonText } from "./json.ts"
 
 interface WorkflowRow {
   readonly id: string

@@ -1,4 +1,4 @@
-import { createWorkflowClient, createWorkflowRuntime, envSecretResolver } from "wf"
+import { createWorkflowClient, createWorkflowRuntime, envSecretResolver } from "@mokronos/wfkit"
 import { XEngagementWorkflow } from "./workflow"
 
 export const runtime = createWorkflowRuntime({

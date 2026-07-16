@@ -1,16 +1,69 @@
 {
-  "name": "wf",
-  "version": "0.0.0",
+  "name": "@mokronos/wfkit",
+  "version": "0.1.1",
   "type": "module",
   "description": "The workflow authoring surface — the stable API agents design against.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mokronos/wf.git",
+    "directory": "packages/wf"
+  },
+  "homepage": "https://github.com/mokronos/wf#readme",
+  "bugs": "https://github.com/mokronos/wf/issues",
+  "keywords": [
+    "workflow",
+    "durable-execution",
+    "effect",
+    "bun",
+    "agent"
+  ],
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "files": [
+    "src",
+    "dist",
+    "README.md",
+    "AGENT.md"
+  ],
+  "bin": {
+    "wf": "dist/cli/main.js",
+    "wf-integrations": "dist/cli/integrations.js"
+  },
   "exports": {
-    ".": "./src/index.ts",
-    "./schemas": "./src/schemas.ts",
-    "./testing": "./src/testing/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "development": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "bun": "./src/schemas.ts",
+      "development": "./src/schemas.ts",
+      "default": "./dist/schemas.js"
+    },
+    "./testing": {
+      "types": "./dist/testing/index.d.ts",
+      "bun": "./src/testing/index.ts",
+      "development": "./src/testing/index.ts",
+      "default": "./dist/testing/index.js"
+    }
+  },
+  "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@effect/platform-node": "^4.0.0-beta.93",
-    "@effect/sql-sqlite-bun": "^4.0.0-beta.93",
-    "effect": "^4.0.0-beta.93"
+    "@effect/platform-bun": "4.0.0-beta.93",
+    "@effect/platform-node": "4.0.0-beta.93",
+    "@effect/platform-node-shared": "4.0.0-beta.93",
+    "@effect/sql-sqlite-bun": "4.0.0-beta.93",
+    "effect": "4.0.0-beta.93"
   }
 }

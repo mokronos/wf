@@ -6,15 +6,15 @@ import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 import { ClusterWorkflowEngine, SingleRunner } from "effect/unstable/cluster"
 import { SqlClient } from "effect/unstable/sql"
 import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
-import { currentSecretResolver, removeExecutionSecretResolver, setExecutionSecretResolver } from "./core"
-import type { DefinedWorkflow, SecretResolver } from "./core"
+import { currentSecretResolver, removeExecutionSecretResolver, setExecutionSecretResolver } from "./core.ts"
+import type { DefinedWorkflow, SecretResolver } from "./core.ts"
 import {
   currentWorkflowEventSink,
   emitWorkflowEvent,
   removeExecutionEventSink,
   setExecutionEventSink
-} from "./events"
-import type { WorkflowEventSink } from "./events"
+} from "./events.ts"
+import type { WorkflowEventSink } from "./events.ts"
 
 export interface ExecuteWorkflowOptions {
   readonly onEvent?: WorkflowEventSink

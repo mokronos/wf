@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { mkdirSync, rmSync } from "node:fs"
 import path from "node:path"
 
-const repoRoot = path.resolve(import.meta.dir, "../..")
-const cliPath = path.join(repoRoot, "apps", "cli", "src", "main.ts")
+const repoRoot = path.resolve(import.meta.dir, "../../..")
+const cliPath = path.join(repoRoot, "packages", "wf", "src", "cli", "main.ts")
 const tempRoot = path.join(repoRoot, ".tmp", "cli-signal-tests")
 const decoder = new TextDecoder()
 
@@ -42,7 +42,7 @@ const runCli = (cwd: string, args: ReadonlyArray<string>) => {
   }
 }
 
-const signalWorkflowSource = `import { defineWorkflow, t } from "wf"
+const signalWorkflowSource = `import { defineWorkflow, t } from "@mokronos/wfkit"
 
 export const SigDemoWorkflow = defineWorkflow({
   name: "SigDemoWorkflow",

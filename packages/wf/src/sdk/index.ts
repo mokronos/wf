@@ -1,7 +1,7 @@
 export {
   createFileWorkflowStore,
   createMemoryWorkflowStore
-} from "./artifact"
+} from "./artifact.ts"
 export type {
   FileWorkflowStoreOptions,
   WorkflowArtifact,
@@ -11,23 +11,23 @@ export type {
   WorkflowRunStatus,
   WorkflowRunStore,
   WorkflowStore
-} from "./artifact"
+} from "./artifact.ts"
 export {
   createSqliteWorkflowRepository,
   seedSqliteWorkflowRepository
-} from "./sqlite"
-export type { SqliteWorkflowRepositoryOptions } from "./sqlite"
+} from "./sqlite.ts"
+export type { SqliteWorkflowRepositoryOptions } from "./sqlite.ts"
 export {
   isDefinedWorkflow,
   loadWorkflowArtifact
-} from "./loader"
-export type { LoadedWorkflow } from "./loader"
+} from "./loader.ts"
+export type { LoadedWorkflow } from "./loader.ts"
 export {
   sampleValueForJsonSchema,
   sampleValueForSchema,
   workflowArtifactToGraph,
   workflowToGraph
-} from "./graph"
+} from "./graph.ts"
 export type {
   WorkflowArtifactGraph,
   WorkflowGraph,
@@ -38,16 +38,16 @@ export type {
   WorkflowGraphNodeSchemas,
   WorkflowGraphSchemas,
   WorkflowGraphOptions
-} from "./graph"
-export { parseJsonText, toJsonText } from "./json"
-export { discover } from "./integrations"
+} from "./graph.ts"
+export { parseJsonText, toJsonText } from "./json.ts"
+export { discover } from "./integrations.ts"
 export type {
   DiscoverIntegrationsOptions,
   DiscoverIntegrationsResult,
   IntegrationKind,
   IntegrationSearchResult
-} from "./integrations"
-export { Cancelled, MissingWorkflowVersionError, createWorkflowClient, createWorkflowSdk } from "./sdk"
+} from "./integrations.ts"
+export { Cancelled, MissingWorkflowVersionError, createWorkflowClient, createWorkflowSdk } from "./sdk.ts"
 export type {
   WorkflowClient,
   WorkflowExecutionHandle,
@@ -61,4 +61,4 @@ export type {
   WorkflowRunResult,
   WorkflowSdk,
   WorkflowSdkOptions
-} from "./sdk"
+} from "./sdk.ts"

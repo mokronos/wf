@@ -8,6 +8,6 @@
     "review": "bun run review.ts"
   },
   "dependencies": {
-    "wf": "workspace:*"
+    "@mokronos/wfkit": "workspace:*"
   }
 }

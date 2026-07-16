@@ -8,7 +8,7 @@ import {
   loadWorkflowArtifact,
   sampleValueForJsonSchema,
   toJsonText
-} from "wf"
+} from "../index.ts"
 import type {
   PendingSignal,
   WorkflowArtifact,
@@ -18,7 +18,7 @@ import type {
   WorkflowRepository,
   WorkflowRunEventRecord,
   WorkflowRunRecord
-} from "wf"
+} from "../index.ts"
 
 const help = `Usage:
   wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
@@ -235,7 +235,7 @@ const toPascalCase = (value: string): string =>
     .map((part) => `${part[0]!.toUpperCase()}${part.slice(1)}`)
     .join("")
 
-const workflowTemplate = (options: CreateWorkflowOptions): string => `import { defineStep, defineWorkflow, t } from "wf"
+const workflowTemplate = (options: CreateWorkflowOptions): string => `import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 const printMessage = defineStep({
   name: "PrintMessage",
@@ -323,7 +323,7 @@ const describePendingSignal = (runId: string, signal: PendingSignal): string => 
   const schemaLine = signal.payloadSchema === undefined
     ? ""
     : `\n  expected payload schema: ${toJsonText(signal.payloadSchema)}`
-  return `Currently waiting for signal "${signal.name}".${schemaLine}\n  deliver with: bun run cli -- signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`
+  return `Currently waiting for signal "${signal.name}".${schemaLine}\n  deliver with: wf signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`
 }
 
 const printPendingSignalHint = (runId: string, pendingSignals: ReadonlyArray<PendingSignal>) => {
@@ -338,7 +338,7 @@ const printPendingSignalHint = (runId: string, pendingSignals: ReadonlyArray<Pen
     if (signal.payloadSchema !== undefined) {
       console.error(`${eventTag("signal")} ${bold(signal.name)} expects payload schema: ${dim(toJsonText(signal.payloadSchema))}`)
     }
-    console.error(`${bold("Resume with:")} bun run cli -- signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`)
+    console.error(`${bold("Resume with:")} wf signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`)
   }
 }
 

@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, t } from "wf"
+import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 const SendEmailError = t.taggedStruct("SendEmailError", {
   message: t.string

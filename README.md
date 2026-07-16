@@ -4,12 +4,13 @@ Durable workflows in plain TypeScript. You author workflows with typed inputs,
 outputs, and errors; the engine (built on `@effect/workflow`) persists every
 step result, timer, and signal wait in SQLite, so executions replay
 deterministically and survive process restarts. Authored workflows import only
-from `wf` — never from `effect` directly.
+from `@mokronos/wfkit` — never from `effect` directly.
 
 ## Install
 
 ```bash
-bun install
+bun add @mokronos/wfkit
+bun add -g @mokronos/wfkit
 ```
 
 ## Quickstart
@@ -17,7 +18,7 @@ bun install
 A tiny workflow is just a typed step plus a typed workflow that calls it:
 
 ```ts
-import { defineStep, defineWorkflow, run, t } from "wf"
+import { defineStep, defineWorkflow, run, t } from "@mokronos/wfkit"
 
 const printMessage = defineStep({
   name: "PrintMessage",
@@ -52,10 +53,10 @@ bun run example:email
 
 ## CLI
 
-Run CLI commands from the repository root:
+Install `@mokronos/wfkit` globally, then run CLI commands with the `wf` binary:
 
 ```bash
-bun run cli -- <command>
+wf <command>
 ```
 
 ### `create`
@@ -63,15 +64,15 @@ bun run cli -- <command>
 Create or import a workflow into the local SQLite catalog:
 
 ```bash
-bun run cli -- create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
+wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
 ```
 
 Examples:
 
 ```bash
-bun run cli -- create welcome-email
-bun run cli -- create email --file examples/email/email.ts
-bun run cli -- create invoice-sync --file workflows/invoice-sync.ts --version v1
+wf create welcome-email
+wf create email --file examples/email/email.ts
+wf create invoice-sync --file workflows/invoice-sync.ts --version v1
 ```
 
 With no `--source` or `--file`, the CLI stores a generated starter workflow.
@@ -83,7 +84,7 @@ Use `--force` to replace an existing workflow id.
 List registered workflow artifacts:
 
 ```bash
-bun run cli -- list
+wf list
 ```
 
 ### `run`
@@ -91,14 +92,14 @@ bun run cli -- list
 Run a registered workflow by id with optional JSON input:
 
 ```bash
-bun run cli -- run <workflow-id> [json-input]
+wf run <workflow-id> [json-input]
 ```
 
 Examples:
 
 ```bash
-bun run cli -- run welcome-email '{"message":"hello"}'
-bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
+wf run welcome-email '{"message":"hello"}'
+wf run email '{"id":"123","to":"hello@example.com"}'
 ```
 
 If a workflow suspends waiting for a signal, the command records the pending
@@ -110,14 +111,14 @@ copy-pasteable `signal` command with a sample payload, then exits 0.
 Deliver a signal to a suspended run:
 
 ```bash
-bun run cli -- signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
 ```
 
 Examples:
 
 ```bash
-bun run cli -- signal <run-id> approval '{"approved":true}'
-bun run cli -- signal <run-id> approval '{"approved":true}' --actor ops
+wf signal <run-id> approval '{"approved":true}'
+wf signal <run-id> approval '{"approved":true}' --actor ops
 ```
 
 ### `runs`
@@ -125,16 +126,15 @@ bun run cli -- signal <run-id> approval '{"approved":true}' --actor ops
 List persisted workflow runs:
 
 ```bash
-bun run cli -- runs
+wf runs
 ```
 
-### `history` / `events`
+### `history`
 
 List persisted events for one run:
 
 ```bash
-bun run cli -- history <run-id>
-bun run cli -- events <run-id>
+wf history <run-id>
 ```
 
 ### `help`
@@ -142,11 +142,10 @@ bun run cli -- events <run-id>
 Print command help:
 
 ```bash
-bun run cli -- help
+wf help
 ```
 
-See [apps/cli/README.md](apps/cli/README.md) for more detail on CLI storage,
-outputs, and run resumption.
+CLI state lives in `.wf/wf.sqlite`; durable engine state lives in `.wf/engine.sqlite`.
 
 ## Full-featured example
 
@@ -155,7 +154,7 @@ concurrency, compensation, deterministic time/randomness, durable sleeps, and
 signals ([examples/quickstart/order.ts](examples/quickstart/order.ts)):
 
 ```ts
-import { defineStep, defineWorkflow, t } from "wf"
+import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 // Typed errors are tagged structs so the engine can persist and replay them.
 const PaymentDeclined = t.taggedStruct("PaymentDeclined", { orderId: t.string })
@@ -290,7 +289,7 @@ Run it through the durable engine with the workflow client
 ([examples/quickstart/main.ts](examples/quickstart/main.ts)):
 
 ```ts
-import { createWorkflowClient, createWorkflowRuntime } from "wf"
+import { createWorkflowClient, createWorkflowRuntime } from "@mokronos/wfkit"
 import { OrderWorkflow } from "./order"
 
 const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: ".wf/quickstart.sqlite" })
@@ -326,7 +325,7 @@ deliver the signal and resume a suspended execution.
 
 ## Testing workflows
 
-`createTestRuntime` (from `wf/testing`) and `workflow.executeInMemory` run
+`createTestRuntime` (from `@mokronos/wfkit/testing`) and `workflow.executeInMemory` run
 workflows without the engine, with hooks to fake steps, sleeps, signal
 timeouts, and secrets. `deliverSignal(executionId, name, payload)` feeds
 signals to in-memory executions.

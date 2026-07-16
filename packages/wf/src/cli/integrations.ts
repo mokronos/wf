@@ -2,8 +2,8 @@
 import { BunRuntime, BunServices } from "@effect/platform-bun"
 import { Console, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
-import { discover } from "wf"
-import type { IntegrationKind, IntegrationSearchResult } from "wf"
+import { discover } from "../index.ts"
+import type { IntegrationKind, IntegrationSearchResult } from "../index.ts"
 
 class IntegrationDiscoveryError extends Error {
   readonly _tag = "IntegrationDiscoveryError"

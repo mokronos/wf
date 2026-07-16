@@ -43,17 +43,17 @@ re-executed — only the ledger step runs in the resuming process. State lives i
 From the repository root:
 
 ```bash
-bun run cli -- create approval --file examples/approval/approval.ts
-bun run cli -- run approval '{"requestId":"exp-1","requester":"sam","amountCents":4200}'
+wf create approval --file examples/approval/approval.ts
+wf run approval '{"requestId":"exp-1","requester":"sam","amountCents":4200}'
 # suspends, prints the expected payload schema, and a ready-to-run resume command
 # with a sample payload, e.g.:
-#   Resume with: bun run cli -- signal <run-id> approval '{"approved":true,"approver":"sample"}'
+#   Resume with: wf signal <run-id> approval '{"approved":true,"approver":"sample"}'
 
-bun run cli -- signal <run-id> approval '{"approved":true,"approver":"kim"}' --actor kim
+wf signal <run-id> approval '{"approved":true,"approver":"kim"}' --actor kim
 # or reject (compensates the budget hold, non-zero exit):
-bun run cli -- signal <run-id> approval '{"approved":false,"approver":"kim","comment":"too much"}'
+wf signal <run-id> approval '{"approved":false,"approver":"kim","comment":"too much"}'
 
-bun run cli -- history <run-id>
+wf history <run-id>
 ```
 
 Signal payloads are schema-validated at delivery — a payload that does not

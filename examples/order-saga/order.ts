@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, t } from "wf"
+import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
 
 // Terminal (business) failures. Anything else a step throws is treated as
 // transient and retried according to the step's retry policy.

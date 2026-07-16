@@ -5,7 +5,7 @@ question/comment per interesting post via an LLM, runs a human-in-the-loop
 review (accept / edit / feedback / decline), and posts the approved reply.
 
 This doubles as a dogfooding test: it should be implementable against the
-current `wf` SDK surface (see `docs/spec.md`, `examples/quickstart/`) without
+current `@mokronos/wfkit` SDK surface (see `docs/spec.md`, `examples/quickstart/`) without
 touching the SDK itself. If something in the SDK blocks a natural
 implementation, record it in `examples/x-engagement/FRICTION.md` instead of
 working around it silently.
@@ -48,7 +48,7 @@ working around it silently.
   - `FRICTION.md` — anything about the SDK that was awkward/blocking (honest;
     empty file if truly nothing)
 - Test: `packages/wf/test/` is for SDK phases — put the example's test at
-  `examples/x-engagement/workflow.test.ts` using `createTestRuntime` from `wf`.
+  `examples/x-engagement/workflow.test.ts` using `createTestRuntime` from `@mokronos/wfkit`.
 
 ## Workflow design
 
