@@ -10,6 +10,8 @@ export {
   NonDeterminismError,
   secret
 } from "./core.ts"
+export { auth, AuthRef, integration, IntegrationError } from "./integration.ts"
+export type { IntegrationAuth, IntegrationSource } from "./integration.ts"
 export type {
   DefinedWorkflow,
   InMemoryDeterminismState,

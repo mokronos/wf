@@ -1,6 +1,6 @@
 {
   "name": "@mokronos/wfkit",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "type": "module",
   "description": "The workflow authoring surface — the stable API agents design against.",
   "license": "MIT",

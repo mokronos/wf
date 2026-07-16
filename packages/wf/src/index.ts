@@ -1,6 +1,8 @@
 // The workflow authoring surface. An authored workflow imports ONLY from here
 // (plus pure helper functions it defines) — never `effect` or `@effect/*`.
 export { createInMemoryDeterminismState, defineStep, defineWorkflow, envSecretResolver, isSecretRef, NonDeterminismError, secret } from "./core.ts"
+export { auth, AuthRef, integration, IntegrationError } from "./integration.ts"
+export type { IntegrationAuth, IntegrationSource } from "./integration.ts"
 export type {
   DefinedWorkflow,
   InMemoryDeterminismState,

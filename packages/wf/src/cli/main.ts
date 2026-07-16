@@ -5,6 +5,7 @@ import {
   createWorkflowClient,
   createWorkflowRuntime,
   createSqliteWorkflowRepository,
+  envSecretResolver,
   loadWorkflowArtifact,
   sampleValueForJsonSchema,
   toJsonText
@@ -642,7 +643,8 @@ const engineDatabasePath = (rootDir: string) => path.join(rootDir, ".wf", "engin
 const createEngineBackedClient = (rootDir: string) => {
   const runtime = createWorkflowRuntime({
     backend: "sqlite",
-    databasePath: engineDatabasePath(rootDir)
+    databasePath: engineDatabasePath(rootDir),
+    secrets: envSecretResolver()
   })
   const client = createWorkflowClient(runtime)
   return { runtime, client }

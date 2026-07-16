@@ -37,6 +37,41 @@ run(HelloWorkflow, { message: "hello from @mokronos/wfkit" })
 
 Subpath exports: `@mokronos/wfkit/schemas` (shared Effect schemas) and `@mokronos/wfkit/testing` (test helpers).
 
+## Generic integrations
+
+`integration(...)` is one durable node for MCP tools and HTTP/OpenAPI operations.
+Authentication is configured separately with `auth(...)`; only the reference is
+part of the workflow definition, while the credential is resolved immediately
+before execution.
+
+```ts
+import { auth, defineWorkflow, integration, t } from "@mokronos/wfkit"
+
+const CreatedIssue = t.struct({ id: t.string, title: t.string })
+
+const createIssue = integration({
+  source: { kind: "mcp", url: "https://mcp.example.com/mcp" },
+  operation: "create_issue",
+  auth: { kind: "bearer", credential: auth("linear-oauth") },
+  input: t.struct({ teamId: t.string, title: t.string }),
+  output: CreatedIssue
+})
+
+export const CreateIssue = defineWorkflow({
+  name: "CreateIssue",
+  version: 1,
+  input: t.struct({ teamId: t.string, title: t.string }),
+  output: CreatedIssue,
+  run: function* (input, ctx) {
+    return yield* ctx.run(createIssue, input)
+  }
+})
+```
+
+The CLI maps `auth("linear-oauth")` to `LINEAR_OAUTH`. Custom runtimes can
+provide any `SecretResolver`, including a vault-backed OAuth connection manager.
+API-key, bearer-token, and custom-header authentication are supported.
+
 ## CLI
 
 ```sh

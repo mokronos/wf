@@ -18,6 +18,7 @@ export interface TerminalFailure<E> {
 
 export interface StepContext<E> {
   fail(error: E): TerminalFailure<E>
+  resolveSecret(name: string): Promise<string>
   readonly attempt: number
   readonly executionId: string
 }
@@ -375,10 +376,14 @@ const unwrapActivityFailure = (error: unknown): unknown =>
 const unwrapAsyncFailure = (error: unknown): unknown =>
   error instanceof AsyncFailure ? error.error : error
 
-const makeStepContext = <E>(executionId: string, attempt: number): StepContext<E> => ({
+const makeStepContext = <E>(executionId: string, attempt: number, resolver?: SecretResolver): StepContext<E> => ({
   attempt,
   executionId,
-  fail: (error) => ({ [TerminalFailureTypeId]: TerminalFailureTypeId, error })
+  fail: (error) => ({ [TerminalFailureTypeId]: TerminalFailureTypeId, error }),
+  resolveSecret: (name) => {
+    if (resolver === undefined) throw new Error(`No secret resolver configured for ${name}`)
+    return Promise.resolve(resolver.resolve(name))
+  }
 })
 
 const nextInvocation = (counters: Map<string, number>, name: string): number => {
@@ -577,7 +582,7 @@ const makeCtx = <WErrors>(
             const release = await acquireConcurrency(step, input)
             try {
               const executeInput = await resolveSecretRefs(input, resolver)
-              const value = await step.execute(executeInput, makeStepContext(executionId, attempt))
+              const value = await step.execute(executeInput, makeStepContext(executionId, attempt, resolver))
               if (isTerminalFailure(value)) {
                 throw value
               }
@@ -996,7 +1001,7 @@ const makeInMemoryCtx = <WErrors>(
             })
 
             try {
-              const stepContext = makeStepContext(executionId, attempt)
+              const stepContext = makeStepContext(executionId, attempt, options.secrets)
               const executeStep = options.stepExecutors?.get(step)
               const release = await acquireConcurrency(step, input)
               try {
