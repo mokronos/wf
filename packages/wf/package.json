@@ -1,6 +1,6 @@
 {
   "name": "@mokronos/wfkit",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "description": "The workflow authoring surface — the stable API agents design against.",
   "license": "MIT",
@@ -29,7 +29,7 @@
     "src",
     "dist",
     "README.md",
-    "AGENT.md"
+    "GUIDE.md"
   ],
   "bin": {
     "wf": "dist/cli/main.js",

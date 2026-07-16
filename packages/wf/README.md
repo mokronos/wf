@@ -1,4 +1,4 @@
-> **[Use with your agent →](https://github.com/mokronos/wf/blob/main/packages/wf/AGENT.md)** Copy the agent guide into your chat or project so your agent can install wfkit and run a real workflow for you.
+> **[Use with your agent →](https://github.com/mokronos/wf/blob/main/packages/wf/GUIDE.md)** Copy the guide into your chat so your agent can install wfkit and run a real workflow for you.
 
 # @mokronos/wfkit
 
