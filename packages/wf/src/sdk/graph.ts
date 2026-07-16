@@ -2,13 +2,24 @@ import type {
   DefinedWorkflow,
   InMemoryDeterminismState,
   OrchestrationCall,
-  OrchestrationKind,
   SecretResolver,
   Step
 } from "../core"
 import { Schema } from "effect"
 import { createInMemoryDeterminismState } from "../core"
 import type { WorkflowEvent } from "../events"
+import {
+  jsonSchemaOf,
+  type JsonSchema,
+  type WorkflowArtifactGraph,
+  type WorkflowGraph,
+  type WorkflowGraphEdge,
+  type WorkflowGraphNode,
+  type WorkflowGraphNodeKind,
+  type WorkflowGraphNodeMetadata,
+  type WorkflowGraphNodeSchemas,
+  type WorkflowGraphSchemas
+} from "../schemas"
 import type { WorkflowArtifact } from "./artifact"
 import { loadWorkflowArtifact } from "./loader"
 
@@ -24,58 +35,15 @@ interface SchemaAst {
   readonly literal?: unknown
 }
 
-export type WorkflowGraphNodeKind = OrchestrationKind | "start" | "end" | "error"
-
-export interface WorkflowGraphSchemas {
-  readonly input?: unknown
-  readonly output?: unknown
-  readonly errors?: unknown
-}
-
-export interface WorkflowGraphNodeSchemas extends WorkflowGraphSchemas {
-  readonly signal?: unknown
-}
-
-export interface WorkflowGraphNode {
-  readonly id: string
-  readonly kind: WorkflowGraphNodeKind
-  readonly label: string
-  readonly invocation?: number
-  readonly repeated: boolean
-  readonly description?: string
-  readonly schemas?: WorkflowGraphNodeSchemas
-  readonly metadata: Record<string, unknown>
-}
-
-export interface WorkflowGraphEdge {
-  readonly id: string
-  readonly source: string
-  readonly target: string
-  readonly label?: string
-}
-
-export interface WorkflowGraph {
-  readonly workflowName: string
-  readonly version: number
-  readonly engineName?: string
-  readonly sourceHash?: string
-  readonly schemas?: WorkflowGraphSchemas
-  readonly nodes: ReadonlyArray<WorkflowGraphNode>
-  readonly edges: ReadonlyArray<WorkflowGraphEdge>
-  readonly calls: ReadonlyArray<{
-    readonly kind: OrchestrationKind
-    readonly name: string
-    readonly counter: number
-    readonly branches?: number
-  }>
-  readonly diagnostics: ReadonlyArray<string>
-}
-
-export interface WorkflowArtifactGraph {
-  readonly artifact: WorkflowArtifact
-  readonly exportName?: string
-  readonly graph?: WorkflowGraph
-  readonly diagnostics: ReadonlyArray<string>
+export type {
+  WorkflowArtifactGraph,
+  WorkflowGraph,
+  WorkflowGraphEdge,
+  WorkflowGraphNode,
+  WorkflowGraphNodeKind,
+  WorkflowGraphNodeMetadata,
+  WorkflowGraphNodeSchemas,
+  WorkflowGraphSchemas
 }
 
 export interface WorkflowGraphOptions<I = unknown> {
@@ -93,57 +61,98 @@ const nodeId = (kind: WorkflowGraphNodeKind, name: string, invocation: number): 
 const callKey = (call: OrchestrationCall): string =>
   `${call.kind}:${call.name}:${call.counter}`
 
-const jsonSchemaFor = (schema: unknown): unknown | undefined => {
-  try {
-    const document = Schema.toJsonSchemaDocument(schema as never) as { readonly schema?: unknown }
-    return document.schema
-  } catch {
-    return undefined
-  }
+const jsonSchemaFor = jsonSchemaOf
+
+const objectWithOptionalSchemas = (schemas: WorkflowGraphNodeSchemas): WorkflowGraphNodeSchemas | undefined =>
+  schemas.input === undefined &&
+    schemas.output === undefined &&
+    schemas.errors === undefined &&
+    schemas.signal === undefined
+    ? undefined
+    : schemas
+
+const workflowSchemas = (workflow: DefinedWorkflow): WorkflowGraphSchemas | undefined => {
+  const input = jsonSchemaFor(workflow.input)
+  const output = jsonSchemaFor(workflow.output)
+  const errors = jsonSchemaFor(workflow.errors)
+  return objectWithOptionalSchemas({
+    ...(input === undefined ? {} : { input }),
+    ...(output === undefined ? {} : { output }),
+    ...(errors === undefined ? {} : { errors })
+  })
 }
 
-const objectWithOptionalSchemas = (
-  schemas: WorkflowGraphNodeSchemas
-): WorkflowGraphNodeSchemas | undefined => {
-  const entries = Object.entries(schemas).filter(([, value]) => value !== undefined)
-  return entries.length === 0
-    ? undefined
-    : Object.fromEntries(entries) as WorkflowGraphNodeSchemas
+const stepSchemas = (step: Step<any, any, any>): WorkflowGraphNodeSchemas | undefined => {
+  const input = jsonSchemaFor(step.input)
+  const output = jsonSchemaFor(step.output)
+  const errors = jsonSchemaFor(step.errors)
+  return objectWithOptionalSchemas({
+    ...(input === undefined ? {} : { input }),
+    ...(output === undefined ? {} : { output }),
+    ...(errors === undefined ? {} : { errors })
+  })
 }
 
-const workflowSchemas = (workflow: DefinedWorkflow): WorkflowGraphSchemas | undefined =>
-  objectWithOptionalSchemas({
-    input: jsonSchemaFor(workflow.input),
-    output: jsonSchemaFor(workflow.output),
-    errors: jsonSchemaFor(workflow.errors)
-  })
-
-const stepSchemas = (step: Step<any, any, any>): WorkflowGraphNodeSchemas | undefined =>
-  objectWithOptionalSchemas({
-    input: jsonSchemaFor(step.input),
-    output: jsonSchemaFor(step.output),
-    errors: jsonSchemaFor(step.errors)
-  })
-
-const describeStep = (step: Step<any, any, any>): Record<string, unknown> => ({
-  retry: step.retry,
-  concurrency: step.concurrency === undefined
-    ? undefined
+const describeStep = (step: Step<any, any, any>): WorkflowGraphNodeMetadata => ({
+  ...(step.retry === undefined ? {} : { retry: step.retry }),
+  ...(step.concurrency === undefined
+    ? {}
     : {
-        limit: step.concurrency.limit,
-        keyed: step.concurrency.key !== undefined
-      },
+        concurrency: {
+          limit: step.concurrency.limit,
+          keyed: step.concurrency.key !== undefined
+        }
+      }),
   compensates: step.compensate !== undefined
 })
 
-const isRecord = (value: unknown): value is Record<PropertyKey, unknown> =>
-  typeof value === "object" && value !== null
-
 const schemaAst = (schema: unknown): SchemaAst | undefined =>
-  isRecord(schema) && isRecord(schema.ast) ? schema.ast as SchemaAst : undefined
+  Schema.isSchema(schema) ? schema.ast as SchemaAst : undefined
 
 export const sampleValueForSchema = (schema: unknown): unknown =>
   sampleValueFromAst(schemaAst(schema), new Set())
+
+/** Sample value for a JSON Schema document (e.g. PendingSignal.payloadSchema),
+ *  mirroring the placeholders of sampleValueForSchema. */
+export const sampleValueForJsonSchema = (schema: JsonSchema, depth = 0): unknown => {
+  if (depth > 8) {
+    return {}
+  }
+  if (schema.const !== undefined) {
+    return schema.const
+  }
+  if (schema.enum !== undefined && schema.enum.length > 0) {
+    return schema.enum[0]
+  }
+  const alternative = schema.anyOf?.[0] ?? schema.oneOf?.[0]
+  if (alternative !== undefined) {
+    return sampleValueForJsonSchema(alternative, depth + 1)
+  }
+  const type = Array.isArray(schema.type) ? schema.type[0] : schema.type
+  switch (type) {
+    case "string":
+      return "sample"
+    case "number":
+    case "integer":
+      return 1
+    case "boolean":
+      return true
+    case "null":
+      return null
+    case "array":
+      return schema.items === undefined ? [] : [sampleValueForJsonSchema(schema.items, depth + 1)]
+    case "object": {
+      const properties = schema.properties ?? {}
+      const required = schema.required
+      const entries = Object.entries(properties)
+        .filter(([key]) => required === undefined || required.includes(key))
+        .map(([key, property]) => [key, sampleValueForJsonSchema(property, depth + 1)])
+      return Object.fromEntries(entries)
+    }
+    default:
+      return {}
+  }
+}
 
 // `seen` holds the current recursion path only: schema AST nodes are shared
 // (t.string is a singleton), so a persistent visited-set would misread the
@@ -203,7 +212,7 @@ const sampleValueFromAstUnguarded = (ast: SchemaAst, seen: Set<SchemaAst>): unkn
 }
 
 const metadataFromEvents = (events: ReadonlyArray<WorkflowEvent>) => {
-  const metadata = new Map<string, Record<string, unknown>>()
+  const metadata = new Map<string, WorkflowGraphNodeMetadata>()
 
   for (const event of events) {
     switch (event.type) {
@@ -246,15 +255,15 @@ const metadataFromEvents = (events: ReadonlyArray<WorkflowEvent>) => {
 const graphNodeForCall = (
   call: OrchestrationCall,
   options: {
-    readonly eventMetadata: ReadonlyMap<string, Record<string, unknown>>
-    readonly steps: ReadonlyMap<string, Record<string, unknown>>
+    readonly eventMetadata: ReadonlyMap<string, WorkflowGraphNodeMetadata>
+    readonly steps: ReadonlyMap<string, WorkflowGraphNodeMetadata>
     readonly schemas: ReadonlyMap<string, WorkflowGraphNodeSchemas>
     readonly nameCounts: ReadonlyMap<string, number>
   }
 ): WorkflowGraphNode => {
   const id = nodeId(call.kind, call.name, call.counter)
   const schemas = options.schemas.get(id)
-  const metadata: Record<string, unknown> = {
+  const metadata: WorkflowGraphNodeMetadata = {
     ...options.eventMetadata.get(id),
     ...options.steps.get(id),
     ...(call.branches === undefined ? {} : { branches: call.branches })
@@ -280,7 +289,7 @@ const graphFromTrace = (options: {
   readonly workflow: DefinedWorkflow
   readonly determinism: InMemoryDeterminismState
   readonly events: ReadonlyArray<WorkflowEvent>
-  readonly steps: ReadonlyMap<string, Record<string, unknown>>
+    readonly steps: ReadonlyMap<string, WorkflowGraphNodeMetadata>
   readonly schemas: ReadonlyMap<string, WorkflowGraphNodeSchemas>
   readonly diagnostics: ReadonlyArray<string>
   readonly maxNodes: number
@@ -406,7 +415,7 @@ export const workflowToGraph = async <I, O, E>(
 ): Promise<WorkflowGraph> => {
   const determinism = createInMemoryDeterminismState()
   const events: WorkflowEvent[] = []
-  const steps = new Map<string, Record<string, unknown>>()
+  const steps = new Map<string, WorkflowGraphNodeMetadata>()
   const schemas = new Map<string, WorkflowGraphNodeSchemas>()
   const signalCounts = new Map<string, number>()
   const diagnostics: string[] = []
@@ -417,9 +426,7 @@ export const workflowToGraph = async <I, O, E>(
       executionId: `graph-${workflow.name}-${workflow.version}`,
       determinism,
       onEvent: (event) => {
-        if (isRecord(event) && typeof event.type === "string") {
-          events.push(event as WorkflowEvent)
-        }
+        events.push(event)
       },
       stepExecutor: ({ step, invocation }) => {
         const id = nodeId("step", step.name, invocation)

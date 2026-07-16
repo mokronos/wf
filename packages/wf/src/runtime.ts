@@ -28,6 +28,10 @@ export interface WorkflowRuntimeOptions {
    *  Only the reference string is ever persisted. */
   readonly secrets?: SecretResolver
   readonly sqliteBusyTimeoutMs?: number
+  /** How often the engine polls storage for due timers and undelivered
+   *  messages. Durable timers (signal timeouts, long sleeps) can fire up to
+   *  one interval late. Defaults to 250ms. */
+  readonly timerPollIntervalMs?: number
 }
 
 export interface WorkflowRuntime {
@@ -55,6 +59,12 @@ export interface WorkflowRuntime {
     readonly workflow: DefinedWorkflow
     readonly executionId: string
   }): Promise<void>
+  /** Wake a suspended execution so it replays to its suspension point.
+   *  No-op unless the run is recorded as suspended. */
+  resume(options: {
+    readonly workflow: DefinedWorkflow
+    readonly executionId: string
+  }): Promise<void>
 }
 
 export class WorkflowVersionConflictError extends Error {
@@ -75,9 +85,13 @@ const defaultEngineDatabasePath = () => path.join(process.cwd(), ".wf", "engine.
 export const makeEngineLayer = (options: {
   readonly databasePath?: string
   readonly sqliteBusyTimeoutMs?: number
+  readonly timerPollIntervalMs?: number
 } = {}) => {
   const databasePath = path.resolve(options.databasePath ?? defaultEngineDatabasePath())
   const sqliteBusyTimeoutMs = Math.max(0, Math.trunc(options.sqliteBusyTimeoutMs ?? 5000))
+  // The cluster default is 10 seconds, which delays every durable timer
+  // (signal timeout, long sleep) by up to that long on a single-node engine.
+  const timerPollIntervalMs = Math.max(10, Math.trunc(options.timerPollIntervalMs ?? 250))
   mkdirSync(path.dirname(databasePath), { recursive: true })
   const sqliteLayer = SqliteClient.layer({ filename: databasePath })
   const configuredSqliteLayer = Layer.effectDiscard(Effect.gen(function* () {
@@ -86,7 +100,9 @@ export const makeEngineLayer = (options: {
   })).pipe(Layer.provideMerge(sqliteLayer))
 
   return ClusterWorkflowEngine.layer.pipe(
-    Layer.provideMerge(SingleRunner.layer()),
+    Layer.provideMerge(SingleRunner.layer({
+      shardingConfig: { entityMessagePollInterval: timerPollIntervalMs }
+    })),
     Layer.provide(configuredSqliteLayer)
   )
 }
@@ -103,7 +119,8 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
       options.backend === "sqlite"
         ? makeEngineLayer({
             ...(databasePath === undefined ? {} : { databasePath }),
-            ...(options.sqliteBusyTimeoutMs === undefined ? {} : { sqliteBusyTimeoutMs: options.sqliteBusyTimeoutMs })
+            ...(options.sqliteBusyTimeoutMs === undefined ? {} : { sqliteBusyTimeoutMs: options.sqliteBusyTimeoutMs }),
+            ...(options.timerPollIntervalMs === undefined ? {} : { timerPollIntervalMs: options.timerPollIntervalMs })
           })
         : WorkflowEngine.layerMemory
     return workflowLayers.reduce((layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer), base)
@@ -236,6 +253,14 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
       const effect = Effect.gen(function* () {
         const engine = yield* WorkflowEngine.WorkflowEngine
         yield* engine.interrupt(workflow.workflow, executionId)
+      })
+      return runEffect(effect)
+    },
+
+    resume({ workflow, executionId }) {
+      const effect = Effect.gen(function* () {
+        const engine = yield* WorkflowEngine.WorkflowEngine
+        yield* engine.resume(workflow.workflow, executionId)
       })
       return runEffect(effect)
     }

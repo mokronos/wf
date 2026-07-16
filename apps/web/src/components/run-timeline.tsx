@@ -2,7 +2,7 @@ import { AlertTriangle, Braces, CircleDot, Clock3, GitCommitVertical, Radio, Rot
 
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { WorkflowRunEventRecord } from "@/lib/api"
+import type { WorkflowEvent, WorkflowHistoryEvent, WorkflowRunEventRecord } from "@/lib/api"
 import { compactDate, prettyJson } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -33,34 +33,65 @@ const eventFamily = (type: string): EventFamily => {
   return "other"
 }
 
-const asRecord = (value: unknown): Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
+const scalar = (value: unknown): string | undefined =>
+  typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ? String(value)
+    : undefined
 
-const field = (event: Record<string, unknown>, keys: ReadonlyArray<string>): string | undefined => {
-  for (const key of keys) {
-    const value = event[key]
-    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-      return String(value)
-    }
+const isWorkflowEvent = (event: WorkflowHistoryEvent): event is WorkflowEvent => {
+  switch (event.type) {
+    case "execution.started":
+    case "signal.delivered":
+    case "execution.cancelled":
+      return false
+    default:
+      return true
   }
-  return undefined
+}
+
+const eventName = (event: WorkflowHistoryEvent): string | undefined => {
+  switch (event.type) {
+    case "workflow.started":
+    case "workflow.completed":
+    case "workflow.failed":
+    case "execution.started":
+      return event.workflowName
+    case "step.started":
+    case "step.completed":
+    case "step.failed":
+    case "compensation.started":
+    case "compensation.completed":
+    case "compensation.failed":
+      return event.stepName
+    case "cancellation.received":
+    case "execution.cancelled":
+      return undefined
+    case "signal.delivered":
+      return event.name
+    default:
+      return event.name
+  }
 }
 
 const payloadChips = (record: WorkflowRunEventRecord): ReadonlyArray<[string, string]> => {
-  const event = asRecord(record.event)
+  const event = record.event
   const chips: Array<[string, string]> = []
-  const name = field(event, ["stepName", "name", "workflowName"])
-  const attempt = field(event, ["attempt"])
-  const invocation = field(event, ["invocation"])
-  const reason = field(event, ["reason"])
-  const duration = field(event, ["duration", "timeout"])
+  const name = eventName(event)
+  const attempt = isWorkflowEvent(event) && "attempt" in event ? scalar(event.attempt) : undefined
+  const invocation = isWorkflowEvent(event) && "invocation" in event ? scalar(event.invocation) : undefined
+  const reason = isWorkflowEvent(event) && "reason" in event ? scalar(event.reason) : undefined
+  const duration = isWorkflowEvent(event) && "duration" in event
+    ? scalar(event.duration)
+    : isWorkflowEvent(event) && "timeout" in event
+      ? scalar(event.timeout)
+      : undefined
   if (name !== undefined) chips.push(["name", name])
   if (attempt !== undefined) chips.push(["attempt", attempt])
   if (invocation !== undefined) chips.push(["invocation", invocation])
   if (duration !== undefined) chips.push(["duration", duration])
   if (reason !== undefined) chips.push(["reason", reason])
-  if (event.payload !== undefined) chips.push(["payload", prettyJson(event.payload)])
-  if (event.error !== undefined) chips.push(["error", prettyJson(event.error)])
+  if ("payload" in event && event.payload !== undefined) chips.push(["payload", prettyJson(event.payload)])
+  if ("error" in event && event.error !== undefined) chips.push(["error", prettyJson(event.error)])
   return chips
 }
 

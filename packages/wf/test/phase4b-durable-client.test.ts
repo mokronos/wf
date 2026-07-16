@@ -258,6 +258,116 @@ describe("Phase 4b durable workflow client", () => {
     })
   })
 
+  test("sqlite backend rejects invalid signal payloads at delivery without poisoning the run", async () => {
+    const workflow = defineWorkflow({
+      name: "sqliteInvalidSignal",
+      version: 1,
+      input: Schema.Struct({}),
+      output: Schema.String,
+      run: function* (_, ctx) {
+        const signal = yield* ctx.waitForSignal("approval", Schema.Struct({ approved: Schema.Boolean }))
+        return signal.type === "signal" && signal.value.approved ? "approved" : "rejected"
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const handle = await client.start(workflow, {})
+    expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
+    await waitForHistoryEvent(client, handle.executionId, "signal.waiting")
+
+    await expect(
+      client.signal(handle.executionId, "approval", { approved: "yes-please" })
+    ).rejects.toThrow("Signal payload failed schema validation")
+
+    // The run must still be waiting and a valid delivery must succeed.
+    expect(await client.status(handle.executionId)).toBe("suspended")
+    await client.signal(handle.executionId, "approval", { approved: true })
+    await expect(withTimeout(client.result(handle.executionId), 5_000)).resolves.toEqual({
+      type: "completed",
+      value: "approved"
+    })
+  })
+
+  test("sqlite backend fires durable signal timeouts promptly (poll interval regression)", async () => {
+    const workflow = defineWorkflow({
+      name: "sqliteTimeoutLatency",
+      version: 1,
+      input: Schema.Struct({}),
+      output: Schema.String,
+      run: function* (_, ctx) {
+        const signal = yield* ctx.waitForSignal("approval", Schema.Struct({ approved: Schema.Boolean }), {
+          timeout: "300 millis"
+        })
+        return signal.type
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    runtime.register([workflow])
+    const client = createWorkflowClient(runtime)
+
+    const startedAt = Date.now()
+    const handle = await client.start(workflow, {})
+    // The cluster default poll interval is 10s; the wf engine overrides it so
+    // durable timers fire with sub-second latency.
+    await expect(withTimeout(client.result(handle.executionId), 5_000)).resolves.toEqual({
+      type: "completed",
+      value: "timeout"
+    })
+    expect(Date.now() - startedAt).toBeLessThan(5_000)
+  })
+
+  test("sqlite backend resume replay does not duplicate history events", async () => {
+    const step = defineStep({
+      name: "sqliteReplayStep",
+      input: Schema.Struct({}),
+      output: Schema.String,
+      execute: async () => "done"
+    })
+    const workflow = defineWorkflow({
+      name: "sqliteReplayHistory",
+      version: 1,
+      input: Schema.Struct({}),
+      output: Schema.String,
+      run: function* (_, ctx) {
+        yield* ctx.run(step, {})
+        yield* ctx.sleep("10 millis", "pause")
+        const signal = yield* ctx.waitForSignal("approval", Schema.Struct({ approved: Schema.Boolean }))
+        return signal.type
+      }
+    })
+    const databasePath = dbPath()
+    const runtime1 = createWorkflowRuntime({ backend: "sqlite", databasePath })
+    runtime1.register([workflow])
+    const client1 = createWorkflowClient(runtime1)
+
+    const handle = await client1.start(workflow, {})
+    await waitForHistoryEvent(client1, handle.executionId, "signal.waiting")
+
+    // Resuming from a second runtime over the same file replays the workflow
+    // body; replay re-emissions must not be recorded twice.
+    const runtime2 = createWorkflowRuntime({ backend: "sqlite", databasePath })
+    runtime2.register([workflow])
+    const client2 = createWorkflowClient(runtime2)
+    await client2.signal(handle.executionId, "approval", { approved: true })
+    await expect(client2.result(handle.executionId)).resolves.toEqual({
+      type: "completed",
+      value: "signal"
+    })
+
+    const history = await client2.history(handle.executionId)
+    const countOf = (type: string) => history.filter((record) => record.event.type === type).length
+    expect(countOf("workflow.started")).toBe(1)
+    expect(countOf("step.started")).toBe(1)
+    expect(countOf("step.completed")).toBe(1)
+    expect(countOf("sleep.started")).toBe(1)
+    expect(countOf("sleep.completed")).toBe(1)
+    expect(countOf("signal.waiting")).toBe(1)
+    expect(countOf("signal.received")).toBe(1)
+    expect(countOf("workflow.completed")).toBe(1)
+  })
+
   test("sqlite backend retries exponential step failures to completion", async () => {
     let attempts = 0
     const flaky = defineStep({

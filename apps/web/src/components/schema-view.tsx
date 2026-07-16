@@ -1,27 +1,20 @@
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import { decodeJsonSchema, type JsonSchema } from "wf/schemas"
 
-type JsonRecord = Record<string, unknown>
-
-const isRecord = (value: unknown): value is JsonRecord =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
-
-const isNumberEncoding = (items: ReadonlyArray<unknown>): boolean => {
+const isNumberEncoding = (items: ReadonlyArray<JsonSchema>): boolean => {
   if (items.length !== 4) {
     return false
   }
-  const types = items.map((item) => isRecord(item) ? item.type : undefined)
-  const consts = items.map((item) => isRecord(item) ? item.const : undefined)
+  const types = items.map((item) => item.type)
+  const consts = items.map((item) => item.const)
   return types.includes("number") &&
     consts.includes("NaN") &&
     consts.includes("Infinity") &&
     consts.includes("-Infinity")
 }
 
-const simplifySchema = (schema: unknown): unknown => {
-  if (!isRecord(schema)) {
-    return schema
-  }
+const simplifySchema = (schema: JsonSchema): JsonSchema => {
   const anyOf = Array.isArray(schema.anyOf) ? schema.anyOf : undefined
   if (anyOf !== undefined && isNumberEncoding(anyOf)) {
     return { type: "number" }
@@ -29,11 +22,11 @@ const simplifySchema = (schema: unknown): unknown => {
   return schema
 }
 
-const typeLabel = (schema: unknown): string => {
-  const value = simplifySchema(schema)
-  if (!isRecord(value)) {
+const typeLabel = (schema: JsonSchema | undefined): string => {
+  if (schema === undefined) {
     return "unknown"
   }
+  const value = simplifySchema(schema)
   if (typeof value.const === "string" || typeof value.const === "number" || typeof value.const === "boolean") {
     return JSON.stringify(value.const)
   }
@@ -65,16 +58,13 @@ function SchemaNode({
   depth = 0
 }: {
   readonly name?: string
-  readonly schema: unknown
+  readonly schema: JsonSchema
   readonly required?: boolean
   readonly depth?: number
 }) {
   const value = simplifySchema(schema)
-  if (!isRecord(value)) {
-    return <pre className="schema-fallback">{JSON.stringify(schema, null, 2)}</pre>
-  }
 
-  const properties = isRecord(value.properties) ? value.properties : undefined
+  const properties = value.properties
   const requiredKeys = new Set(Array.isArray(value.required) ? value.required.filter((item) => typeof item === "string") : [])
   const union = Array.isArray(value.anyOf) ? value.anyOf : Array.isArray(value.oneOf) ? value.oneOf : undefined
 
@@ -115,7 +105,7 @@ function SchemaNode({
           {required ? <span className="schema-required">required</span> : null}
         </div>
         <div className="schema-children">
-          <SchemaNode name="item" schema={value.items} depth={depth + 1} />
+          <SchemaNode name="item" schema={value.items ?? {}} depth={depth + 1} />
         </div>
       </div>
     )
@@ -154,9 +144,20 @@ function SchemaNode({
 }
 
 export function SchemaView({ schema }: { readonly schema: unknown }) {
+  let parsed: JsonSchema
+  try {
+    parsed = decodeJsonSchema(schema)
+  } catch {
+    return (
+      <div className="schema-view">
+        <pre className="schema-fallback">{JSON.stringify(schema, null, 2)}</pre>
+      </div>
+    )
+  }
+
   return (
     <div className="schema-view">
-      <SchemaNode schema={schema} />
+      <SchemaNode schema={parsed} />
     </div>
   )
 }

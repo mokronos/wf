@@ -52,9 +52,9 @@ const fixtureUrl = new URL("./fixtures/timeline.json", import.meta.url)
 
 let config: AdapterConfig = {
   zenBaseUrl: "https://opencode.ai/zen/v1",
-  zenModel: process.env.ZEN_MODEL ?? "minimax-m2.5-free",
-  xUserId: process.env.X_USER_ID,
-  enableRealX: process.env.X_ENGAGEMENT_REAL_X === "1"
+  zenModel: process.env["ZEN_MODEL"] ?? "minimax-m2.5-free",
+  xUserId: process.env["X_USER_ID"],
+  enableRealX: process.env["X_ENGAGEMENT_REAL_X"] === "1"
 }
 
 export const configureXEngagementAdapters = (next: AdapterConfig) => {
@@ -64,9 +64,9 @@ export const configureXEngagementAdapters = (next: AdapterConfig) => {
 export const resetXEngagementAdapters = () => {
   config = {
     zenBaseUrl: "https://opencode.ai/zen/v1",
-    zenModel: process.env.ZEN_MODEL ?? "minimax-m2.5-free",
-    xUserId: process.env.X_USER_ID,
-    enableRealX: process.env.X_ENGAGEMENT_REAL_X === "1"
+    zenModel: process.env["ZEN_MODEL"] ?? "minimax-m2.5-free",
+    xUserId: process.env["X_USER_ID"],
+    enableRealX: process.env["X_ENGAGEMENT_REAL_X"] === "1"
   }
 }
 

@@ -102,8 +102,8 @@ bun run cli -- run email '{"id":"123","to":"hello@example.com"}'
 ```
 
 If a workflow suspends waiting for a signal, the command records the pending
-state, prints the signal name plus a copy-pasteable `signal` command, and exits
-0.
+state, prints the signal name, the JSON Schema of the payload it expects, and a
+copy-pasteable `signal` command with a sample payload, then exits 0.
 
 ### `signal`
 

@@ -39,9 +39,10 @@ function mermaidEsc(s: string): string {
 }
 
 function literalText(n: ts.Node | undefined): string | undefined {
-  if (!n) return
+  if (!n) return undefined
   if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) return n.text
   if (ts.isTemplateExpression(n)) return n.getText().replace(/`/g, "")
+  return undefined
 }
 
 // ── Extractor ──
@@ -64,6 +65,7 @@ function extractSteps(code: string): {
         return literalText(p.initializer)
       }
     }
+    return undefined
   }
 
   // Resolve a signal argument (an identifier) to its declared label.

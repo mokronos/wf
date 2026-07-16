@@ -16,6 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "wf": ["packages/wf/src/index.ts"],
+      "wf/schemas": ["packages/wf/src/schemas.ts"],
       "@/*": ["apps/web/src/*"]
     },
     "allowImportingTsExtensions": true,
@@ -34,15 +35,17 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
     "plugins": [
       {
         "name": "@effect/language-service"
       }
-    ],
-
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
-  }
+    ]
+  },
+  "exclude": ["apps/web/dist", "node_modules", "**/.tmp/**"]
 }

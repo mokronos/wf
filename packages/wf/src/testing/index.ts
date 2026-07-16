@@ -16,6 +16,7 @@ import type {
 } from "../sdk"
 import { Cancelled } from "../sdk"
 import { cancelSignalWaits, deliverSignal } from "../signal"
+import { ExecutionId } from "../schemas"
 
 export interface TestRuntimeOptions {
   readonly timeSkipping?: boolean
@@ -238,7 +239,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
     executions.set(id, record)
     appendHistory(record, {
       type: "execution.started",
-      executionId: id,
+      executionId: ExecutionId.make(id),
       workflowName: workflow.name,
       version: workflow.version,
       payload,
@@ -308,7 +309,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
       const compensate = opts.compensate ?? true
       appendHistory(record, {
         type: "execution.cancelled",
-        executionId,
+        executionId: ExecutionId.make(executionId),
         compensate,
         ...(opts.actor === undefined ? {} : { actor: opts.actor })
       })

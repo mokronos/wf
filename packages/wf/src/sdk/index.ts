@@ -23,6 +23,7 @@ export {
 } from "./loader"
 export type { LoadedWorkflow } from "./loader"
 export {
+  sampleValueForJsonSchema,
   sampleValueForSchema,
   workflowArtifactToGraph,
   workflowToGraph
@@ -33,9 +34,12 @@ export type {
   WorkflowGraphEdge,
   WorkflowGraphNode,
   WorkflowGraphNodeKind,
+  WorkflowGraphNodeMetadata,
   WorkflowGraphNodeSchemas,
+  WorkflowGraphSchemas,
   WorkflowGraphOptions
 } from "./graph"
+export { parseJsonText, toJsonText } from "./json"
 export { discover } from "./integrations"
 export type {
   DiscoverIntegrationsOptions,

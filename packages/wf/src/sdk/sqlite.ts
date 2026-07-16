@@ -1,6 +1,11 @@
 import { mkdirSync, readFileSync } from "node:fs"
 import path from "node:path"
-import type { WorkflowEvent } from "../events"
+import { Schema } from "effect"
+import {
+  WorkflowHistoryEvent as WorkflowHistoryEventSchema,
+  WorkflowRunEventRecord as WorkflowRunEventRecordSchema,
+  WorkflowRunRecord as WorkflowRunRecordSchema
+} from "../schemas"
 import type {
   WorkflowArtifact,
   WorkflowRepository,
@@ -90,7 +95,7 @@ const legacySourceFromEntrypoint = (rootDir: string, entrypoint: string | null |
   return readFileSync(sourcePath, "utf8")
 }
 
-const toRunRecord = (row: WorkflowRunRow): WorkflowRunRecord => ({
+const toRunRecord = (row: WorkflowRunRow): WorkflowRunRecord => Schema.decodeUnknownSync(WorkflowRunRecordSchema)({
   id: row.id,
   workflowId: row.workflow_id,
   workflowVersion: row.workflow_version,
@@ -102,12 +107,14 @@ const toRunRecord = (row: WorkflowRunRow): WorkflowRunRecord => ({
   ...optionalStringField("finishedAt", row.finished_at ?? undefined)
 })
 
-const toRunEventRecord = (row: WorkflowRunEventRow): WorkflowRunEventRecord => ({
+const toRunEventRecord = (row: WorkflowRunEventRow): WorkflowRunEventRecord => Schema.decodeUnknownSync(
+  WorkflowRunEventRecordSchema
+)({
   id: row.id,
   runId: row.run_id,
   sequence: row.sequence,
   type: row.type,
-  event: JSON.parse(row.event_json) as WorkflowEvent,
+  event: Schema.decodeUnknownSync(WorkflowHistoryEventSchema)(JSON.parse(row.event_json)),
   createdAt: row.created_at
 })
 
@@ -252,6 +259,11 @@ export const createSqliteWorkflowRepository = (
         workflow.exportName ?? null,
         workflow.createdAt ?? nowIso()
       )
+    },
+
+    async deleteWorkflow(id) {
+      const db = await dbPromise
+      db.prepare<unknown>("DELETE FROM workflows WHERE id = ?").run(id)
     },
 
     async list() {

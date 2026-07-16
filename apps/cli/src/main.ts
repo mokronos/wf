@@ -5,7 +5,9 @@ import {
   createWorkflowClient,
   createWorkflowRuntime,
   createSqliteWorkflowRepository,
-  loadWorkflowArtifact
+  loadWorkflowArtifact,
+  sampleValueForJsonSchema,
+  toJsonText
 } from "wf"
 import type {
   PendingSignal,
@@ -35,8 +37,14 @@ Examples:
   wf signal 018f6c7c-4c3b-7f12-91c8-88560b4b21a9 approval '{"approved":true}'
 `
 
-const formatError = (error: unknown): string =>
-  error instanceof Error ? error.message : String(error)
+const formatError = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message
+  }
+  // Typed workflow errors are plain objects; String() would print
+  // "[object Object]".
+  return typeof error === "object" && error !== null ? toJsonText(error) : String(error)
+}
 
 const parseJsonInput = (input: string | undefined): unknown => {
   if (input === undefined) {
@@ -97,6 +105,7 @@ const parseSignalCommandOptions = (args: ReadonlyArray<string>): SignalCommandOp
 interface CreateWorkflowOptions {
   readonly id: string
   readonly name: string
+  readonly nameProvided: boolean
   readonly source: string
   readonly version: string
   readonly force: boolean
@@ -105,6 +114,7 @@ interface CreateWorkflowOptions {
 interface RawCreateWorkflowOptions {
   readonly id: string
   readonly name: string
+  readonly nameProvided: boolean
   readonly source?: string
   readonly sourceFile?: string
   readonly version: string
@@ -122,6 +132,7 @@ const parseCreateWorkflowOptions = (
   assertWorkflowId(id)
 
   let name = `${toPascalCase(id)}Workflow`
+  let nameProvided = false
   let source: string | undefined
   let sourceFile: string | undefined
   let version = "dev"
@@ -134,6 +145,7 @@ const parseCreateWorkflowOptions = (
       case "--name":
         name = readFlagValue(args, ++index, "--name")
         assertWorkflowName(name)
+        nameProvided = true
         break
 
       case "--source":
@@ -164,6 +176,7 @@ const parseCreateWorkflowOptions = (
   return {
     id,
     name,
+    nameProvided,
     ...(source === undefined ? {} : { source }),
     ...(sourceFile === undefined ? {} : { sourceFile }),
     version,
@@ -184,6 +197,7 @@ const parseCreateWorkflowOptionsWithSource = async (
   return {
     id: options.id,
     name: options.name,
+    nameProvided: options.nameProvided,
     source,
     version: options.version,
     force: options.force
@@ -302,16 +316,29 @@ const printRunResult = (result: unknown) => {
   console.log(JSON.stringify(result, null, 2))
 }
 
+const samplePayloadFor = (signal: PendingSignal): unknown =>
+  signal.payloadSchema === undefined ? {} : sampleValueForJsonSchema(signal.payloadSchema)
+
+const describePendingSignal = (runId: string, signal: PendingSignal): string => {
+  const schemaLine = signal.payloadSchema === undefined
+    ? ""
+    : `\n  expected payload schema: ${toJsonText(signal.payloadSchema)}`
+  return `Currently waiting for signal "${signal.name}".${schemaLine}\n  deliver with: bun run cli -- signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`
+}
+
 const printPendingSignalHint = (runId: string, pendingSignals: ReadonlyArray<PendingSignal>) => {
   const names = pendingSignals
     .map((signal) => signal.timeout === undefined
       ? signal.name
       : `${signal.name} timeout=${stringifyEventValue(signal.timeout)}`)
     .join(", ")
-  console.error(`[signal] waiting for ${names}`)
+  console.error(`${eventTag("signal")} ${yellow("waiting")} for ${bold(names)}`)
   const signal = pendingSignals[0]
   if (signal !== undefined) {
-    console.error(`Resume with: wf signal ${runId} ${signal.name} '{}'`)
+    if (signal.payloadSchema !== undefined) {
+      console.error(`${eventTag("signal")} ${bold(signal.name)} expects payload schema: ${dim(toJsonText(signal.payloadSchema))}`)
+    }
+    console.error(`${bold("Resume with:")} bun run cli -- signal ${runId} ${signal.name} '${toJsonText(samplePayloadFor(signal))}'`)
   }
 }
 
@@ -353,121 +380,181 @@ const stringifyEventValue = (value: unknown): string => {
   }
 
   try {
-    return JSON.stringify(value)
+    return toJsonText(value)
   } catch {
     return String(value)
   }
 }
 
-const formatReason = (reason: string | undefined): string =>
-  reason === undefined ? "" : ` reason=${stringifyEventValue(reason)}`
+// --- colored event output ---------------------------------------------------
+// Category tints the [tag], the verb carries the outcome (green/red/yellow),
+// detail keys are dimmed. Colors turn off for non-TTY stderr, NO_COLOR, or
+// TERM=dumb, so piped output stays plain text.
+
+const colorEnabled = process.stderr.isTTY === true &&
+  process.env["NO_COLOR"] === undefined &&
+  process.env["TERM"] !== "dumb"
+
+const paint = (code: string) => (text: string): string =>
+  colorEnabled ? `\u001B[${code}m${text}\u001B[0m` : text
+
+const dim = paint("2")
+const bold = paint("1")
+const red = paint("31")
+const green = paint("32")
+const yellow = paint("33")
+
+type EventCategory = "run" | "workflow" | "step" | "code" | "sleep" | "signal" | "compensation" | "all"
+
+const categoryPaint: Record<EventCategory, (text: string) => string> = {
+  run: paint("1;32"),
+  workflow: paint("1;35"),
+  step: paint("1;34"),
+  code: paint("1;36"),
+  sleep: paint("1;90"),
+  signal: paint("1;33"),
+  compensation: paint("1;31"),
+  all: paint("1;94")
+}
+
+const eventTag = (category: EventCategory): string => categoryPaint[category](`[${category}]`)
+
+const paintVerb = (verb: string): string => {
+  switch (verb) {
+    case "completed":
+    case "received":
+      return green(verb)
+    case "failed":
+    case "timeout":
+      return red(verb)
+    case "waiting":
+      return yellow(verb)
+    default:
+      return verb
+  }
+}
+
+type EventDetail = readonly [key: string, value: string]
+
+const printEventLine = (
+  category: EventCategory,
+  verb: string,
+  subject: string,
+  details: ReadonlyArray<EventDetail> = []
+) => {
+  const detailText = details.map(([key, value]) => ` ${dim(`${key}=`)}${value}`).join("")
+  console.error(`${eventTag(category)} ${paintVerb(verb)} ${bold(subject)}${detailText}`)
+}
+
+const errorDetail = (error: unknown): EventDetail => ["error", red(stringifyEventValue(error))]
+
+const reasonDetails = (reason: string | undefined): ReadonlyArray<EventDetail> =>
+  reason === undefined ? [] : [["reason", stringifyEventValue(reason)]]
 
 const printWorkflowEvent = (event: WorkflowEvent) => {
   switch (event.type) {
     case "workflow.started":
-      console.error(
-        `[workflow] started ${event.workflowName} input=${stringifyEventValue(event.payload)}`
-      )
+      printEventLine("workflow", "started", event.workflowName, [
+        ["input", stringifyEventValue(event.payload)]
+      ])
       return
 
     case "workflow.completed":
-      console.error(
-        `[workflow] completed ${event.workflowName} result=${stringifyEventValue(event.result)}`
-      )
+      printEventLine("workflow", "completed", event.workflowName, [
+        ["result", stringifyEventValue(event.result)]
+      ])
       return
 
     case "workflow.failed":
-      console.error(
-        `[workflow] failed ${event.workflowName} error=${stringifyEventValue(event.error)}`
-      )
+      printEventLine("workflow", "failed", event.workflowName, [errorDetail(event.error)])
       return
 
     case "step.started":
-      console.error(`[step] started ${event.activityName} attempt=${event.attempt}`)
+      printEventLine("step", "started", event.activityName, [["attempt", String(event.attempt)]])
       return
 
     case "step.completed":
-      console.error(
-        `[step] completed ${event.activityName} attempt=${event.attempt} result=${stringifyEventValue(event.result)}`
-      )
+      printEventLine("step", "completed", event.activityName, [
+        ["attempt", String(event.attempt)],
+        ["result", stringifyEventValue(event.result)]
+      ])
       return
 
     case "step.failed":
-      console.error(
-        `[step] failed ${event.activityName} error=${stringifyEventValue(event.error)}`
-      )
+      printEventLine("step", "failed", event.activityName, [errorDetail(event.error)])
       return
 
     case "compensation.started":
-      console.error(
-        `[compensation] started ${event.activityName} reason=${stringifyEventValue(event.reason)}`
-      )
+      printEventLine("compensation", "started", event.activityName, [
+        ["reason", stringifyEventValue(event.reason)]
+      ])
       return
 
     case "compensation.completed":
-      console.error(`[compensation] completed ${event.activityName}`)
+      printEventLine("compensation", "completed", event.activityName)
       return
 
     case "compensation.failed":
-      console.error(
-        `[compensation] failed ${event.activityName} error=${stringifyEventValue(event.error)}`
-      )
+      printEventLine("compensation", "failed", event.activityName, [errorDetail(event.error)])
       return
 
     case "sleep.started":
-      console.error(
-        `[sleep] started ${event.activityName} duration=${stringifyEventValue(event.duration)}`
-      )
+      printEventLine("sleep", "started", event.activityName, [
+        ["duration", stringifyEventValue(event.duration)]
+      ])
       return
 
     case "sleep.completed":
-      console.error(`[sleep] completed ${event.activityName}`)
+      printEventLine("sleep", "completed", event.activityName)
       return
 
     case "signal.waiting":
-      console.error(`[signal] waiting ${event.activityName}`)
+      printEventLine("signal", "waiting", event.activityName)
       return
 
     case "signal.received":
-      console.error(
-        `[signal] received ${event.activityName} payload=${stringifyEventValue(event.payload)}`
-      )
+      printEventLine("signal", "received", event.activityName, [
+        ["payload", stringifyEventValue(event.payload)]
+      ])
       return
 
     case "signal.timeout":
-      console.error(
-        `[signal] timeout ${event.activityName} timeout=${stringifyEventValue(event.timeout)}`
-      )
+      printEventLine("signal", "timeout", event.activityName, [
+        ["timeout", stringifyEventValue(event.timeout)]
+      ])
       return
 
     case "code.started":
-      console.error(`[code] started ${event.activityName}${formatReason(event.reason)}`)
+      printEventLine("code", "started", event.activityName, reasonDetails(event.reason))
       return
 
     case "code.completed":
-      console.error(
-        `[code] completed ${event.activityName}${formatReason(event.reason)} result=${stringifyEventValue(event.result)}`
-      )
+      printEventLine("code", "completed", event.activityName, [
+        ...reasonDetails(event.reason),
+        ["result", stringifyEventValue(event.result)]
+      ])
       return
 
     case "code.failed":
-      console.error(
-        `[code] failed ${event.activityName}${formatReason(event.reason)} error=${stringifyEventValue(event.error)}`
-      )
+      printEventLine("code", "failed", event.activityName, [
+        ...reasonDetails(event.reason),
+        errorDetail(event.error)
+      ])
       return
 
     case "all.started":
-      console.error(`[all] started ${event.activityName} branches=${event.branches}`)
+      printEventLine("all", "started", event.activityName, [["branches", String(event.branches)]])
       return
 
     case "all.completed":
-      console.error(`[all] completed ${event.activityName} branches=${event.branches}`)
+      printEventLine("all", "completed", event.activityName, [["branches", String(event.branches)]])
       return
 
     case "all.failed":
-      console.error(
-        `[all] failed ${event.activityName} branches=${event.branches} error=${stringifyEventValue(event.error)}`
-      )
+      printEventLine("all", "failed", event.activityName, [
+        ["branches", String(event.branches)],
+        errorDetail(event.error)
+      ])
       return
   }
 }
@@ -576,13 +663,31 @@ const main = async () => {
         throw new Error(`Workflow id already exists: ${options.id}. Use --force to update it.`)
       }
 
-      const workflow: WorkflowArtifact = {
+      // Resolve the actual workflow export from the source instead of
+      // assuming the id-derived name — imported files usually export a
+      // differently named workflow. --name still pins the export explicitly
+      // (needed when a file exports several workflows). This also validates
+      // the source at create time instead of on first run.
+      const loaded = await loadWorkflowArtifact({
         id: options.id,
         name: options.name,
         version: options.version,
         source: options.source,
-        exportName: options.name,
+        ...(options.nameProvided ? { exportName: options.name } : {})
+      })
+
+      const workflow: WorkflowArtifact = {
+        id: options.id,
+        name: options.nameProvided ? options.name : loaded.workflow.name,
+        version: options.version,
+        source: options.source,
+        exportName: loaded.exportName,
         createdAt: new Date().toISOString()
+      }
+      if (existingWorkflow !== undefined) {
+        // The catalog is keyed by (name, version); replacing an id whose
+        // detected name changed must not leave the old row behind.
+        await repository.deleteWorkflow(options.id)
       }
       await repository.upsertWorkflow(workflow)
       printCreatedWorkflow(workflow)
@@ -624,7 +729,7 @@ const main = async () => {
       const input = parseJsonInput(rawInput)
       const { client } = createEngineBackedClient(rootDir)
       const handle = await client.start(loaded.workflow, input)
-      console.error(`[run] id ${handle.executionId}`)
+      console.error(`${eventTag("run")} id ${bold(handle.executionId)}`)
       await repository.startRun({ id: handle.executionId, workflow: artifact, input })
 
       await awaitSyncAndPersistRun({ repository, client, runId: handle.executionId })
@@ -659,8 +764,8 @@ const main = async () => {
         if (pendingSignals.length === 0) {
           throw error
         }
-        const names = pendingSignals.map((signal) => signal.name).join(", ")
-        throw new Error(`${formatError(error)}. Currently waiting for: ${names}`)
+        const lines = pendingSignals.map((signal) => describePendingSignal(options.runId, signal))
+        throw new Error(`${formatError(error)}\n${lines.join("\n")}`)
       }
 
       await awaitSyncAndPersistRun({ repository, client, runId: options.runId })

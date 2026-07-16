@@ -1,11 +1,16 @@
 import { Database } from "bun:sqlite"
+import { mkdirSync } from "node:fs"
+import path from "node:path"
+import { Schema } from "effect"
 import type { DefinedWorkflow } from "../core"
 import { Cancelled, cancellationDeferredName, createInMemoryDeterminismState } from "../core"
 import type { WorkflowEvent } from "../events"
+import { ExecutionId, WorkflowHistoryEvent as WorkflowHistoryEventSchema } from "../schemas"
+import type { JsonSchema, WorkflowHistoryEvent } from "../schemas"
 import { createWorkflowRuntime, executeWorkflow } from "../runtime"
 import type { ExecuteWorkflowOptions } from "../runtime"
 import type { WorkflowRuntime } from "../runtime"
-import { cancelSignalWaits, deliverSignal } from "../signal"
+import { cancelSignalWaits, decodeSignal, deliverSignal, getSignalSchema } from "../signal"
 import type {
   WorkflowArtifact,
   WorkflowRunEventRecord,
@@ -16,6 +21,7 @@ import type {
 import { createFileWorkflowStore } from "./artifact"
 import { parseJsonText, toJsonText } from "./json"
 import { loadWorkflowArtifact } from "./loader"
+import { replayDedupeKey } from "../replay"
 
 export type WorkflowExecutionStatus =
   | "running"
@@ -33,29 +39,7 @@ export type WorkflowResult =
   | { readonly type: "completed"; readonly value: unknown }
   | { readonly type: "failed"; readonly error: unknown }
 
-export type WorkflowHistoryEvent =
-  | WorkflowEvent
-  | {
-      readonly type: "execution.started"
-      readonly executionId: string
-      readonly workflowName: string
-      readonly version: number
-      readonly payload: unknown
-      readonly actor?: string
-    }
-  | {
-      readonly type: "signal.delivered"
-      readonly executionId: string
-      readonly name: string
-      readonly payload: unknown
-      readonly actor?: string
-    }
-  | {
-      readonly type: "execution.cancelled"
-      readonly executionId: string
-      readonly compensate: boolean
-      readonly actor?: string
-    }
+export type { WorkflowHistoryEvent }
 
 export interface WorkflowHistoryRecord {
   readonly sequence: number
@@ -68,6 +52,8 @@ export interface PendingSignal {
   readonly invocation: number
   readonly activityName: string
   readonly timeout?: unknown
+  /** JSON Schema of the payload the wait expects. */
+  readonly payloadSchema?: JsonSchema
 }
 
 export interface WorkflowListResult {
@@ -178,7 +164,8 @@ export const pendingSignalsFromHistory = (
       name: event.name,
       invocation: event.invocation,
       activityName: event.activityName,
-      ...optionalTimeout(event.timeout)
+      ...optionalTimeout(event.timeout),
+      ...(event.payloadSchema === undefined ? {} : { payloadSchema: event.payloadSchema })
     }]
   })
 }
@@ -256,7 +243,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
 
       appendHistory(execution, {
         type: "execution.started",
-        executionId: id,
+        executionId: ExecutionId.make(id),
         workflowName: workflow.name,
         version: workflow.version,
         payload,
@@ -269,12 +256,12 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
           determinism: createInMemoryDeterminismState(),
           ...(runtime?.secrets === undefined ? {} : { secrets: runtime.secrets }),
           onEvent: async (event) => {
-            appendHistory(execution, event as WorkflowEvent)
-            const nextStatus = statusFromEvent(event as WorkflowEvent)
+            appendHistory(execution, event)
+            const nextStatus = statusFromEvent(event)
             if (nextStatus !== undefined && execution.status !== "failed") {
               execution.status = nextStatus
             }
-            if ((event as WorkflowEvent).type === "sleep.started") {
+            if (event.type === "sleep.started") {
               await new Promise((resolve) => setTimeout(resolve, 10))
             }
           }
@@ -302,7 +289,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       await deliverSignal(id, name, payload)
       appendHistory(execution, {
         type: "signal.delivered",
-        executionId: id,
+        executionId: ExecutionId.make(id),
         name,
         payload,
         ...optionalActor(opts.actor)
@@ -353,7 +340,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       const compensate = opts.compensate ?? true
       appendHistory(execution, {
         type: "execution.cancelled",
-        executionId: id,
+        executionId: ExecutionId.make(id),
         compensate,
         ...optionalActor(opts.actor)
       })
@@ -430,8 +417,19 @@ const migrateClientDb = (db: Database) => {
       sequence INTEGER NOT NULL,
       event_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
+      dedupe_key TEXT,
       UNIQUE(execution_id, sequence)
     );
+  `)
+
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(wf_client_history)").all()
+  if (!columns.some((column) => column.name === "dedupe_key")) {
+    db.exec("ALTER TABLE wf_client_history ADD COLUMN dedupe_key TEXT")
+  }
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS wf_client_history_dedupe_idx
+      ON wf_client_history(execution_id, dedupe_key)
+      WHERE dedupe_key IS NOT NULL
   `)
 }
 
@@ -440,6 +438,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
   if (databasePath === undefined) {
     throw new Error("SQLite workflow client requires runtime.databasePath")
   }
+  mkdirSync(path.dirname(path.resolve(databasePath)), { recursive: true })
   const db = new Database(databasePath, { create: true, readwrite: true })
   migrateClientDb(db)
   const runPromises = new Map<string, Promise<WorkflowResult>>()
@@ -473,16 +472,32 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     }
   }
 
-  const appendHistory = (executionId: string, event: WorkflowHistoryEvent) => {
+  // Returns false when the event is a replay re-emission that is already
+  // recorded (the engine replays workflow code whenever a suspended run
+  // resumes, possibly in another process).
+  const appendHistory = (executionId: string, event: WorkflowHistoryEvent): boolean => {
+    const dedupeKey = replayDedupeKey(event) ?? null
+    if (dedupeKey !== null) {
+      const existing = db.query<{ id: number }, [string, string]>(`
+        SELECT id
+        FROM wf_client_history
+        WHERE execution_id = ?
+          AND dedupe_key = ?
+      `).get(executionId, dedupeKey)
+      if (existing !== null) {
+        return false
+      }
+    }
     const sequence = db.query<{ sequence: number }, [string]>(`
       SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
       FROM wf_client_history
       WHERE execution_id = ?
     `).get(executionId)?.sequence ?? 1
-    db.query<unknown, [string, number, string, string]>(`
-      INSERT INTO wf_client_history (execution_id, sequence, event_json, created_at)
-      VALUES (?, ?, ?, ?)
-    `).run(executionId, sequence, toJsonText(event), nowIso())
+    db.query<unknown, [string, number, string, string, string | null]>(`
+      INSERT INTO wf_client_history (execution_id, sequence, event_json, created_at, dedupe_key)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(executionId, sequence, toJsonText(event), nowIso(), dedupeKey)
+    return true
   }
 
   const updateStatus = (executionId: string, status: WorkflowExecutionStatus) => {
@@ -552,7 +567,11 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
   }
 
   const makeEventSink = (executionId: string) => async (event: WorkflowEvent) => {
-    appendHistory(executionId, event)
+    if (!appendHistory(executionId, event)) {
+      // Replay re-emission: the status transition already happened when the
+      // event fired for real, so don't let the replay flap it.
+      return
+    }
     const status = statusFromEvent(event)
     if (status !== undefined) {
       updateStatus(executionId, status)
@@ -569,7 +588,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     `).all(executionId).map((row) => ({
       sequence: row.sequence,
       createdAt: row.created_at,
-      event: JSON.parse(row.event_json) as WorkflowHistoryEvent
+      event: Schema.decodeUnknownSync(WorkflowHistoryEventSchema)(JSON.parse(row.event_json))
     }))
   }
 
@@ -664,7 +683,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       )
       appendHistory(id, {
         type: "execution.started",
-        executionId: id,
+        executionId: ExecutionId.make(id),
         workflowName: selectedWorkflow.name,
         version: selectedWorkflow.version,
         payload,
@@ -684,6 +703,22 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       if (waiting === undefined) {
         throw new Error(`Execution ${executionId} is not waiting for signal ${name}`)
       }
+      // Validate the payload against the schema of the wait the run is parked
+      // at BEFORE completing the durable deferred — a bad value persisted into
+      // the deferred would otherwise fail the run at replay. In a fresh
+      // process the schema registry is empty until the run replays, so nudge
+      // a resume and wait for the workflow to park again.
+      let schema = getSignalSchema(executionId, name)
+      if (schema === undefined) {
+        await runtime.resume({ workflow, executionId })
+        for (let attempt = 0; attempt < 50 && schema === undefined; attempt++) {
+          await new Promise((resolve) => setTimeout(resolve, 50))
+          schema = getSignalSchema(executionId, name)
+        }
+      }
+      if (schema !== undefined) {
+        decodeSignal(schema, payload)
+      }
       await runtime.deliverSignal({
         workflow,
         executionId,
@@ -693,7 +728,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       })
       appendHistory(executionId, {
         type: "signal.delivered",
-        executionId,
+        executionId: ExecutionId.make(executionId),
         name,
         payload,
         ...optionalActor(opts.actor)
@@ -749,7 +784,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       const compensate = opts.compensate ?? true
       appendHistory(executionId, {
         type: "execution.cancelled",
-        executionId,
+        executionId: ExecutionId.make(executionId),
         compensate,
         ...optionalActor(opts.actor)
       })

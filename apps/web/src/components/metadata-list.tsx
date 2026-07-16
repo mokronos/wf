@@ -1,6 +1,6 @@
 import { prettyJson } from "@/lib/format"
 
-export function MetadataList({ value }: { readonly value: Record<string, unknown> }) {
+export function MetadataList({ value }: { readonly value: object }) {
   const entries = Object.entries(value).filter(([, item]) => item !== undefined)
   if (entries.length === 0) {
     return <p className="muted-copy">No runtime metadata was captured.</p>

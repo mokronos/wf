@@ -36,11 +36,19 @@ describe("Phase 4 workflow client", () => {
     const handle = await client.start(workflow, undefined)
     expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
     expect(await client.pendingSignals(handle.executionId)).toEqual([
-      {
+      expect.objectContaining({
         name: "approval",
         invocation: 1,
-        activityName: "approval#1"
-      }
+        activityName: "approval#1",
+        // The pending wait advertises the payload shape a caller must send.
+        payloadSchema: expect.objectContaining({
+          type: "object",
+          required: ["approved"],
+          properties: expect.objectContaining({
+            approved: expect.objectContaining({ type: "boolean" })
+          })
+        })
+      })
     ])
 
     await client.signal(handle.executionId, "approval", { approved: true })
@@ -68,21 +76,21 @@ describe("Phase 4 workflow client", () => {
     const handle = await client.start(workflow, undefined)
     expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
     expect(await client.pendingSignals(handle.executionId)).toEqual([
-      {
+      expect.objectContaining({
         name: "approval",
         invocation: 1,
         activityName: "approval#1"
-      }
+      })
     ])
 
     await client.signal(handle.executionId, "approval", { ok: true })
     expect(await waitForStatus(client, handle.executionId, "suspended")).toBe("suspended")
     expect(await client.pendingSignals(handle.executionId)).toEqual([
-      {
+      expect.objectContaining({
         name: "approval",
         invocation: 2,
         activityName: "approval#2"
-      }
+      })
     ])
 
     await client.signal(handle.executionId, "approval", { ok: true })

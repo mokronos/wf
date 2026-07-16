@@ -1,0 +1,12 @@
+{
+  "name": "@wf-examples/order-saga",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run main.ts"
+  },
+  "dependencies": {
+    "wf": "workspace:*"
+  }
+}

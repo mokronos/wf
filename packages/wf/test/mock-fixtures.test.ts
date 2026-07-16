@@ -4,6 +4,50 @@ import path from "node:path"
 
 type Json = null | boolean | number | string | Json[] | { readonly [key: string]: Json }
 
+interface FixtureObject {
+  readonly [key: string]: Json
+  readonly problemCount?: Json
+  readonly problems?: Json
+  readonly args?: Json
+  readonly op?: Json
+  readonly id?: Json
+  readonly tolerance?: Json
+  readonly expected?: Json
+  readonly answers?: Json
+  readonly problemId?: Json
+  readonly answer?: Json
+  readonly reviewSignals?: Json
+  readonly correctedAnswer?: Json
+  readonly needsReview?: Json
+  readonly deadlineSeconds?: Json
+  readonly batchId?: Json
+  readonly penalizedProblems?: Json
+  readonly maxScore?: Json
+  readonly reviewedProblems?: Json
+  readonly events?: Json
+  readonly requiredHeaders?: Json
+  readonly files?: Json
+  readonly paths?: Json
+  readonly outputs?: Json
+  readonly content?: Json
+  readonly path?: Json
+  readonly runId?: Json
+  readonly processed?: Json
+  readonly invalid?: Json
+  readonly tasks?: Json
+  readonly deps?: Json
+  readonly cache?: Json
+  readonly maxAttempts?: Json
+  readonly taskOrder?: Json
+  readonly hash?: Json
+  readonly script?: Json
+  readonly buildId?: Json
+  readonly postPublishScript?: Json
+  readonly verified?: Json
+  readonly releaseMarker?: Json
+  readonly rolledBack?: Json
+}
+
 interface WorkflowFixtures {
   readonly workflows: readonly WorkflowFixture[]
 }
@@ -117,11 +161,11 @@ const runOperation = (operation: string, input: Json): Json => {
   }
 }
 
-const asRecord = (value: unknown): Record<string, unknown> => {
+const asRecord = (value: unknown): FixtureObject => {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Expected object")
   }
-  return value as Record<string, unknown>
+  return value as FixtureObject
 }
 
 const asArray = (value: unknown): unknown[] => {

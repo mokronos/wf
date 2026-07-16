@@ -3,6 +3,8 @@ import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } fro
 import { Cause, Context, Effect, Exit, Option, Schedule, Schema } from "effect"
 import type * as Duration from "effect/Duration"
 import { currentWorkflowEventSink, emitWorkflowEvent } from "./events.ts"
+import type { WorkflowEvent } from "./schemas.ts"
+import { ExecutionId, jsonSchemaOf } from "./schemas.ts"
 import { awaitSignal, registerSignalSchema, SignalDeliveryError, takeBufferedSignal } from "./signal.ts"
 
 type AnySchema<A = any> = Schema.Codec<A, any, any, any>
@@ -77,17 +79,19 @@ export const defineStep = <
   errors: config.errors ?? Schema.Never
 })
 
-declare const SecretRefBrand: unique symbol
+const SecretRefPrefix = "secret:"
 
-export type SecretRef = string & { readonly [SecretRefBrand]: "SecretRef" }
+export const SecretRef = Schema.declare<string>(
+  (value): value is string => typeof value === "string" && value.startsWith(SecretRefPrefix)
+).pipe(Schema.brand("SecretRef"))
+
+export type SecretRef = typeof SecretRef.Type
 
 export interface SecretResolver {
   resolve(name: string): string | Promise<string>
 }
 
-const SecretRefPrefix = "secret:"
-
-export const secret = (name: string): SecretRef => `${SecretRefPrefix}${name}` as SecretRef
+export const secret = (name: string): SecretRef => SecretRef.make(`${SecretRefPrefix}${name}`)
 
 const defaultSecretEnvName = (name: string): string =>
   name.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "").toUpperCase()
@@ -110,7 +114,7 @@ export const envSecretResolver = (options: {
 })
 
 export const isSecretRef = (value: unknown): value is SecretRef =>
-  typeof value === "string" && value.startsWith(SecretRefPrefix)
+  Schema.is(SecretRef)(value)
 
 const secretName = (value: SecretRef): string => value.slice(SecretRefPrefix.length)
 
@@ -231,7 +235,10 @@ export interface DefineWorkflowConfig<I, O, WErrors = never> {
   readonly run: (input: I, ctx: WorkflowContext<WErrors>) => Generator<any, O, any>
 }
 
+export const DefinedWorkflowTypeId = Symbol.for("wf/DefinedWorkflow")
+
 export interface DefinedWorkflow<I = any, O = any, WErrors = any> {
+  readonly [DefinedWorkflowTypeId]: typeof DefinedWorkflowTypeId
   readonly name: string
   readonly version: number
   readonly engineName: string
@@ -248,7 +255,7 @@ export interface DefinedWorkflow<I = any, O = any, WErrors = any> {
 export interface InMemoryExecutionOptions {
   readonly executionId?: string
   readonly determinism?: InMemoryDeterminismState
-  readonly onEvent?: (event: unknown) => void | Promise<void>
+  readonly onEvent?: (event: WorkflowEvent) => void | Promise<void>
   readonly stepExecutors?: ReadonlyMap<Step<any, any, any>, Step<any, any, any>["execute"]>
   readonly stepExecutor?: (options: {
     readonly step: Step<any, any, any>
@@ -488,7 +495,7 @@ const transientAttempts = (retry: StepRetryPolicy | undefined): number =>
 
 const makeCtx = <WErrors>(
   wf: any,
-  executionId: string,
+  executionId: ExecutionId,
   workflowErrors: AnySchema<WErrors>
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
@@ -769,16 +776,21 @@ const makeCtx = <WErrors>(
       const invocation = nextInvocation(counters, name)
       const waitName = `${name}#${invocation}`
       const call: OrchestrationCall = { kind: "signal", name, counter: invocation }
+      const payloadSchema = jsonSchemaOf(schema)
 
       return Effect.gen(function* () {
         yield* recordCall(call)
+        // Delivery-side validation needs the schema of the wait the run is
+        // parked at; replay re-registers it in a fresh process.
+        registerSignalSchema(executionId, name, schema)
         yield* emitWorkflowEvent({
           type: "signal.waiting",
           executionId,
           name,
           invocation,
           activityName: waitName,
-          timeout: opts?.timeout
+          timeout: opts?.timeout,
+          ...(payloadSchema === undefined ? {} : { payloadSchema })
         })
 
         const deferredName = `signal:${waitName}`
@@ -933,11 +945,11 @@ const makeCtx = <WErrors>(
 }
 
 const makeInMemoryCtx = <WErrors>(
-  executionId: string,
+  executionId: ExecutionId,
   workflowErrors: AnySchema<WErrors>,
   compensations: CompensationEntry[],
   determinism: InMemoryDeterminismState,
-  emit: (event: unknown) => Promise<void>,
+  emit: (event: WorkflowEvent) => Promise<void>,
   options: Pick<
     InMemoryExecutionOptions,
     "stepExecutors" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "secrets"
@@ -1076,6 +1088,7 @@ const makeInMemoryCtx = <WErrors>(
     waitForSignal(name, schema, opts) {
       const invocation = nextInvocation(counters, name)
       const activityName = `${name}#${invocation}`
+      const payloadSchema = jsonSchemaOf(schema)
       return Effect.tryPromise({
         try: async () => {
           await recordCall({ kind: "signal", name, counter: invocation })
@@ -1086,7 +1099,8 @@ const makeInMemoryCtx = <WErrors>(
             name,
             invocation,
             activityName,
-            timeout: opts?.timeout
+            timeout: opts?.timeout,
+            ...(payloadSchema === undefined ? {} : { payloadSchema })
           })
 
           const buffered = takeBufferedSignal(executionId, name, schema)
@@ -1272,7 +1286,7 @@ const makeInMemoryCtx = <WErrors>(
         try: () => recordCall(call),
         catch: (error): NonDeterminismError => error as NonDeterminismError
       })
-      const emitEvent = (event: unknown) => Effect.promise(() => emit(event))
+      const emitEvent = (event: WorkflowEvent) => Effect.promise(() => emit(event))
       const persistBlock = (branchCalls: OrchestrationCall[][]) =>
         Effect.sync(() => {
           if (determinism.blocks[blockPosition++] === undefined) {
@@ -1389,7 +1403,7 @@ export const defineWorkflow = <
   const layer = workflow.toLayer(
     Effect.fn(function* (payload: Schema.Schema.Type<Input>, executionId: string) {
       const input = decodeSync(config.input, payload)
-      const result = yield* config.run(input, makeCtx(workflow, executionId, errors)) as any
+      const result = yield* config.run(input, makeCtx(workflow, ExecutionId.make(executionId), errors)) as any
       return decodeSync(config.output, result)
     }) as any
   )
@@ -1398,11 +1412,11 @@ export const defineWorkflow = <
     payload: Schema.Schema.Type<Input>,
     options: InMemoryExecutionOptions = {}
   ): Promise<Schema.Schema.Type<Output>> => {
-    const executionId = options.executionId ?? `memory-${crypto.randomUUID()}`
+    const executionId = ExecutionId.make(options.executionId ?? `memory-${crypto.randomUUID()}`)
     const compensations: CompensationEntry[] = []
     const determinism = options.determinism ?? createInMemoryDeterminismState()
     const input = decodeSync(config.input, payload)
-    const emit = async (event: unknown) => {
+    const emit = async (event: WorkflowEvent) => {
       await options.onEvent?.(event)
     }
     const ctx = makeInMemoryCtx(executionId, errors, compensations, determinism, emit, {
@@ -1480,6 +1494,7 @@ export const defineWorkflow = <
   }
 
   return {
+    [DefinedWorkflowTypeId]: DefinedWorkflowTypeId,
     name: config.name,
     version: config.version,
     engineName,

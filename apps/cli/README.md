@@ -45,7 +45,11 @@ bun run cli -- create inline-demo --source 'import { defineWorkflow, t } from "w
 
 Defaults:
 
-- `--name`: PascalCase id plus `Workflow`, for example `welcome-email` becomes `WelcomeEmailWorkflow`.
+- `--name`: detected from the source — the CLI loads the module and stores the
+  actual workflow export. When the file exports several workflows, pass
+  `--name` to pin one. Without `--source`/`--file`, the starter workflow is
+  named PascalCase id plus `Workflow` (`welcome-email` becomes
+  `WelcomeEmailWorkflow`).
 - no `--source` / `--file`: a starter workflow is generated and stored directly.
 - `--version`: `dev`.
 
@@ -59,7 +63,10 @@ What happens:
 - With `--file`, the CLI reads that file once and stores its source in
   `.wf/wf.sqlite`. Later runs use the stored source, not the file path.
 - With `--source`, the CLI stores the provided TypeScript source directly.
-- If the id already exists, the command fails unless `--force` is passed.
+- The source is loaded at create time to resolve and validate the workflow
+  export, so a file that does not export a wf workflow fails immediately.
+- If the id already exists, the command fails unless `--force` is passed;
+  `--force` replaces every catalog row stored under that id.
 
 Saved workflows should be self-contained modules that import only from `wf`,
 expose a named workflow export, and avoid relative imports. The default starter

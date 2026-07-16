@@ -3,6 +3,9 @@ When im using these words im talking about the following:
 - "agent": i'm talking about the agent that is using this library/system to create workflows, etc.
 - "user": i'm talking about the user of the agent
 
+## Type Discipline
+
+- Never use `any` or `unknown`. Model every compile-time-known shape with Effect Schema (the schema is the single source of truth; derive TS types via `typeof X.Type`), brand identifiers where mix-ups are possible, and parse external/dynamic data at the boundary with `Schema.decodeUnknown*` instead of casting. No `as` casts to silence the compiler.
 
 <!-- effect-solutions:start -->
 ## Effect Best Practices

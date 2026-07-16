@@ -4,7 +4,7 @@ import { MetadataList } from "@/components/metadata-list"
 import { SchemaView } from "@/components/schema-view"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import type { WorkflowGraphNode, WorkflowGraphNodeSchemas } from "@/lib/api"
+import type { WorkflowGraphNode, WorkflowGraphNodeMetadata, WorkflowGraphNodeSchemas } from "@/lib/api"
 import { prettyJson } from "@/lib/format"
 import { kindClass } from "./workflow-node"
 
@@ -15,7 +15,7 @@ const schemaLabels = [
   ["signal", "Signal"]
 ] as const
 
-const rawMetadata = (node: WorkflowGraphNode): Record<string, unknown> => {
+const rawMetadata = (node: WorkflowGraphNode): WorkflowGraphNodeMetadata => {
   const {
     input: _input,
     retry: _retry,

@@ -1,42 +1,22 @@
 import { readFileSync } from "node:fs"
 import { readFile } from "node:fs/promises"
 import path from "node:path"
+import { Schema } from "effect"
+import {
+  WorkflowArtifact as WorkflowArtifactSchema,
+  WorkflowManifest,
+  WorkflowManifestEntry,
+  type WorkflowArtifact,
+  type WorkflowRunEventRecord,
+  type WorkflowRunRecord,
+  type WorkflowRunStatus
+} from "../schemas"
 
-export interface WorkflowArtifact {
-  readonly id: string
-  readonly name: string
-  readonly version: string
-  readonly source: string
-  readonly exportName?: string
-  readonly createdAt?: string
-}
+export type { WorkflowArtifact, WorkflowRunEventRecord, WorkflowRunRecord, WorkflowRunStatus }
 
 export interface WorkflowStore {
   list(): Promise<ReadonlyArray<WorkflowArtifact>>
   get(id: string): Promise<WorkflowArtifact | undefined>
-}
-
-export interface WorkflowRunRecord {
-  readonly id: string
-  readonly workflowId: string
-  readonly workflowVersion: string
-  readonly status: WorkflowRunStatus
-  readonly input: unknown
-  readonly result?: unknown
-  readonly error?: unknown
-  readonly startedAt: string
-  readonly finishedAt?: string
-}
-
-export type WorkflowRunStatus = "running" | "completed" | "failed"
-
-export interface WorkflowRunEventRecord {
-  readonly id: number
-  readonly runId: string
-  readonly sequence: number
-  readonly type: string
-  readonly event: unknown
-  readonly createdAt: string
 }
 
 export interface WorkflowRunStore {
@@ -65,10 +45,8 @@ export interface WorkflowRunStore {
 
 export interface WorkflowRepository extends WorkflowStore, WorkflowRunStore {
   upsertWorkflow(workflow: WorkflowArtifact): Promise<void>
-}
-
-interface WorkflowManifest {
-  readonly workflows: ReadonlyArray<WorkflowArtifact>
+  /** Remove every catalog row for a workflow id (all names/versions). */
+  deleteWorkflow(id: string): Promise<void>
 }
 
 export interface FileWorkflowStoreOptions {
@@ -78,14 +56,11 @@ export interface FileWorkflowStoreOptions {
 
 const defaultManifestPath = (rootDir: string) => path.join(rootDir, ".wf", "workflows.json")
 
-const asRecord = (value: unknown, label: string): Record<string, unknown> => {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`)
-  }
-  return value as Record<string, unknown>
+interface NormalizedWorkflowManifest {
+  readonly workflows: ReadonlyArray<WorkflowArtifact>
 }
 
-const readManifest = async (rootDir: string, manifestPath: string): Promise<WorkflowManifest> => {
+const readManifest = async (rootDir: string, manifestPath: string): Promise<NormalizedWorkflowManifest> => {
   let raw: string
 
   try {
@@ -97,12 +72,8 @@ const readManifest = async (rootDir: string, manifestPath: string): Promise<Work
     throw error
   }
 
-  const parsed = JSON.parse(raw) as unknown
-  const manifest = asRecord(parsed, "workflow manifest")
-
-  if (!Array.isArray(manifest.workflows)) {
-    throw new Error("workflow manifest must contain a workflows array")
-  }
+  const parsed: unknown = JSON.parse(raw)
+  const manifest = Schema.decodeUnknownSync(WorkflowManifest)(parsed)
 
   return {
     workflows: manifest.workflows.map((workflow, index) =>
@@ -112,8 +83,8 @@ const readManifest = async (rootDir: string, manifestPath: string): Promise<Work
 }
 
 const requiredString = (
-  value: Record<string, unknown>,
-  key: keyof WorkflowArtifact,
+  value: WorkflowManifestEntry,
+  key: "id" | "name" | "version",
   label: string
 ): string => {
   const field = value[key]
@@ -123,12 +94,11 @@ const requiredString = (
   return field
 }
 
-const optionalString = (
-  value: Record<string, unknown>,
-  key: string,
+const nonEmptyOptionalString = (
+  field: string | undefined,
+  key: keyof WorkflowManifestEntry,
   label: string
 ): string | undefined => {
-  const field = value[key]
   if (field === undefined) {
     return undefined
   }
@@ -139,20 +109,20 @@ const optionalString = (
 }
 
 const normalizeArtifact = (rootDir: string, value: unknown, label: string): WorkflowArtifact => {
-  const artifact = asRecord(value, label)
-  const source = optionalString(artifact, "source", label)
-  const entrypoint = optionalString(artifact, "entrypoint", label)
-  const exportName = optionalString(artifact, "exportName", label)
-  const createdAt = optionalString(artifact, "createdAt", label)
+  const artifact = Schema.decodeUnknownSync(WorkflowManifestEntry)(value)
+  const source = nonEmptyOptionalString(artifact.source, "source", label)
+  const entrypoint = nonEmptyOptionalString(artifact.entrypoint, "entrypoint", label)
+  const exportName = nonEmptyOptionalString(artifact.exportName, "exportName", label)
+  const createdAt = nonEmptyOptionalString(artifact.createdAt, "createdAt", label)
 
-  return {
+  return Schema.decodeUnknownSync(WorkflowArtifactSchema)({
     id: requiredString(artifact, "id", label),
     name: requiredString(artifact, "name", label),
     version: requiredString(artifact, "version", label),
     source: source ?? readLegacySource(rootDir, entrypoint, label),
     ...(exportName === undefined ? {} : { exportName }),
     ...(createdAt === undefined ? {} : { createdAt })
-  }
+  })
 }
 
 const readLegacySource = (rootDir: string, entrypoint: string | undefined, label: string): string => {

@@ -19,6 +19,34 @@ export type {
 } from "./core"
 export { defineError } from "./errors"
 export type { WorkflowEvent, WorkflowEventSink } from "./events"
+export {
+  ExecutionId,
+  JsonSchema,
+  RunEventsResponse,
+  RunsResponse,
+  WorkflowArtifact as WorkflowArtifactSchema,
+  WorkflowArtifactGraph as WorkflowArtifactGraphSchema,
+  WorkflowEvent as WorkflowEventSchema,
+  WorkflowGraph as WorkflowGraphSchema,
+  WorkflowGraphEdge as WorkflowGraphEdgeSchema,
+  WorkflowGraphNode as WorkflowGraphNodeSchema,
+  WorkflowGraphNodeMetadata as WorkflowGraphNodeMetadataSchema,
+  WorkflowGraphNodeSchemas as WorkflowGraphNodeSchemasSchema,
+  WorkflowGraphSchemas as WorkflowGraphSchemasSchema,
+  WorkflowHistoryEvent as WorkflowHistoryEventSchema,
+  WorkflowManifest,
+  WorkflowManifestEntry,
+  WorkflowRunEventRecord as WorkflowRunEventRecordSchema,
+  WorkflowRunRecord as WorkflowRunRecordSchema,
+  WorkflowRunStatus as WorkflowRunStatusSchema,
+  WorkflowsResponse,
+  decodeRunEventsResponse,
+  decodeRunsResponse,
+  decodeWorkflowsResponse,
+  decodeJsonSchema,
+  isWorkflowEvent
+} from "./schemas"
+export type { JsonSchema as JsonSchemaDocument, ExecutionId as ExecutionIdValue } from "./schemas"
 export { deliverSignal, SignalDeliveryError } from "./signal"
 export { t } from "./schema"
 export { createWorkflowRuntime, engineLayer, executeWorkflow, makeEngineLayer, makeWorkflowEffect, run, WorkflowVersionConflictError } from "./runtime"
@@ -50,6 +78,8 @@ export type {
   WorkflowGraphEdge,
   WorkflowGraphNode,
   WorkflowGraphNodeSchemas,
+  WorkflowGraphNodeMetadata,
+  WorkflowGraphSchemas,
   WorkflowGraphNodeKind,
   WorkflowGraphOptions,
   DiscoverIntegrationsOptions,
@@ -67,6 +97,9 @@ export {
   seedSqliteWorkflowRepository,
   loadWorkflowArtifact,
   createWorkflowSdk,
+  parseJsonText,
+  toJsonText,
+  sampleValueForJsonSchema,
   sampleValueForSchema,
   workflowArtifactToGraph,
   workflowToGraph,

@@ -120,11 +120,11 @@ describe("Phase 7 concurrency limits", () => {
 
 describe("Phase 7 secret references", () => {
   test("envSecretResolver resolves default and explicit environment mappings", async () => {
-    const originalDefault = process.env.X_BEARER_TOKEN
-    const originalMapped = process.env.CUSTOM_STRIPE_KEY
+    const originalDefault = process.env["X_BEARER_TOKEN"]
+    const originalMapped = process.env["CUSTOM_STRIPE_KEY"]
     try {
-      process.env.X_BEARER_TOKEN = "x-token"
-      process.env.CUSTOM_STRIPE_KEY = "stripe-token"
+      process.env["X_BEARER_TOKEN"] = "x-token"
+      process.env["CUSTOM_STRIPE_KEY"] = "stripe-token"
 
       await expect(Promise.resolve(envSecretResolver().resolve("x-bearer-token"))).resolves.toBe("x-token")
       await expect(Promise.resolve(envSecretResolver({
@@ -132,31 +132,31 @@ describe("Phase 7 secret references", () => {
       }).resolve("stripe-key"))).resolves.toBe("stripe-token")
     } finally {
       if (originalDefault === undefined) {
-        delete process.env.X_BEARER_TOKEN
+        delete process.env["X_BEARER_TOKEN"]
       } else {
-        process.env.X_BEARER_TOKEN = originalDefault
+        process.env["X_BEARER_TOKEN"] = originalDefault
       }
       if (originalMapped === undefined) {
-        delete process.env.CUSTOM_STRIPE_KEY
+        delete process.env["CUSTOM_STRIPE_KEY"]
       } else {
-        process.env.CUSTOM_STRIPE_KEY = originalMapped
+        process.env["CUSTOM_STRIPE_KEY"] = originalMapped
       }
     }
   })
 
   test("envSecretResolver supports fallback and clear missing-secret errors", async () => {
-    const original = process.env.MISSING_SECRET
+    const original = process.env["MISSING_SECRET"]
     try {
-      delete process.env.MISSING_SECRET
+      delete process.env["MISSING_SECRET"]
       await expect(Promise.resolve(envSecretResolver({ fallback: "" }).resolve("missing-secret"))).resolves.toBe("")
       await expect(Promise.resolve().then(() => envSecretResolver().resolve("missing-secret"))).rejects.toThrow(
         'Secret "missing-secret" not found: set env var MISSING_SECRET'
       )
     } finally {
       if (original === undefined) {
-        delete process.env.MISSING_SECRET
+        delete process.env["MISSING_SECRET"]
       } else {
-        process.env.MISSING_SECRET = original
+        process.env["MISSING_SECRET"] = original
       }
     }
   })

@@ -1,4 +1,4 @@
-import type { DefinedWorkflow } from "../core"
+import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core"
 import type { WorkflowArtifact } from "./artifact"
 
 export interface LoadedWorkflow {
@@ -7,28 +7,21 @@ export interface LoadedWorkflow {
   readonly workflow: DefinedWorkflow
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null
-
 export const isDefinedWorkflow = (value: unknown): value is DefinedWorkflow => {
-  if (!isRecord(value)) {
+  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
     return false
   }
+  return DefinedWorkflowTypeId in value
+}
 
-  // The engine workflow is a callable object (a function with workflow fields
-  // assigned), so accept both shapes.
-  const workflow = value.workflow as Record<string, unknown> | ((...args: Array<unknown>) => unknown) | undefined
-  return (
-    (isRecord(workflow) || typeof workflow === "function") &&
-    typeof (workflow as Record<string, unknown>).execute === "function" &&
-    "layer" in value &&
-    typeof value.execute === "function"
-  )
+interface WorkflowModule {
+  readonly default?: unknown
+  readonly [exportName: string]: unknown
 }
 
 const importArtifactModule = async (
   artifact: WorkflowArtifact
-): Promise<Record<string, unknown>> => {
+): Promise<WorkflowModule> => {
   const compiled = await compileWorkflowSource(artifact)
   const url = `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
   return await import(url)
@@ -83,11 +76,16 @@ export const loadWorkflowArtifact = async (
     return { artifact, exportName: "default", workflow: module.default }
   }
 
-  const candidates = Object.entries(module).filter(([, value]) => isDefinedWorkflow(value))
+  const candidates: Array<readonly [string, DefinedWorkflow]> = []
+  for (const [name, value] of Object.entries(module)) {
+    if (isDefinedWorkflow(value)) {
+      candidates.push([name, value])
+    }
+  }
 
   if (candidates.length === 1) {
     const [exportName, workflow] = candidates[0]!
-    return { artifact, exportName, workflow: workflow as DefinedWorkflow }
+    return { artifact, exportName, workflow }
   }
 
   if (candidates.length > 1) {

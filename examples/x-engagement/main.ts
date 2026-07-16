@@ -1,8 +1,8 @@
 import { client, XEngagementWorkflow } from "./runtime"
 
 const handle = await client.start(XEngagementWorkflow, {
-  maxCandidates: Number(process.env.X_ENGAGEMENT_MAX_CANDIDATES ?? 1),
-  dryRun: process.env.X_ENGAGEMENT_DRY_RUN !== "0"
+  maxCandidates: Number(process.env["X_ENGAGEMENT_MAX_CANDIDATES"] ?? 1),
+  dryRun: process.env["X_ENGAGEMENT_DRY_RUN"] !== "0"
 })
 console.log(`started execution ${handle.executionId}`)
 

@@ -24,13 +24,16 @@ const waiters = new Map<string, SignalWaiter[]>()
 
 const keyOf = (executionId: string, name: string): string => `${executionId}\0${name}`
 
-const decodeSignal = <T>(schema: AnySchema<T>, value: unknown): T => {
+export const decodeSignal = <T>(schema: AnySchema<T>, value: unknown): T => {
   try {
     return Schema.decodeUnknownSync(schema as any)(value) as T
   } catch (cause) {
     throw new SignalDeliveryError("Signal payload failed schema validation", { cause })
   }
 }
+
+export const getSignalSchema = (executionId: string, name: string): AnySchema | undefined =>
+  schemas.get(keyOf(executionId, name))
 
 export const registerSignalSchema = <T>(
   executionId: string,
