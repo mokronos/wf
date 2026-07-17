@@ -1,6 +1,6 @@
 {
   "name": "@mokronos/wf",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "description": "The globally installable wf workflow service and dashboard.",
   "keywords": ["workflow", "durable-execution", "cli", "agent"],
