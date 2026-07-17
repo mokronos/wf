@@ -1,6 +1,6 @@
 # Use wfkit with an agent
 
-Use these instructions when a user asks you to set up or test `@mokronos/wfkit`. Work in the user's project directory and use a project-local installation so the setup is reproducible.
+Use these instructions when a user asks you to set up or test `wf`. Work in the user's project directory, install the global CLI explicitly, and keep authored workflow files in the project.
 
 ## Communication contract
 
@@ -11,22 +11,26 @@ Never invent credentials, silently substitute a different service, or leave the 
 The example below only reads a public file from GitHub. It does not need an account or token and does not change anything on GitHub. Before running it, tell the user that it will:
 
 - send one outbound `GET` request to `raw.githubusercontent.com`;
-- create local workflow state under `.wf/`;
+- create per-user workflow state under `~/.wf/`;
 - read a public repository without sending credentials.
 
 If the environment blocks outbound network access, tell the user that network permission is required and wait for their direction.
 
 ## Install and verify the CLI
 
-Check that Bun 1.2 or newer is available, then install wfkit locally:
+Tell the user that this installs a global command and a per-user background
+service, then install and verify it:
 
 ```sh
-bun --version
-bun add --dev @mokronos/wfkit
-bunx wf --help
+npm install --global @mokronos/wf
+wf --help
+wf install
 ```
 
-If Bun is unavailable, tell the user that wfkit currently requires Bun and ask before installing or changing their runtime setup.
+`pnpm add --global`, `bun add --global`, and `yarn global add` are also
+supported. The installed CLI is a standalone platform binary; users do not run
+it through Bun. If no supported global package manager is available, ask before
+installing or changing the user's runtime setup.
 
 ## Create a real integration workflow
 
@@ -104,16 +108,16 @@ export const GitHubFilePreviewWorkflow = defineWorkflow({
 Register and run it:
 
 ```sh
-bunx wf create github-file-preview --file workflows/github-file-preview.ts --version 1
-bunx wf list
-bunx wf run github-file-preview '{"owner":"Effect-TS","repository":"effect","path":"README.md"}'
-bunx wf runs
+wf create github-file-preview --file workflows/github-file-preview.ts --version 1
+wf list
+wf run github-file-preview '{"owner":"Effect-TS","repository":"effect","path":"README.md"}'
+wf runs
 ```
 
-Report the returned URL, byte count, and preview to the user. The completed run and its event history are persisted in `.wf/`; use the run ID printed by `wf run` to inspect it:
+Report the returned URL, byte count, and preview to the user. The completed run and its event history are persisted in `~/.wf/`; use the run ID printed by `wf run` to inspect it:
 
 ```sh
-bunx wf history <run-id>
+wf history <run-id>
 ```
 
 ## Continue from here

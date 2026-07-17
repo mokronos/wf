@@ -31,10 +31,6 @@
     "README.md",
     "GUIDE.md"
   ],
-  "bin": {
-    "wf": "dist/cli/main.js",
-    "wf-integrations": "dist/cli/integrations.js"
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",

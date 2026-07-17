@@ -714,20 +714,24 @@ const awaitSyncAndPersistRun = async (options: {
   throw outcome.result.error
 }
 
-const engineDatabasePath = (rootDir: string) => path.join(rootDir, ".wf", "engine.sqlite")
+const engineDatabasePath = (storageDir: string) => path.join(storageDir, "engine.sqlite")
 
-const createEngineBackedClient = (rootDir: string) => {
+const createEngineBackedClient = (storageDir: string) => {
   const runtime = createWorkflowRuntime({
     backend: "sqlite",
-    databasePath: engineDatabasePath(rootDir),
+    databasePath: engineDatabasePath(storageDir),
     secrets: envSecretResolver()
   })
   const client = createWorkflowClient(runtime)
   return { runtime, client }
 }
 
-const main = async () => {
-  const [command, ...args] = process.argv.slice(2)
+export const runWfkitCli = async (options: {
+  readonly arguments: ReadonlyArray<string>
+  readonly rootDir: string
+  readonly storageDir?: string
+}): Promise<void> => {
+  const [command, ...args] = options.arguments
 
   if (command === undefined || command === "-h" || command === "--help") {
     console.log(help)
@@ -756,8 +760,12 @@ const main = async () => {
     return
   }
 
-  const rootDir = process.cwd()
-  const repository = createSqliteWorkflowRepository({ rootDir })
+  const rootDir = options.rootDir
+  const storageDir = options.storageDir ?? path.join(rootDir, ".wf")
+  const repository = createSqliteWorkflowRepository({
+    rootDir,
+    databasePath: path.join(storageDir, "wf.sqlite")
+  })
 
   switch (command) {
     case "create": {
@@ -833,7 +841,7 @@ const main = async () => {
       }
       const loaded = await loadWorkflowArtifact(artifact)
       const input = parseJsonInput(rawInput)
-      const { client } = createEngineBackedClient(rootDir)
+      const { client } = createEngineBackedClient(storageDir)
       const handle = await client.start(loaded.workflow, input)
       console.error(`${eventTag("run")} id ${bold(handle.executionId)}`)
       await repository.startRun({ id: handle.executionId, workflow: artifact, input })
@@ -855,7 +863,7 @@ const main = async () => {
       }
 
       const loaded = await loadWorkflowArtifact(artifact)
-      const { runtime, client } = createEngineBackedClient(rootDir)
+      const { runtime, client } = createEngineBackedClient(storageDir)
       runtime.register([loaded.workflow])
 
       try {
@@ -883,10 +891,12 @@ const main = async () => {
   }
 }
 
-main().then(
+if (import.meta.main) {
+  runWfkitCli({ arguments: process.argv.slice(2), rootDir: process.cwd() }).then(
   () => process.exit(0),
   (error) => {
     console.error(formatError(error))
     process.exit(1)
   }
-)
+  )
+}

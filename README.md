@@ -9,11 +9,27 @@ from `@mokronos/wfkit` — never from `effect` directly.
 ## Install
 
 ```bash
-bun add @mokronos/wfkit
-bun add -g @mokronos/wfkit
+npm install -g @mokronos/wf
+wf install
+wf web
 ```
 
-## Quickstart
+`pnpm add -g`, `bun add -g`, and `yarn global add` are also supported. The
+installed `wf` command is a standalone platform binary; users do not need to
+invoke or install Bun separately. `wf install` registers a per-user background
+service, and `wf web` opens its local dashboard.
+
+Background-service installation currently supports Linux (`systemd --user`) and
+macOS (`launchd`). The standalone workflow commands also build for Windows;
+Windows service registration is not implemented yet.
+
+## Authoring SDK
+
+Install `@mokronos/wfkit` in projects that author workflows with TypeScript:
+
+```bash
+bun add @mokronos/wfkit
+```
 
 A tiny workflow is just a typed step plus a typed workflow that calls it:
 
@@ -53,7 +69,8 @@ bun run example:email
 
 ## CLI
 
-Install `@mokronos/wfkit` globally, then run CLI commands with the `wf` binary:
+The global CLI stores its workflow catalog and durable run history under
+`~/.wf` by default. Set `WF_HOME` to use another directory.
 
 ```bash
 wf <command>
@@ -61,7 +78,7 @@ wf <command>
 
 ### `create`
 
-Create or import a workflow into the local SQLite catalog:
+Create or import a workflow into the global SQLite catalog:
 
 ```bash
 wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
@@ -76,7 +93,7 @@ wf create invoice-sync --file workflows/invoice-sync.ts --version v1
 ```
 
 With no `--source` or `--file`, the CLI stores a generated starter workflow.
-With `--file`, it reads the file once and stores the source in `.wf/wf.sqlite`.
+With `--file`, it reads the file once and stores the source in `~/.wf/wf.sqlite`.
 Use `--force` to replace an existing workflow id.
 
 ### `list`
@@ -147,7 +164,8 @@ wf help create
 wf run --help
 ```
 
-CLI state lives in `.wf/wf.sqlite`; durable engine state lives in `.wf/engine.sqlite`.
+CLI state lives in `~/.wf/wf.sqlite`; durable engine state lives in
+`~/.wf/engine.sqlite`.
 
 ## Full-featured example
 

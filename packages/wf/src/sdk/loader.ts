@@ -1,5 +1,15 @@
 import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core.ts"
+import * as authoring from "../authoring.ts"
 import type { WorkflowArtifact } from "./artifact.ts"
+
+const authoringModuleSymbolName = "@mokronos/wfkit/authoring"
+const authoringModuleSymbol = Symbol.for(authoringModuleSymbolName)
+Object.defineProperty(globalThis, authoringModuleSymbol, {
+  value: authoring,
+  configurable: false,
+  enumerable: false,
+  writable: false
+})
 
 export interface LoadedWorkflow {
   readonly artifact: WorkflowArtifact
@@ -49,13 +59,27 @@ const compileWorkflowSource = async (artifact: WorkflowArtifact): Promise<string
 }
 
 const rewriteWfImports = (source: string): string => {
-  const authoringModule = import.meta.url.endsWith(".ts") ? "../authoring.ts" : "../authoring.js"
-  const wfModuleUrl = new URL(authoringModule, import.meta.url).href
+  const authoringExpression = `globalThis[Symbol.for("${authoringModuleSymbolName}")]`
   return source
-    .replaceAll(`from "@mokronos/wfkit"`, `from "${wfModuleUrl}"`)
-    .replaceAll(`from '@mokronos/wfkit'`, `from '${wfModuleUrl}'`)
-    .replaceAll(`import("@mokronos/wfkit")`, `import("${wfModuleUrl}")`)
-    .replaceAll(`import('@mokronos/wfkit')`, `import('${wfModuleUrl}')`)
+    .replace(
+      /import\s+(type\s+)?\{([\s\S]*?)\}\s+from\s+["']@mokronos\/wfkit["'];?/g,
+      (_match, typeOnly: string | undefined, specifiers: string) => {
+        if (typeOnly !== undefined) return ""
+        const bindings = specifiers
+          .split(",")
+          .map((specifier) => specifier.trim())
+          .filter((specifier) => specifier.length > 0 && !specifier.startsWith("type "))
+          .map((specifier) => specifier.replace(/\s+as\s+/, ": "))
+          .join(", ")
+        return bindings.length === 0 ? "" : `const { ${bindings} } = ${authoringExpression};`
+      }
+    )
+    .replace(
+      /import\s+\*\s+as\s+([A-Za-z_$][\w$]*)\s+from\s+["']@mokronos\/wfkit["'];?/g,
+      `const $1 = ${authoringExpression};`
+    )
+    .replaceAll(`import("@mokronos/wfkit")`, `Promise.resolve(${authoringExpression})`)
+    .replaceAll(`import('@mokronos/wfkit')`, `Promise.resolve(${authoringExpression})`)
 }
 
 export const loadWorkflowArtifact = async (

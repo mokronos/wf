@@ -2,25 +2,26 @@
 import Layout from "../layouts/Layout.astro"
 
 const githubUrl = "https://github.com/mokronos/wf"
-const packageUrl = "https://www.npmjs.com/package/@mokronos/wfkit"
+const packageUrl = "https://www.npmjs.com/package/@mokronos/wf"
 const guideUrl = `${githubUrl}/blob/main/packages/wf/GUIDE.md`
-const installCommand = "bun add --dev @mokronos/wfkit"
-const createCommand = "bunx wf create orders --file workflows/orders.ts --version 1"
-const runCommand = `bunx wf run orders '{"orderId":"1842"}'`
-const signalCommand = `bunx wf signal 0190...a92 managerApproval '{"approved":true}'`
+const installCommand = "npm install -g @mokronos/wf"
+const createCommand = "wf create orders --file workflows/orders.ts --version 1"
+const runCommand = `wf run orders '{"orderId":"1842"}'`
+const signalCommand = `wf signal 0190...a92 managerApproval '{"approved":true}'`
 
-const agentInstructions = `Use the @mokronos/wfkit CLI to create and run durable TypeScript workflows in this project.
+const agentInstructions = `Install and use the global wf CLI to create and run durable TypeScript workflows.
 
-1. Confirm Bun 1.2 or newer is available with: bun --version
-   If Bun is unavailable, tell me before installing or changing the runtime setup.
-2. Install wfkit locally so the setup is reproducible: bun add --dev @mokronos/wfkit
-3. Discover the CLI before guessing: bunx wf help
-   Use bunx wf help <command> or bunx wf <command> --help for command-specific guidance.
-4. Create or import a workflow with: bunx wf create <workflow-id> --file <path> --version 1
-5. Operate it with bunx wf list, bunx wf run <workflow-id> '<json-input>', bunx wf runs, and bunx wf history <run-id>.
-6. Treat .wf/ as local persisted workflow state. Do not commit it unless I explicitly ask.
-7. Before any network request, credential use, account authorization, or human approval, explain what is needed and why. Never invent credentials.
-8. If a run waits for a signal, relay the exact bunx wf signal ... command and expected payload printed by the CLI.`
+1. Install the CLI globally: npm install -g @mokronos/wf
+   pnpm add -g, bun add -g, and yarn global add are also supported.
+2. Install and start the durable per-user service: wf install
+3. Open the local dashboard: wf web
+4. Discover the CLI before guessing: wf help
+   Use wf help <command> or wf <command> --help for command-specific guidance.
+5. Create or import a workflow with: wf create <workflow-id> --file <path> --version 1
+6. Operate it with wf list, wf run <workflow-id> '<json-input>', wf runs, and wf history <run-id>.
+7. Workflow catalog, run history, and engine state live in ~/.wf by default. Respect WF_HOME if it is configured.
+8. Before any network request, credential use, account authorization, or human approval, explain what is needed and why. Never invent credentials.
+9. If a run waits for a signal, relay the exact wf signal ... command and expected payload printed by the CLI.`
 
 const capabilities = [
   {
@@ -121,12 +122,12 @@ const events = [
               <small>RESUME THIS RUN</small>
               <code>{signalCommand}</code>
             </div>
-            <div class="cli-command"><span>$</span><code>bunx wf history 0190...a92</code></div>
+            <div class="cli-command"><span>$</span><code>wf history 0190...a92</code></div>
             <div class="cli-result"><span>✓</span> 6 durable events · completed</div>
           </div>
           <div class="window-footer">
-            <span><i></i> state persisted in .wf/</span>
-            <span>no control plane</span>
+            <span><i></i> service state in ~/.wf</span>
+            <span>standalone binary</span>
           </div>
         </div>
       </div>
@@ -145,27 +146,28 @@ const events = [
           <div class="section-label"><span>01</span> CLI first</div>
           <div>
             <h2>Your workflow control surface.</h2>
-            <p>Install it in the project, keep every command reproducible, and ask the CLI when you need the next detail.</p>
+            <p>Install it once on your machine, keep durable work in one service, and ask the CLI when you need the next detail.</p>
           </div>
         </div>
 
         <div class="cli-path" data-reveal>
           <article class="install-card">
-            <div class="card-kicker"><span>01</span> Install locally <b>recommended</b></div>
+            <div class="card-kicker"><span>01</span> Install globally <b>recommended</b></div>
             <button class="command-row" type="button" data-copy={installCommand} aria-label={`Copy ${installCommand}`}>
               <span>$</span><code>{installCommand}</code><i class="copy-label" aria-live="polite">copy</i>
             </button>
-            <p>Requires Bun 1.2+. A project-local install gives humans and agents the same pinned CLI through <code>bunx wf</code>.</p>
-            <div class="global-install"><span>Global alternative</span><code>bun add -g @mokronos/wfkit</code></div>
+            <p>Installs the standalone <code>wf</code> command. Workflow execution does not depend on a project-local CLI or a separate Bun installation. Service setup supports Linux and macOS.</p>
+            <div class="global-install"><span>Start the service</span><code>wf install<br />wf web</code></div>
+            <div class="global-install"><span>Also works with</span><code>pnpm add -g · bun add -g · yarn global add</code></div>
           </article>
 
           <article class="lifecycle-card">
             <div class="card-kicker"><span>02</span> Use the whole lifecycle</div>
             <div class="lifecycle-list">
-              <div><span>DISCOVER</span><code>bunx wf help</code></div>
+              <div><span>DISCOVER</span><code>wf help</code></div>
               <div><span>IMPORT</span><code>{createCommand}</code></div>
               <div><span>RUN</span><code>{runCommand}</code></div>
-              <div><span>INSPECT</span><code>bunx wf runs<br />bunx wf history &lt;run-id&gt;</code></div>
+              <div><span>INSPECT</span><code>wf runs<br />wf history &lt;run-id&gt;</code></div>
             </div>
           </article>
         </div>
@@ -174,7 +176,7 @@ const events = [
           <div class="agent-brief-copy">
             <div class="card-kicker"><span>03</span> Hand it to your agent</div>
             <h3>Copy Instructions for Your Agent</h3>
-            <p>A complete operating brief: install locally, discover commands, persist state safely, and stop before credentials or human decisions are needed.</p>
+            <p>A complete operating brief: install globally, start the service, discover commands, and stop before credentials or human decisions are needed.</p>
             <button class="button agent-copy-button" type="button" data-copy-target="#agent-instructions">
               <span class="copy-label" aria-live="polite">Copy instructions</span><span aria-hidden="true">→</span>
             </button>
@@ -314,9 +316,9 @@ const events = [
         </div>
         <div class="terminal" data-reveal data-delay="1">
           <div class="terminal-bar"><span>~/your-project</span><span>bun</span></div>
-          <div class="terminal-line"><span>$</span><code>bunx wf help</code></div>
-          <div class="terminal-line"><span>$</span><code>bunx wf help create</code></div>
-          <div class="terminal-line"><span>$</span><code>bunx wf run --help</code></div>
+          <div class="terminal-line"><span>$</span><code>wf help</code></div>
+          <div class="terminal-line"><span>$</span><code>wf help create</code></div>
+          <div class="terminal-line"><span>$</span><code>wf run --help</code></div>
           <div class="terminal-output">
             <span>→</span> usage, options, and examples<br />
             <span>→</span> available where the work happens<br />

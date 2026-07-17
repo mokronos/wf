@@ -74,28 +74,30 @@ API-key, bearer-token, and custom-header authentication are supported.
 
 ## CLI
 
-Install the CLI in the project for a reproducible, versioned command surface:
+The CLI is distributed separately as `@mokronos/wf` and installs a global,
+standalone `wf` command:
 
 ```sh
-bun add --dev @mokronos/wfkit
-bunx wf help
+npm install --global @mokronos/wf
+wf install
+wf web
 ```
 
-Use `bunx wf` for the full lifecycle:
+Use `wf` for the full lifecycle:
 
 ```sh
-bunx wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
-bunx wf list
-bunx wf run <workflow-id> [json-input]
-bunx wf runs
-bunx wf history <execution-id>
-bunx wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
+wf list
+wf run <workflow-id> [json-input]
+wf runs
+wf history <execution-id>
+wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
 ```
 
-Use `bunx wf help <command>` or `bunx wf <command> --help` for command-specific
-options and examples. A global `wf` binary is also available through
-`bun add -g @mokronos/wfkit`.
+Use `wf help <command>` or `wf <command> --help` for command-specific options
+and examples.
 
-CLI state lives in `.wf/wf.sqlite`; durable engine state lives in `.wf/engine.sqlite`.
+Global CLI state lives in `~/.wf/wf.sqlite`; durable engine state lives in
+`~/.wf/engine.sqlite`.
 
 Bun is the supported runtime. Source and documentation live at https://github.com/mokronos/wf.

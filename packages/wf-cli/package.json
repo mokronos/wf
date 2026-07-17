@@ -1,0 +1,33 @@
+{
+  "name": "@mokronos/wf",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "The globally installable wf workflow service and dashboard.",
+  "keywords": ["workflow", "durable-execution", "cli", "agent"],
+  "homepage": "https://mokronos.github.io/wf/",
+  "bugs": "https://github.com/mokronos/wf/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mokronos/wf.git",
+    "directory": "packages/wf-cli"
+  },
+  "bin": {
+    "wf": "bin/wf.cjs"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "files": ["bin", "README.md"],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "bun run build.ts",
+    "publish:built": "bun run publish.ts",
+    "publish:dry-run": "bun run publish.ts --dry-run",
+    "test": "bun test test",
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

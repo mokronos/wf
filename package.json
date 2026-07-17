@@ -9,9 +9,11 @@
   ],
   "scripts": {
     "build": "bun run --cwd packages/wf build",
+    "build:cli": "bun run --cwd packages/wf-cli build",
     "build:marketing": "bun run --cwd apps/marketing build",
     "cli": "bun run packages/wf/src/cli/main.ts",
     "dev:marketing": "bun run --cwd apps/marketing dev",
+    "dev:cli": "bun run packages/wf-cli/src/main.ts",
     "example:email": "bun run examples/email/main.ts",
     "example:quickstart": "bun run examples/quickstart/main.ts",
     "example:order-saga": "cd examples/order-saga && bun run main.ts",
