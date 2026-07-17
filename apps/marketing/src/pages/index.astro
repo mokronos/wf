@@ -1,0 +1,364 @@
+---
+import Layout from "../layouts/Layout.astro"
+
+const githubUrl = "https://github.com/mokronos/wf"
+const packageUrl = "https://www.npmjs.com/package/@mokronos/wfkit"
+const installCommand = "bun add @mokronos/wfkit"
+
+const capabilities = [
+  {
+    index: "01",
+    title: "Typed by construction",
+    copy: "Inputs, outputs, terminal errors, and signals share one schema-first contract from authoring through execution."
+  },
+  {
+    index: "02",
+    title: "Durable at every boundary",
+    copy: "Step results, timers, signal waits, and deterministic values are journaled before the workflow moves on."
+  },
+  {
+    index: "03",
+    title: "Failure is part of the graph",
+    copy: "Retries, timeouts, typed failures, and compensations are workflow semantics, not comments in generated code."
+  },
+  {
+    index: "04",
+    title: "Inspectable by humans",
+    copy: "Every run leaves a replayable event history. See the graph, inspect the source, and understand why it stopped."
+  },
+  {
+    index: "05",
+    title: "Plain TypeScript inside",
+    copy: "Keep mapping, filtering, formatting, and business rules in code instead of exploding them into tiny nodes."
+  },
+  {
+    index: "06",
+    title: "Local-first runtime",
+    copy: "Bun and SQLite make the full durable loop easy to run, test, restart, and reason about on one machine."
+  }
+]
+
+const events = [
+  ["00:00.000", "run.started", "OrderWorkflow:v1"],
+  ["00:00.042", "step.completed", "ChargeCard #2"],
+  ["00:00.051", "step.completed", "ReserveStock #1"],
+  ["00:00.064", "signal.waiting", "managerApproval"],
+  ["02:13.408", "signal.received", "actor: ops"],
+  ["02:13.426", "run.completed", "pay_order-1842"]
+]
+---
+
+<Layout
+  title="wf — Durable TypeScript workflows"
+  description="An agent-first workflow toolkit for typed, durable, inspectable TypeScript orchestration."
+>
+  <main>
+    <section class="hero" id="top">
+      <header class="site-header shell">
+        <a class="brand" href="#top" aria-label="wf home">
+          <span class="brand-mark" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </span>
+          <span>www<span class="brand-slash">/</span>wf</span>
+        </a>
+        <nav aria-label="Main navigation">
+          <a href="#principles">Principles</a>
+          <a href="#capabilities">Capabilities</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <a class="header-github" href={githubUrl}>GitHub <span aria-hidden="true">↗</span></a>
+      </header>
+
+      <div class="hero-content shell">
+        <div class="hero-copy" data-reveal>
+          <p class="overline"><span></span> Agent-first workflow runtime</p>
+          <h1>Your agent designs it.<br /><em>wf</em> makes it survive.</h1>
+          <p class="lede">
+            Durable workflows in plain TypeScript. Typed contracts, deterministic replay,
+            retries, signals, and compensation without turning the agent into your runtime.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-primary" href="#start">Build your first workflow <span>→</span></a>
+            <a class="button button-ghost" href={githubUrl}>Read the source <span>↗</span></a>
+          </div>
+          <button class="install-command" type="button" data-copy={installCommand} aria-label={`Copy ${installCommand}`}>
+            <span class="prompt">$</span>
+            <code>{installCommand}</code>
+            <span class="copy-label" aria-live="polite">copy</span>
+          </button>
+        </div>
+
+        <div class="workflow-window" data-reveal data-delay="1">
+          <div class="window-bar">
+            <div class="window-title"><span class="status-dot"></span> order-fulfillment.ts</div>
+            <div class="window-meta">RUN 1842 · LIVE</div>
+          </div>
+          <div class="workflow-canvas">
+            <svg class="connectors" viewBox="0 0 680 430" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M128 88 C190 88 180 176 242 176" />
+              <path d="M128 88 C190 88 180 286 242 286" />
+              <path d="M354 176 C405 176 396 230 444 230" />
+              <path d="M354 286 C405 286 396 230 444 230" />
+              <path d="M554 230 C608 230 592 340 632 340" />
+            </svg>
+            <div class="node node-trigger">
+              <span class="node-icon">↳</span>
+              <span><b>Order received</b><small>trigger · webhook</small></span>
+            </div>
+            <div class="node node-charge">
+              <span class="node-icon">$</span>
+              <span><b>Charge card</b><small>step · retry 2/3</small></span>
+              <i class="node-state"></i>
+            </div>
+            <div class="node node-stock">
+              <span class="node-icon">□</span>
+              <span><b>Reserve stock</b><small>step · completed</small></span>
+              <i class="node-state"></i>
+            </div>
+            <div class="node node-signal">
+              <span class="node-icon">?</span>
+              <span><b>Manager approval</b><small>signal · received</small></span>
+              <i class="node-state amber"></i>
+            </div>
+            <div class="node node-ship">
+              <span class="node-icon">→</span>
+              <span><b>Ship order</b><small>step · running</small></span>
+              <i class="node-state pulse"></i>
+            </div>
+            <div class="canvas-note note-replay"><span>01</span> results persist</div>
+            <div class="canvas-note note-restart"><span>02</span> restarts replay</div>
+          </div>
+          <div class="window-footer">
+            <span><i></i> SQLite journal attached</span>
+            <span>6 events</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hero-foot shell" aria-label="Core qualities">
+        <span>Typed end to end</span>
+        <span>Deterministic replay</span>
+        <span>Local SQLite state</span>
+        <span>Open source</span>
+      </div>
+    </section>
+
+    <section class="manifesto section-light" id="principles">
+      <div class="shell manifesto-grid">
+        <div class="section-label" data-reveal><span>01</span> The principle</div>
+        <div class="manifesto-copy" data-reveal data-delay="1">
+          <h2>Agents should write workflows.<br />They should not <em>be</em> the workflow.</h2>
+          <p>
+            Let the model discover tools, resolve ambiguity, and compose the plan. Then turn that plan into a typed artifact a small, boring runtime can execute for years.
+          </p>
+        </div>
+      </div>
+
+      <div class="shell handoff" data-reveal>
+        <div class="handoff-stage stage-agent">
+          <span class="stage-number">A</span>
+          <div>
+            <small>DESIGN TIME</small>
+            <h3>Agent reasons</h3>
+            <p>Discover schemas, compose steps, generate tests, repair failures.</p>
+          </div>
+        </div>
+        <div class="handoff-arrow" aria-hidden="true">
+          <span>typed artifact</span>
+          <i></i>
+        </div>
+        <div class="handoff-stage stage-runtime">
+          <span class="stage-number">R</span>
+          <div>
+            <small>RUN TIME</small>
+            <h3>Runtime remembers</h3>
+            <p>Persist results, replay decisions, wait durably, compensate safely.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="trace-section">
+      <div class="shell trace-grid">
+        <div class="code-panel" data-reveal>
+          <div class="panel-heading"><span>workflow.ts</span><span>TypeScript</span></div>
+          <pre aria-label="Example wf workflow"><code><span class="code-dim">01</span> <span class="code-purple">export const</span> OrderWorkflow = defineWorkflow(&#123;
+<span class="code-dim">02</span>   name: <span class="code-green">"OrderWorkflow"</span>,
+<span class="code-dim">03</span>   input: Order,
+<span class="code-dim">04</span>   output: Receipt,
+<span class="code-dim">05</span>   run: <span class="code-purple">function*</span> (order, ctx) &#123;
+<span class="code-dim">06</span>     <span class="code-purple">const</span> payment = <span class="code-purple">yield*</span> ctx.run(
+<span class="code-dim">07</span>       chargeCard,
+<span class="code-dim">08</span>       order
+<span class="code-dim">09</span>     )
+<span class="code-dim">10</span>     <span class="code-purple">yield*</span> ctx.waitForSignal(
+<span class="code-dim">11</span>       <span class="code-green">"managerApproval"</span>,
+<span class="code-dim">12</span>       Approval
+<span class="code-dim">13</span>     )
+<span class="code-dim">14</span>     <span class="code-purple">return</span> &#123; paymentId: payment.id &#125;
+<span class="code-dim">15</span>   &#125;
+<span class="code-dim">16</span> &#125;)</code></pre>
+        </div>
+
+        <div class="trace-copy" data-reveal data-delay="1">
+          <div class="section-label light"><span>02</span> Durable by default</div>
+          <h2>Replay the decisions.<br />Never repeat the damage.</h2>
+          <p>
+            A restart reruns workflow code but reuses journaled step results, time, randomness, and signals. Side effects happen once; orchestration remains understandable.
+          </p>
+          <div class="event-journal">
+            <div class="journal-title"><span>EVENT JOURNAL</span><span>ORDER-1842</span></div>
+            {events.map(([time, type, detail]) => (
+              <div class="event-row">
+                <time>{time}</time>
+                <span class:list={["event-type", type.includes("waiting") && "waiting"]}>{type}</span>
+                <code>{detail}</code>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="capabilities section-light" id="capabilities">
+      <div class="shell">
+        <div class="section-intro" data-reveal>
+          <div class="section-label"><span>03</span> The contract</div>
+          <h2>Small surface.<br />Serious guarantees.</h2>
+          <p>Workflow semantics stay explicit. Everything else stays TypeScript.</p>
+        </div>
+        <div class="capability-grid">
+          {capabilities.map((capability, index) => (
+            <article class="capability" data-reveal data-delay={String(index % 3)}>
+              <span>{capability.index}</span>
+              <h3>{capability.title}</h3>
+              <p>{capability.copy}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <section class="audiences">
+      <div class="shell audience-grid">
+        <article data-reveal>
+          <div class="audience-top"><span>FOR AGENTS</span><i>01</i></div>
+          <h2>A compact language for reliable plans.</h2>
+          <ul>
+            <li><span>+</span> Discover typed integration contracts</li>
+            <li><span>+</span> Generate inspectable workflow artifacts</li>
+            <li><span>+</span> Test and repair without production guesswork</li>
+          </ul>
+        </article>
+        <article data-reveal data-delay="1">
+          <div class="audience-top"><span>FOR HUMANS</span><i>02</i></div>
+          <h2>An execution trail you can actually review.</h2>
+          <ul>
+            <li><span>+</span> Plain TypeScript, versioned in Git</li>
+            <li><span>+</span> Visible graphs, schemas, and run histories</li>
+            <li><span>+</span> Explicit retry and compensation behavior</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="quickstart section-light" id="start">
+      <div class="shell quickstart-grid">
+        <div data-reveal>
+          <div class="section-label"><span>04</span> Start locally</div>
+          <h2>From zero to a durable run.</h2>
+          <p>No control plane required. Install the toolkit, write the contract, run it on Bun.</p>
+          <a class="text-link" href={`${githubUrl}#quickstart`}>Open the full quickstart <span>↗</span></a>
+        </div>
+        <div class="terminal" data-reveal data-delay="1">
+          <div class="terminal-bar"><span>~/your-project</span><span>bun</span></div>
+          <div class="terminal-line"><span>$</span><code>bun add @mokronos/wfkit</code></div>
+          <div class="terminal-line"><span>$</span><code>bun run workflow.ts</code></div>
+          <div class="terminal-output">
+            <span>✓</span> workflow registered <b>OrderWorkflow:v1</b><br />
+            <span>✓</span> run completed <b>run_01J...</b><br />
+            <span>→</span> journal persisted <b>.wf/engine.sqlite</b>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="faq section-light" id="faq">
+      <div class="shell faq-grid">
+        <div>
+          <div class="section-label"><span>05</span> Questions</div>
+          <h2>Before you ask your agent.</h2>
+        </div>
+        <div class="faq-list">
+          <details open>
+            <summary>Is wf a visual workflow builder?<span>+</span></summary>
+            <p>No. Workflows are TypeScript artifacts. The observer renders graphs and histories from those artifacts so humans can inspect what the runtime understands.</p>
+          </details>
+          <details>
+            <summary>Does an LLM run every execution?<span>+</span></summary>
+            <p>No. Agents help design, test, and repair workflows. The deployed runtime executes deterministic code and only calls models when you explicitly define a model-backed step.</p>
+          </details>
+          <details>
+            <summary>What makes a workflow durable?<span>+</span></summary>
+            <p>Step results, timers, signal waits, and deterministic values are persisted. After a restart, workflow code replays against that journal instead of repeating completed side effects.</p>
+          </details>
+          <details>
+            <summary>Where does state live?<span>+</span></summary>
+            <p>The current runtime persists locally in SQLite. This keeps development and single-owner deployments small, inspectable, and easy to move.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="shell final-grid">
+        <div data-reveal>
+          <p class="overline"><span></span> Build the artifact. Keep the history.</p>
+          <h2>Workflows that outlive<br />the conversation.</h2>
+        </div>
+        <div class="final-actions" data-reveal data-delay="1">
+          <a class="button button-primary" href={packageUrl}>Get @mokronos/wfkit <span>↗</span></a>
+          <a class="button button-ghost" href={githubUrl}>Star it on GitHub <span>↗</span></a>
+        </div>
+      </div>
+      <footer class="shell">
+        <a class="brand" href="#top"><span class="brand-mark"><i></i><i></i><i></i></span><span>www<span class="brand-slash">/</span>wf</span></a>
+        <p>Structured orchestration. Typed integrations. Code for computation.</p>
+        <a href={githubUrl}>Open source on GitHub ↗</a>
+      </footer>
+    </section>
+  </main>
+
+  <script>
+    const copyButton = document.querySelector("[data-copy]")
+    if (copyButton instanceof HTMLButtonElement) {
+      copyButton.addEventListener("click", async () => {
+        const command = copyButton.dataset.copy
+        const label = copyButton.querySelector(".copy-label")
+        if (command === undefined || !(label instanceof HTMLElement)) return
+
+        await navigator.clipboard.writeText(command)
+        label.textContent = "copied"
+        window.setTimeout(() => {
+          label.textContent = "copy"
+        }, 1800)
+      })
+    }
+
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    const revealElements = document.querySelectorAll("[data-reveal]")
+
+    if (!reducedMotion && "IntersectionObserver" in window) {
+      document.documentElement.classList.add("reveal-ready")
+      const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue
+          entry.target.classList.add("is-visible")
+          observer.unobserve(entry.target)
+        }
+      }, { threshold: 0.12 })
+
+      for (const element of revealElements) observer.observe(element)
+    }
+  </script>
+</Layout>
