@@ -253,195 +253,69 @@ summary:focus-visible {
 .get-started {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  justify-content: center;
   margin-bottom: 72px;
-  border: 1px solid rgba(245, 240, 230, 0.22);
-  box-shadow: 24px 28px 0 rgba(0, 0, 0, 0.12);
 }
 
-.start-option {
+.install-rail {
+  display: grid;
+  width: min(100%, 760px);
+  min-height: 62px;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  border: 1px solid rgba(245, 240, 230, 0.28);
+  background: #0c191a;
+  box-shadow: 14px 16px 0 rgba(0, 0, 0, 0.12);
+}
+
+.install-value {
   display: flex;
   min-width: 0;
-  min-height: 330px;
-  flex-direction: column;
-  align-items: flex-start;
-  padding: 31px 32px 28px;
-  color: var(--ink);
-}
-
-.start-yourself {
-  background: var(--paper-bright);
-}
-
-.start-agent {
-  border-left: 1px solid rgba(20, 32, 34, 0.32);
-  background:
-    linear-gradient(rgba(20, 32, 34, 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 32, 34, 0.055) 1px, transparent 1px),
-    var(--amber);
-  background-size: 24px 24px;
-}
-
-.option-number {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  color: var(--ink-soft);
-  font-family: var(--mono);
-  font-size: 9px;
-  font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.option-number > span {
-  color: #86630f;
-}
-
-.start-option h2 {
-  margin: 28px 0 11px;
-  font-size: clamp(25px, 2.7vw, 37px);
-  font-weight: 570;
-  letter-spacing: -0.045em;
-  line-height: 1.08;
-}
-
-.start-option h2 code {
-  font-family: var(--mono);
-  font-size: 0.82em;
-}
-
-.start-option > p {
-  max-width: 510px;
-  margin: 0 0 25px;
-  color: var(--ink-soft);
-  font-size: 12px;
-  line-height: 1.7;
-}
-
-.start-action {
-  display: grid;
-  width: 100%;
-  min-height: 58px;
-  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px;
-  margin-top: auto;
-  border: 1px solid var(--night);
-  background: var(--night);
-  color: #f5f0e6;
-  cursor: pointer;
-  padding: 0 17px;
-  text-align: left;
-  transition: background 160ms ease, transform 160ms ease;
+  padding: 0 22px;
+  font-family: var(--mono);
 }
 
-.start-action:hover {
-  background: #1b3637;
-  transform: translateY(-2px);
-}
-
-.start-action .prompt,
-.start-action > span:last-child {
+.install-value span {
   color: var(--amber);
-  font-family: var(--mono);
 }
 
-.start-action code {
+.install-value code {
   overflow-wrap: anywhere;
-  font-family: var(--mono);
-  font-size: 11px;
+  color: #f5f0e6;
+  font-size: 12px;
 }
 
-.start-action .copy-label {
-  color: rgba(245, 240, 230, 0.65);
-  font-style: normal;
-}
-
-.agent-action .copy-label {
-  font-size: 10px;
-  font-weight: 650;
-}
-
-.agent-action {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
-
-.option-next,
-.option-guide,
-.instruction-preview summary {
-  font-family: var(--mono);
-  font-size: 8px;
-  letter-spacing: 0.04em;
-}
-
-.option-next {
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin-top: 18px;
-}
-
-.option-next span {
-  color: var(--ink-soft);
-  text-transform: uppercase;
-}
-
-.instruction-preview {
-  width: 100%;
-  margin-top: 10px;
-  border-top: 1px solid rgba(20, 32, 34, 0.28);
-}
-
-.instruction-preview summary {
-  display: flex;
-  min-height: 35px;
-  align-items: end;
-  justify-content: space-between;
-  cursor: pointer;
-  font-weight: 650;
-  list-style: none;
-  text-transform: uppercase;
-}
-
-.instruction-preview summary::-webkit-details-marker {
-  display: none;
-}
-
-.instruction-preview summary span {
-  font-size: 14px;
-  transition: transform 160ms ease;
-}
-
-.instruction-preview[open] summary span {
-  transform: rotate(45deg);
-}
-
-.instruction-preview pre {
-  max-height: 310px;
-  overflow: auto;
-  margin: 13px 0 3px;
-  background: var(--night-deep);
+.install-rail button {
+  align-self: stretch;
+  border: 0;
+  border-left: 1px solid rgba(245, 240, 230, 0.2);
+  background: transparent;
   color: rgba(245, 240, 230, 0.72);
-  padding: 20px;
-  font-family: var(--mono);
-  font-size: 8px;
-  line-height: 1.75;
-  white-space: pre-wrap;
+  cursor: pointer;
+  padding: 0 20px;
+  transition: background 160ms ease, color 160ms ease;
 }
 
-.option-guide {
-  margin-top: 14px;
-  border-bottom: 1px solid rgba(20, 32, 34, 0.55);
-  padding-bottom: 2px;
+.install-rail button:hover {
+  background: var(--amber);
+  color: var(--night);
+}
+
+.install-rail button:last-child {
+  color: var(--amber);
+}
+
+.install-rail button:last-child:hover {
+  color: var(--night);
+}
+
+.install-rail .copy-label {
+  color: inherit;
+  font-size: 9px;
   font-weight: 650;
-}
-
-.option-guide span {
-  margin-left: 8px;
 }
 
 .hero-actions,
@@ -1447,8 +1321,6 @@ footer > a:last-child { justify-self: end; }
   .hero-content { grid-template-columns: 1fr; padding-block: 70px; }
   .hero-copy { max-width: 680px; }
   .cli-window { width: min(100%, 680px); }
-  .get-started { grid-template-columns: 1fr; }
-  .start-agent { border-top: 1px solid rgba(20, 32, 34, 0.32); border-left: 0; }
   .hero-foot { grid-template-columns: repeat(2, 1fr); }
   .hero-foot span:nth-child(3), .hero-foot span:nth-child(4) { border-top: 1px solid var(--line-dark); }
   .cli-intro { grid-template-columns: 1fr; gap: 42px; }
@@ -1482,12 +1354,12 @@ footer > a:last-child { justify-self: end; }
   .cli-session { min-height: 395px; padding: 25px 15px; }
   .cli-command { font-size: 8px; }
   .cli-hint { margin-left: 20px; padding-inline: 10px; font-size: 8px; }
-  .get-started { margin-bottom: 48px; box-shadow: 10px 12px 0 rgba(0, 0, 0, 0.12); }
-  .start-option { min-height: 315px; padding: 27px 20px 24px; }
-  .start-option h2 { font-size: 30px; }
-  .start-action { padding-inline: 13px; }
-  .start-action code { font-size: 9px; }
-  .option-next { align-items: flex-start; flex-direction: column; gap: 5px; }
+  .get-started { margin-bottom: 48px; }
+  .install-rail { grid-template-columns: repeat(2, 1fr); }
+  .install-value { min-height: 58px; grid-column: 1 / -1; padding-inline: 16px; }
+  .install-value code { font-size: 10px; }
+  .install-rail button { min-height: 50px; border-top: 1px solid rgba(245, 240, 230, 0.2); }
+  .install-rail button:first-of-type { border-left: 0; }
   .hero-foot span { padding-inline: 6px; font-size: 7px; }
   .cli-first, .manifesto, .capabilities, .quickstart, .faq { padding-block: 90px; }
   .cli-intro { margin-bottom: 52px; }

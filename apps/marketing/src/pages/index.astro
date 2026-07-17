@@ -3,16 +3,14 @@ import Layout from "../layouts/Layout.astro"
 
 const githubUrl = "https://github.com/mokronos/wf"
 const packageUrl = "https://www.npmjs.com/package/@mokronos/wf"
-const guideUrl = `${githubUrl}/blob/main/packages/wf/GUIDE.md`
-const installCommand = "npm install -g @mokronos/wf"
+const installCommand = "bun install -g @mokronos/wf"
 const createCommand = "wf create orders --file workflows/orders.ts --version 1"
 const runCommand = `wf run orders '{"orderId":"1842"}'`
 const signalCommand = `wf signal 0190...a92 managerApproval '{"approved":true}'`
 
 const agentInstructions = `Install and use the global wf CLI to create and run durable TypeScript workflows.
 
-1. Install the CLI globally: npm install -g @mokronos/wf
-   pnpm add -g, bun add -g, and yarn global add are also supported.
+1. Install the CLI globally: bun install -g @mokronos/wf
 2. Install and start the durable per-user service: wf install
 3. Open the local dashboard: wf web
 4. Discover the CLI before guessing: wf help
@@ -123,32 +121,18 @@ const events = [
       </div>
 
       <div class="get-started shell" id="get-started" data-reveal>
-        <article class="start-option start-yourself">
-          <div class="option-number"><span>01</span> Install it yourself</div>
-          <h2>Put <code>wf</code> on your machine.</h2>
-          <p>Installs the standalone CLI. No separate Bun installation is required.</p>
-          <button class="start-action command-action" type="button" data-copy={installCommand} aria-label={`Copy ${installCommand}`}>
-            <span class="prompt">$</span>
+        <div class="install-rail">
+          <div class="install-value">
+            <span aria-hidden="true">$</span>
             <code>{installCommand}</code>
+          </div>
+          <button type="button" data-copy={installCommand} aria-label={`Copy ${installCommand}`}>
             <span class="copy-label" aria-live="polite">Copy</span>
           </button>
-          <div class="option-next"><span>Then run</span><code>wf install · wf web</code></div>
-        </article>
-
-        <article class="start-option start-agent">
-          <div class="option-number"><span>02</span> Give it to your agent</div>
-          <h2>Let your agent set it up.</h2>
-          <p>Copy one operating brief so your agent can install the CLI, discover its commands, and use it safely.</p>
-          <button class="start-action agent-action" type="button" data-copy-target="#agent-instructions">
-            <span class="copy-label" aria-live="polite">Copy agent instructions</span>
-            <span aria-hidden="true">→</span>
+          <button type="button" data-copy={agentInstructions} aria-label="Copy setup instructions for an agent">
+            <span class="copy-label" aria-live="polite">For agent</span>
           </button>
-          <details class="instruction-preview">
-            <summary>Preview instructions <span aria-hidden="true">+</span></summary>
-            <pre id="agent-instructions"><code>{agentInstructions}</code></pre>
-          </details>
-          <a class="option-guide" href={guideUrl}>Extended agent guide <span aria-hidden="true">↗</span></a>
-        </article>
+        </div>
       </div>
 
       <div class="hero-foot shell" aria-label="Core qualities">
