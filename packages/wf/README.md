@@ -74,20 +74,27 @@ API-key, bearer-token, and custom-header authentication are supported.
 
 ## CLI
 
-```sh
-bun add -g @mokronos/wfkit
-```
-
-This installs the `wf` binary:
+Install the CLI in the project for a reproducible, versioned command surface:
 
 ```sh
-wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
-wf list
-wf runs
-wf history <execution-id>
-wf run <workflow-id> [json-input]
-wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+bun add --dev @mokronos/wfkit
+bunx wf help
 ```
+
+Use `bunx wf` for the full lifecycle:
+
+```sh
+bunx wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
+bunx wf list
+bunx wf run <workflow-id> [json-input]
+bunx wf runs
+bunx wf history <execution-id>
+bunx wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+```
+
+Use `bunx wf help <command>` or `bunx wf <command> --help` for command-specific
+options and examples. A global `wf` binary is also available through
+`bun add -g @mokronos/wfkit`.
 
 CLI state lives in `.wf/wf.sqlite`; durable engine state lives in `.wf/engine.sqlite`.
 

@@ -139,10 +139,12 @@ wf history <run-id>
 
 ### `help`
 
-Print command help:
+Print top-level or command-specific help:
 
 ```bash
 wf help
+wf help create
+wf run --help
 ```
 
 CLI state lives in `.wf/wf.sqlite`; durable engine state lives in `.wf/engine.sqlite`.

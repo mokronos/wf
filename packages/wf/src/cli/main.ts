@@ -21,22 +21,98 @@ import type {
   WorkflowRunRecord
 } from "../index.ts"
 
-const help = `Usage:
+const help = `wf - create, run, and inspect durable TypeScript workflows
+
+Usage:
+  wf <command> [options]
+
+Commands:
+  create    Create or import a workflow
+  list      List registered workflows
+  run       Start a workflow run
+  runs      List persisted runs
+  history   Show the event history for a run
+  signal    Resume a run waiting for a signal
+  help      Show help for a command
+
+Run "wf help <command>" for command-specific usage and examples.
+`
+
+const commandHelp = (command: string | undefined): string | undefined => {
+  switch (command) {
+    case "create":
+      return `Create or import a workflow into the local catalog.
+
+Usage:
   wf create <workflow-id> [--name <workflow-name>] [--source <typescript>] [--file <path>] [--version <version>] [--force]
-  wf list
-  wf runs
-  wf history <execution-id>
-  wf run <workflow-id> [json-input]
-  wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+
+Options:
+  --name <name>       Select a workflow export explicitly
+  --source <source>   Import inline TypeScript source
+  --file <path>       Import TypeScript from a file
+  --version <value>   Set the workflow version (default: dev)
+  --force             Replace an existing workflow id
 
 Examples:
   wf create welcome-email
-  wf create email --file examples/email/email.ts
-  wf list
-  wf runs
-  wf run welcome-email '{"message":"hello"}'
-  wf signal 018f6c7c-4c3b-7f12-91c8-88560b4b21a9 approval '{"approved":true}'
+  wf create email --file workflows/email.ts --version 1
 `
+    case "list":
+      return `List workflows registered in the local catalog.
+
+Usage:
+  wf list
+`
+    case "run":
+      return `Start a registered workflow with optional JSON input.
+
+Usage:
+  wf run <workflow-id> [json-input]
+
+Examples:
+  wf run welcome-email
+  wf run welcome-email '{"message":"hello"}'
+`
+    case "runs":
+      return `List workflow runs persisted in the local catalog.
+
+Usage:
+  wf runs
+`
+    case "history":
+    case "events":
+      return `Show the persisted event history for a workflow run.
+
+Usage:
+  wf history <run-id>
+`
+    case "signal":
+      return `Deliver a signal to a suspended workflow run.
+
+Usage:
+  wf signal <run-id> <signal-name> [json-payload] [--actor <actor>]
+
+Options:
+  --actor <actor>     Record who delivered the signal
+
+Example:
+  wf signal <run-id> approval '{"approved":true}' --actor ops
+`
+    case "help":
+      return `Show top-level or command-specific help.
+
+Usage:
+  wf help [command]
+
+Example:
+  wf help create
+`
+    case undefined:
+      return help
+    default:
+      return undefined
+  }
+}
 
 const formatError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -652,6 +728,34 @@ const createEngineBackedClient = (rootDir: string) => {
 
 const main = async () => {
   const [command, ...args] = process.argv.slice(2)
+
+  if (command === undefined || command === "-h" || command === "--help") {
+    console.log(help)
+    return
+  }
+
+  if (command === "help") {
+    const [requestedCommand, ...extraArgs] = args
+    if (extraArgs.length > 0) {
+      throw new Error(`wf help accepts at most one command\n\n${commandHelp("help")}`)
+    }
+    const requestedHelp = commandHelp(requestedCommand)
+    if (requestedHelp === undefined) {
+      throw new Error(`Unknown command: ${requestedCommand}\n\n${help}`)
+    }
+    console.log(requestedHelp)
+    return
+  }
+
+  if (args[0] === "-h" || args[0] === "--help") {
+    const requestedHelp = commandHelp(command)
+    if (requestedHelp === undefined) {
+      throw new Error(`Unknown command: ${command}\n\n${help}`)
+    }
+    console.log(requestedHelp)
+    return
+  }
+
   const rootDir = process.cwd()
   const repository = createSqliteWorkflowRepository({ rootDir })
 
@@ -773,13 +877,6 @@ const main = async () => {
       await awaitSyncAndPersistRun({ repository, client, runId: options.runId })
       return
     }
-
-    case "-h":
-    case "--help":
-    case "help":
-    case undefined:
-      console.log(help)
-      return
 
     default:
       throw new Error(`Unknown command: ${command}\n\n${help}`)
