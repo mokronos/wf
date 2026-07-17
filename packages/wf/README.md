@@ -78,7 +78,7 @@ The CLI is distributed separately as `@mokronos/wf` and installs a global,
 standalone `wf` command:
 
 ```sh
-npm install --global @mokronos/wf
+bun install --global @mokronos/wf
 wf install
 wf web
 ```

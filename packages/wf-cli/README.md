@@ -3,7 +3,7 @@
 The globally installable `wf` command, durable background service, and local dashboard.
 
 ```sh
-npm install --global @mokronos/wf
+bun install --global @mokronos/wf
 wf install
 wf web
 ```

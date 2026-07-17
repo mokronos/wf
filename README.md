@@ -9,12 +9,12 @@ from `@mokronos/wfkit` — never from `effect` directly.
 ## Install
 
 ```bash
-npm install -g @mokronos/wf
+bun install -g @mokronos/wf
 wf install
 wf web
 ```
 
-`pnpm add -g`, `bun add -g`, and `yarn global add` are also supported. The
+`npm install -g`, `pnpm add -g`, and `yarn global add` are also supported. The
 installed `wf` command is a standalone platform binary; users do not need to
 invoke or install Bun separately. `wf install` registers a per-user background
 service, and `wf web` opens its local dashboard.
