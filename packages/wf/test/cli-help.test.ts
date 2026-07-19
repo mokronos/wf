@@ -43,6 +43,12 @@ describe("wf help", () => {
     expect(helpFlag.stdout).toBe(helpCommand.stdout)
   })
 
+  test("shows integrations command help", () => {
+    const result = runCli(["help", "integrations"])
+    expect(result.exitCode).toBe(0)
+    expect(result.stdout).toContain("wf integrations search")
+  })
+
   test("rejects help for an unknown command", () => {
     const result = runCli(["help", "missing"])
 

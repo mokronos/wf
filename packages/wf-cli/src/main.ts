@@ -19,6 +19,7 @@ Workflow commands:
   runs                    List persisted runs
   history                 Show the event history for a run
   signal                  Resume a run waiting for a signal
+  integrations            Discover and validate integration surfaces (integrations.sh)
 
 Service and dashboard commands:
   install                 Register and start the per-user local dashboard service
