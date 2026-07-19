@@ -15,8 +15,8 @@ const authName = (reference: AuthRef): string => reference.slice(AuthRefPrefix.l
 
 export type IntegrationAuth =
   | { readonly kind: "bearer"; readonly credential: AuthRef }
-  | { readonly kind: "api-key"; readonly credential: AuthRef; readonly header?: string }
-  | { readonly kind: "header"; readonly credential: AuthRef; readonly header: string; readonly prefix?: string }
+  | { readonly kind: "api-key"; readonly credential: AuthRef; readonly header?: string | undefined }
+  | { readonly kind: "header"; readonly credential: AuthRef; readonly header: string; readonly prefix?: string | undefined }
 
 export type IntegrationSource =
   | { readonly kind: "mcp"; readonly url: string }
@@ -53,7 +53,7 @@ const McpCallResult = Schema.Struct({
 const decodeJson = async (response: Response): Promise<Schema.Schema.Type<typeof Schema.Json>> =>
   Schema.decodeUnknownPromise(Schema.Json)(await response.json())
 
-const resolveAuthorizationHeaders = async (
+export const resolveAuthorizationHeaders = async (
   reference: IntegrationAuth | undefined,
   resolveSecret: (name: string) => Promise<string>
 ): Promise<Record<string, string>> => {
@@ -92,55 +92,83 @@ const executeOpenApi = async (options: {
   return await decodeJson(response)
 }
 
+const postMcpMessage = (options: {
+  readonly url: string
+  readonly headers: Record<string, string>
+  readonly body: Schema.Schema.Type<typeof Schema.Json>
+  readonly sessionId?: string
+}) => fetch(options.url, {
+  method: "POST",
+  headers: {
+    "content-type": "application/json",
+    accept: "application/json, text/event-stream",
+    ...options.headers,
+    ...(options.sessionId === undefined ? {} : { "mcp-session-id": options.sessionId })
+  },
+  body: JSON.stringify(options.body)
+})
+
+const initializeMcp = async (options: {
+  readonly url: string
+  readonly headers: Record<string, string>
+  readonly operation: string
+}): Promise<string | undefined> => {
+  const initializeResponse = await postMcpMessage({
+    url: options.url,
+    headers: options.headers,
+    body: {
+      jsonrpc: "2.0", id: 0, method: "initialize",
+      params: { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "@mokronos/wfkit", version: "0.2.0" } }
+    }
+  })
+  if (!initializeResponse.ok) throw new IntegrationError({
+    message: `${options.operation} MCP initialization failed: ${initializeResponse.status} ${initializeResponse.statusText}`,
+    operation: options.operation, status: initializeResponse.status
+  })
+  await Schema.decodeUnknownPromise(JsonRpcResponse)(await initializeResponse.json())
+  const sessionId = initializeResponse.headers.get("mcp-session-id") ?? undefined
+  const initializedResponse = await postMcpMessage({
+    url: options.url, headers: options.headers,
+    body: { jsonrpc: "2.0", method: "notifications/initialized" },
+    ...(sessionId === undefined ? {} : { sessionId })
+  })
+  if (!initializedResponse.ok) throw new IntegrationError({
+    message: `${options.operation} MCP initialization notification failed: ${initializedResponse.status}`,
+    operation: options.operation, status: initializedResponse.status
+  })
+  return sessionId
+}
+
+const McpTool = Schema.Struct({ name: Schema.String, inputSchema: Schema.optional(Schema.Json) })
+const McpToolsList = Schema.Struct({ tools: Schema.Array(McpTool) })
+export type McpTool = typeof McpTool.Type
+
+export const listMcpTools = async (url: string, headers: Record<string, string> = {}): Promise<ReadonlyArray<McpTool>> => {
+  const sessionId = await initializeMcp({ url, headers, operation: "tools/list" })
+  const response = await postMcpMessage({
+    url, headers, ...(sessionId === undefined ? {} : { sessionId }), body: { jsonrpc: "2.0", id: 1, method: "tools/list" }
+  })
+  if (!response.ok) throw new IntegrationError({
+    message: `tools/list failed: ${response.status} ${response.statusText}`, operation: "tools/list", status: response.status
+  })
+  const payload = await Schema.decodeUnknownPromise(JsonRpcResponse)(await response.json())
+  if (payload.error !== undefined || payload.result === undefined) {
+    throw new IntegrationError({ message: payload.error?.message ?? "tools/list returned no result", operation: "tools/list" })
+  }
+  return (await Schema.decodeUnknownPromise(McpToolsList)(payload.result)).tools
+}
+
 const executeMcp = async (options: {
   readonly source: Extract<IntegrationSource, { readonly kind: "mcp" }>
   readonly operation: string
   readonly headers: Record<string, string>
   readonly input: Schema.Schema.Type<typeof Schema.Json>
 }): Promise<Schema.Schema.Type<typeof Schema.Json>> => {
-  const post = (body: Schema.Schema.Type<typeof Schema.Json>, sessionId?: string) => fetch(options.source.url, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      accept: "application/json, text/event-stream",
-      ...options.headers,
-      ...(sessionId === undefined ? {} : { "mcp-session-id": sessionId })
-    },
-    body: JSON.stringify(body)
+  const sessionId = await initializeMcp({ url: options.source.url, headers: options.headers, operation: options.operation })
+  const response = await postMcpMessage({
+    url: options.source.url, headers: options.headers, ...(sessionId === undefined ? {} : { sessionId }),
+    body: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: options.operation, arguments: options.input } }
   })
-
-  const initializeResponse = await post({
-    jsonrpc: "2.0",
-    id: 0,
-    method: "initialize",
-    params: {
-      protocolVersion: "2025-03-26",
-      capabilities: {},
-      clientInfo: { name: "@mokronos/wfkit", version: "0.2.0" }
-    }
-  })
-  if (!initializeResponse.ok) {
-    throw new IntegrationError({
-      message: `${options.operation} MCP initialization failed: ${initializeResponse.status} ${initializeResponse.statusText}`,
-      operation: options.operation,
-      status: initializeResponse.status
-    })
-  }
-  await Schema.decodeUnknownPromise(JsonRpcResponse)(await initializeResponse.json())
-  const sessionId = initializeResponse.headers.get("mcp-session-id") ?? undefined
-  const initializedResponse = await post({ jsonrpc: "2.0", method: "notifications/initialized" }, sessionId)
-  if (!initializedResponse.ok) {
-    throw new IntegrationError({
-      message: `${options.operation} MCP initialization notification failed: ${initializedResponse.status}`,
-      operation: options.operation,
-      status: initializedResponse.status
-    })
-  }
-
-  const response = await post(
-    { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: options.operation, arguments: options.input } },
-    sessionId
-  )
   if (!response.ok) {
     throw new IntegrationError({
       message: `${options.operation} failed: ${response.status} ${response.statusText}`,

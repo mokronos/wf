@@ -85,9 +85,7 @@ export type {
   WorkflowGraphNodeKind,
   WorkflowGraphOptions,
   DiscoverIntegrationsOptions,
-  DiscoverIntegrationsResult,
-  IntegrationKind,
-  IntegrationSearchResult
+  DiscoverIntegrationsResult
 } from "./sdk/index.ts"
 export {
   Cancelled,
@@ -103,9 +101,26 @@ export {
   toJsonText,
   sampleValueForJsonSchema,
   sampleValueForSchema,
+  IntegrationKindSchema,
+  type IntegrationKind,
+  IntegrationNodeConfigSchema,
+  type IntegrationNodeConfig,
+  IntegrationSearchResultSchema,
+  type IntegrationSearchResult,
+  IntegrationSurfaceSchema,
+  IntegrationSurfaceAuthSchema,
+  IntegrationSurfaceCredentialSchema,
+  IntegrationSurfaceDocumentSchema,
+  type IntegrationSurfaceDocument,
+  IntegrationValidationFindingSchema,
+  type IntegrationValidationFinding,
+  IntegrationValidationReportSchema,
+  type IntegrationValidationReport,
   workflowArtifactToGraph,
   workflowToGraph,
-  discover
+  discover,
+  getIntegrationSurface,
+  validateIntegrationNode
 } from "./sdk/index.ts"
 export { createTestRuntime } from "./testing/index.ts"
 export type { CompensationRecorder, TestRuntime, TestRuntimeOptions } from "./testing/index.ts"
