@@ -20,7 +20,8 @@
     "example:approval": "cd examples/approval && bun run main.ts demo",
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --build --noEmit",
-    "test": "bun test"
+    "test": "bun test",
+    "wf": "bun run packages/wf-cli/src/main.ts"
   },
   "devDependencies": {
     "@effect/language-service": "^0.86.4",
