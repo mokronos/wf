@@ -3,7 +3,7 @@ import { mkdirSync, rmSync } from "node:fs"
 import path from "node:path"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
-const cliPath = path.join(repoRoot, "packages", "wf", "src", "cli", "main.ts")
+const cliPath = path.join(repoRoot, "apps", "cli", "src", "cli", "main.ts")
 const tempRoot = path.join(repoRoot, ".tmp", "cli-signal-tests")
 const decoder = new TextDecoder()
 

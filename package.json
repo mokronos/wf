@@ -13,21 +13,21 @@
   },
   "scripts": {
     "build": "bun run --cwd packages/wf build",
-    "build:cli": "bun run --cwd packages/wf-cli build",
+    "build:cli": "bun run --cwd apps/cli build",
     "build:marketing": "bun run --cwd apps/marketing build",
-    "cli": "bun run packages/wf/src/cli/main.ts",
+    "cli": "bun run apps/cli/src/main.ts",
     "dev:marketing": "bun run --cwd apps/marketing dev",
-    "dev:cli": "bun run packages/wf-cli/src/main.ts",
+    "dev:cli": "bun run apps/cli/src/main.ts",
     "example:email": "bun run examples/email/main.ts",
     "example:quickstart": "bun run examples/quickstart/main.ts",
     "example:order-saga": "cd examples/order-saga && bun run main.ts",
     "example:approval": "cd examples/approval && bun run main.ts demo",
-    "install:local": "bun run packages/wf-cli/install-local.ts",
+    "install:local": "bun run apps/cli/install-local.ts",
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --build --noEmit",
     "test": "bun test",
     "verify": "bun run typecheck && bun test && bun run example:order-saga && bun run example:approval && bun run build && bun run build:marketing && bun run build:cli",
-    "wf": "bun run packages/wf-cli/src/main.ts"
+    "wf": "bun run apps/cli/src/main.ts"
   },
   "devDependencies": {
     "@effect/language-service": "^0.86.4",

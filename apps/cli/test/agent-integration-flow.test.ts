@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
-const cliPath = path.join(repoRoot, "packages", "wf-cli", "src", "main.ts")
+const cliPath = path.join(repoRoot, "apps", "cli", "src", "main.ts")
 const servers: Array<ReturnType<typeof Bun.serve>> = []
 const directories: Array<string> = []
 

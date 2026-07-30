@@ -7,7 +7,7 @@ import {
   probeExecutorOAuth,
   registerExecutorOAuthClient,
   startExecutorOAuth
-} from "../executor.ts"
+} from "@mokronos/wfkit"
 
 export const openBrowser = (url: string): void => {
   const command = process.platform === "darwin"

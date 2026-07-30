@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 import path from "node:path"
-import { createSqliteWorkflowRepository, toJsonText, workflowArtifactToGraph } from "../../wf/src/index.ts"
-import type { WorkflowRepository } from "../../wf/src/index.ts"
-import { runWfkitCli } from "../../wf/src/cli/main.ts"
+import { createSqliteWorkflowRepository, toJsonText, workflowArtifactToGraph } from "@mokronos/wfkit"
+import type { WorkflowRepository } from "@mokronos/wfkit"
+import { runWfkitCli } from "./cli/main.ts"
 import assets from "./embedded-web-assets.gen.ts"
 import { repositoryPath, wfHome } from "./paths.ts"
 import { defaultPort, installService } from "./service.ts"

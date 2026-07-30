@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import path from "node:path"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
-const cliPath = path.join(repoRoot, "packages", "wf", "src", "cli", "main.ts")
+const cliPath = path.join(repoRoot, "apps", "cli", "src", "cli", "main.ts")
 const decoder = new TextDecoder()
 
 const runCli = (args: ReadonlyArray<string>) => {

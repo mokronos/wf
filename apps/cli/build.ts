@@ -107,7 +107,7 @@ const writePlatformPackage = async (target: BuildTarget): Promise<void> => {
     target.bunTarget,
     "--outfile",
     binaryPath,
-    "packages/wf-cli/src/main.ts"
+    "apps/cli/src/main.ts"
   ])
   if (target.npmOs !== "win32") await chmod(binaryPath, 0o755)
   await writeFile(path.join(directory, "package.json"), JSON.stringify({
@@ -131,6 +131,7 @@ const writeWrapperPackage = async (): Promise<void> => {
   await cp(path.join(packageDirectory, "README.md"), path.join(directory, "README.md"))
   await writeFile(path.join(directory, "package.json"), JSON.stringify({
     ...packageMetadata,
+    devDependencies: undefined,
     files: ["bin", "README.md"],
     optionalDependencies: Object.fromEntries(
       targets.map((target) => [aliasName(target), `npm:${packageMetadata.name}@${variantVersion(target)}`])

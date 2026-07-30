@@ -18,16 +18,22 @@ export {
   addExecutorMcp,
   addExecutorOpenApi,
   closeExecutor,
+  completeExecutorOAuth,
   createExecutorConnection,
+  createExecutorOAuthClient,
   detectExecutorIntegration,
   executorStorageDirectory,
+  executeExecutorTool,
   listExecutorConnections,
   listExecutorIntegrations,
   listExecutorTools,
   previewExecutorOpenApi,
   probeExecutorMcp,
+  probeExecutorOAuth,
+  registerExecutorOAuthClient,
   removeExecutorConnection,
-  setExecutorStorageDirectory
+  setExecutorStorageDirectory,
+  startExecutorOAuth
 } from "./executor.ts"
 export type {
   DefinedWorkflow,

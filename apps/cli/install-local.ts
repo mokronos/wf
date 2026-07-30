@@ -117,7 +117,7 @@ exec ${process.execPath} ${entryPoint} "$@"
 }
 
 const installCompiled = async (target: string): Promise<void> => {
-  await run(["bun", "run", "--cwd", "packages/wf-cli", "build"])
+  await run(["bun", "run", "--cwd", "apps/cli", "build"])
   const binary = compiledBinaryPath()
   if (!(await Bun.file(binary).exists())) throw new Error(`Build did not produce ${binary}`)
   await symlink(binary, target)

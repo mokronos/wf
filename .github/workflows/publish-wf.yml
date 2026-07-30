@@ -40,9 +40,9 @@ jobs:
       - name: Verify tag matches package version
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#wf-v}"
-          PACKAGE_VERSION="$(jq -r .version packages/wf-cli/package.json)"
+          PACKAGE_VERSION="$(jq -r .version apps/cli/package.json)"
           if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "Tag version ($TAG_VERSION) does not match packages/wf-cli/package.json ($PACKAGE_VERSION)" >&2
+            echo "Tag version ($TAG_VERSION) does not match apps/cli/package.json ($PACKAGE_VERSION)" >&2
             exit 1
           fi
 
@@ -56,7 +56,7 @@ jobs:
         run: bun test
 
       - name: Build platform packages
-        run: bun run --cwd packages/wf-cli build --all
+        run: bun run --cwd apps/cli build --all
 
       - name: Publish platform binaries and wrapper
-        run: bun run --cwd packages/wf-cli publish:built
+        run: bun run --cwd apps/cli publish:built

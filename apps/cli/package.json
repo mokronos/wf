@@ -9,7 +9,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/mokronos/wf.git",
-    "directory": "packages/wf-cli"
+    "directory": "apps/cli"
   },
   "bin": {
     "wf": "bin/wf.cjs"
@@ -29,5 +29,10 @@
     "publish:dry-run": "bun run publish.ts --dry-run",
     "test": "bun test test",
     "typecheck": "tsc -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@effect/platform-bun": "4.0.0-beta.59",
+    "@mokronos/wfkit": "workspace:*",
+    "effect": "4.0.0-beta.59"
   }
 }

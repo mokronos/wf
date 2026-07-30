@@ -10,7 +10,7 @@ import {
   setExecutorStorageDirectory,
   toJsonText,
   workflowArtifactToGraph
-} from "../index.ts"
+} from "@mokronos/wfkit"
 import { runIntegrationsCli } from "./integrations.ts"
 import type {
   JsonSchema,
@@ -24,7 +24,7 @@ import type {
   WorkflowRunRecord,
   WorkflowGraphNodeKind,
   WorkflowGraphNodeMetadata
-} from "../index.ts"
+} from "@mokronos/wfkit"
 
 const help = `wf - create, run, and inspect durable TypeScript workflows
 

@@ -7,17 +7,15 @@ import {
   listExecutorIntegrations,
   listExecutorTools,
   removeExecutorConnection,
-  setExecutorStorageDirectory
-} from "../executor.ts"
+  setExecutorStorageDirectory,
+  discoverIntegration,
+  validateIntegrationNode
+} from "@mokronos/wfkit"
 import type {
   ExecutorAuthMethod,
   ExecutorIntegration,
   ExecutorTool
-} from "../executor.ts"
-import {
-  discoverIntegration,
-  validateIntegrationNode
-} from "../sdk/integrations.ts"
+} from "@mokronos/wfkit"
 import { authorizeExecutorInBrowser, openBrowser } from "./oauth.ts"
 
 class IntegrationCliError extends Data.TaggedError("IntegrationCliError")<{
