@@ -42,7 +42,6 @@ interface WorkflowRunEventRow {
   readonly id: number
   readonly run_id: string
   readonly sequence: number
-  readonly type: string
   readonly event_json: string
   readonly created_at: string
 }
@@ -113,7 +112,6 @@ const toRunEventRecord = (row: WorkflowRunEventRow): WorkflowRunEventRecord => S
   id: row.id,
   runId: row.run_id,
   sequence: row.sequence,
-  type: row.type,
   event: Schema.decodeUnknownSync(WorkflowHistoryEventSchema)(JSON.parse(row.event_json)),
   createdAt: row.created_at
 })
@@ -178,7 +176,7 @@ const migrate = (db: SqliteDatabase) => {
       id TEXT PRIMARY KEY,
       workflow_id TEXT NOT NULL,
       workflow_version TEXT NOT NULL,
-      status TEXT NOT NULL CHECK (status IN ('running', 'completed', 'failed')),
+       status TEXT NOT NULL CHECK (status IN ('running', 'suspended', 'compensating', 'completed', 'failed')),
       input_json TEXT NOT NULL,
       result_json TEXT,
       error_json TEXT,
@@ -187,11 +185,13 @@ const migrate = (db: SqliteDatabase) => {
     );
 
     CREATE TABLE IF NOT EXISTS workflow_run_events (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_id TEXT NOT NULL,
-      sequence INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      event_json TEXT NOT NULL,
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       run_id TEXT NOT NULL,
+       sequence INTEGER NOT NULL,
+       -- Retained for compatibility with existing catalog files. The value is
+       -- derived from event_json on write and is never a second authority.
+       type TEXT NOT NULL,
+       event_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (run_id) REFERENCES workflow_runs(id),
       UNIQUE (run_id, sequence)
@@ -331,7 +331,7 @@ export const createSqliteWorkflowRepository = (
       return toRunRecord(row)
     },
 
-    async appendRunEvent({ runId, type, event }) {
+    async appendRunEvent({ runId, event }) {
       const db = await dbPromise
       const nextSequence = db.prepare<{ sequence: number }>(`
         SELECT COALESCE(MAX(sequence), 0) + 1 AS sequence
@@ -341,8 +341,8 @@ export const createSqliteWorkflowRepository = (
 
       db.prepare<unknown>(`
         INSERT INTO workflow_run_events (run_id, sequence, type, event_json, created_at)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(runId, nextSequence, type, toJsonText(event), nowIso())
+        VALUES (?, ?, json_extract(?, '$.type'), ?, ?)
+      `).run(runId, nextSequence, toJsonText(event), toJsonText(event), nowIso())
     },
 
     async completeRun({ runId, result }) {

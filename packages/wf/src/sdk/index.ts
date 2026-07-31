@@ -19,9 +19,10 @@ export {
 export type { SqliteWorkflowRepositoryOptions } from "./sqlite.ts"
 export {
   isDefinedWorkflow,
-  loadWorkflowArtifact
+  loadWorkflowArtifact,
+  validateWorkflowArtifact
 } from "./loader.ts"
-export type { LoadedWorkflow } from "./loader.ts"
+export type { ArtifactValidation, LoadedWorkflow } from "./loader.ts"
 export {
   sampleValueForJsonSchema,
   sampleValueForSchema,
@@ -57,16 +58,18 @@ export {
 export type {
   DiscoverIntegrationsOptions
 } from "./integrations.ts"
-export { Cancelled, MissingWorkflowVersionError, createWorkflowClient, createWorkflowSdk } from "./sdk.ts"
+export { Cancelled, MissingWorkflowVersionError, createWorkflowClient, createWorkflowSdk, lifecycleRunRecords } from "./sdk.ts"
 export type {
   WorkflowClient,
   WorkflowExecutionHandle,
+  WorkflowExecutionRecord,
   WorkflowExecutionStatus,
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
   WorkflowListResult,
   PendingSignal,
   WorkflowResult,
+  WorkflowObservation,
   RunWorkflowOptions,
   WorkflowRunResult,
   WorkflowSdk,

@@ -293,8 +293,23 @@ export const WorkflowHistoryEvent = Schema.Union([
 ])
 export type WorkflowHistoryEvent = typeof WorkflowHistoryEvent.Type
 
-export const WorkflowRunStatus = Schema.Literals(["running", "completed", "failed"])
+// A run has one lifecycle regardless of whether it is observed by the client,
+// CLI, or dashboard. Catalogs may reference a run, but do not redefine it.
+export const WorkflowRunStatus = Schema.Literals([
+  "running",
+  "suspended",
+  "compensating",
+  "completed",
+  "failed"
+])
 export type WorkflowRunStatus = typeof WorkflowRunStatus.Type
+
+export const WorkflowHistoryRecord = Schema.Struct({
+  sequence: Schema.Number,
+  createdAt: Schema.String,
+  event: WorkflowHistoryEvent
+})
+export type WorkflowHistoryRecord = typeof WorkflowHistoryRecord.Type
 
 export const WorkflowArtifact = Schema.Struct({
   id: Schema.String,
@@ -339,7 +354,6 @@ export const WorkflowRunEventRecord = Schema.Struct({
   id: Schema.Number,
   runId: ExecutionId,
   sequence: Schema.Number,
-  type: Schema.String,
   event: WorkflowHistoryEvent,
   createdAt: Schema.String
 })
@@ -458,7 +472,7 @@ export type RunsResponse = typeof RunsResponse.Type
 export const RunEventsResponse = Schema.Struct({
   generatedAt: Schema.String,
   run: WorkflowRunRecord,
-  events: Schema.Array(WorkflowRunEventRecord),
+  events: Schema.Array(WorkflowHistoryRecord),
   error: OptionalString
 })
 export type RunEventsResponse = typeof RunEventsResponse.Type

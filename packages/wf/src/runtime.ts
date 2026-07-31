@@ -65,6 +65,8 @@ export interface WorkflowRuntime {
     readonly workflow: DefinedWorkflow
     readonly executionId: string
   }): Promise<void>
+  /** Releases the engine and its SQLite resources. A disposed runtime cannot be reused. */
+  dispose(): Promise<void>
 }
 
 export class WorkflowVersionConflictError extends Error {
@@ -131,8 +133,12 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
   // fight over shard ownership — message processing becomes arbitrarily late.
   // Rebuilt only when the registered workflow set changes.
   let managed: { readonly signature: string; readonly runtime: ManagedRuntime.ManagedRuntime<any, unknown> } | undefined
+  let disposed = false
 
   const getManagedRuntime = () => {
+    if (disposed) {
+      throw new Error("Workflow runtime has been disposed")
+    }
     const signature = Array.from(workflows.keys()).sort().join(",")
     if (managed === undefined || managed.signature !== signature) {
       if (managed !== undefined) {
@@ -263,6 +269,18 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
         yield* engine.resume(workflow.workflow, executionId)
       })
       return runEffect(effect)
+    },
+
+    async dispose() {
+      if (disposed) {
+        return
+      }
+      disposed = true
+      const active = managed
+      managed = undefined
+      if (active !== undefined) {
+        await active.runtime.dispose()
+      }
     }
   }
 }

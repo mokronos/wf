@@ -18,6 +18,10 @@ export interface LoadedWorkflow {
   readonly workflow: DefinedWorkflow
 }
 
+export type ArtifactValidation =
+  | { readonly valid: true; readonly loaded: LoadedWorkflow; readonly diagnostics: ReadonlyArray<string> }
+  | { readonly valid: false; readonly diagnostics: ReadonlyArray<string> }
+
 export const isDefinedWorkflow = (value: unknown): value is DefinedWorkflow => {
   if ((typeof value !== "object" && typeof value !== "function") || value === null) {
     return false
@@ -147,4 +151,23 @@ export const loadWorkflowArtifact = async (
   }
 
   throw new Error(`Workflow ${artifact.id} did not export a wf workflow`)
+}
+
+/**
+ * The common validation boundary for the CLI, dashboard, and graph tracer.
+ * Evaluation remains explicit here rather than being reimplemented by each
+ * caller, so they receive identical import/export diagnostics.
+ */
+export const validateWorkflowArtifact = async (
+  artifact: WorkflowArtifact
+): Promise<ArtifactValidation> => {
+  try {
+    const loaded = await loadWorkflowArtifact(artifact)
+    return { valid: true, loaded, diagnostics: [] }
+  } catch (error) {
+    return {
+      valid: false,
+      diagnostics: [error instanceof Error ? error.message : String(error)]
+    }
+  }
 }

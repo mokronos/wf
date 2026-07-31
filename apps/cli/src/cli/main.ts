@@ -6,6 +6,7 @@ import {
   createWorkflowRuntime,
   createSqliteWorkflowRepository,
   loadWorkflowArtifact,
+  lifecycleRunRecords,
   sampleValueForJsonSchema,
   setExecutorStorageDirectory,
   toJsonText,
@@ -19,8 +20,8 @@ import type {
   WorkflowClient,
   WorkflowEvent,
   WorkflowHistoryEvent,
+  WorkflowHistoryRecord,
   WorkflowRepository,
-  WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowGraphNodeKind,
   WorkflowGraphNodeMetadata
@@ -479,7 +480,7 @@ const printRuns = (runs: ReadonlyArray<WorkflowRunRecord>) => {
   }
 }
 
-const printRunEvents = (events: ReadonlyArray<WorkflowRunEventRecord>) => {
+const printRunEvents = (events: ReadonlyArray<WorkflowHistoryRecord>) => {
   if (events.length === 0) {
     console.log("No workflow run events found.")
     return
@@ -487,7 +488,7 @@ const printRunEvents = (events: ReadonlyArray<WorkflowRunEventRecord>) => {
 
   for (const event of events) {
     console.log(
-      `${event.sequence}\t${event.createdAt}\t${event.type}\t${stringifyEventValue(event.event)}`
+      `${event.sequence}\t${event.createdAt}\t${event.event.type}\t${stringifyEventValue(event.event)}`
     )
   }
 }
@@ -872,68 +873,19 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
   }
 }
 
-type AwaitWorkflowOutcome =
-  | { readonly type: "terminal"; readonly result: Awaited<ReturnType<WorkflowClient["result"]>> }
-  | { readonly type: "signal-suspended"; readonly pendingSignals: ReadonlyArray<PendingSignal> }
-
-const sleep = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds))
-
-const waitForSignalSuspension = async (
-  client: WorkflowClient,
-  executionId: string
-): Promise<ReadonlyArray<PendingSignal>> => {
-  while (true) {
-    const status = await client.status(executionId)
-    if (status === "suspended") {
-      const pendingSignals = await client.pendingSignals(executionId)
-      if (pendingSignals.length > 0) {
-        return pendingSignals
-      }
-    }
-    await sleep(100)
-  }
-}
-
-const awaitWorkflowOutcome = async (
-  client: WorkflowClient,
-  executionId: string
-): Promise<AwaitWorkflowOutcome> =>
-  Promise.race([
-    client.result(executionId).then((result): AwaitWorkflowOutcome => ({ type: "terminal", result })),
-    waitForSignalSuspension(client, executionId).then((pendingSignals): AwaitWorkflowOutcome => ({
-      type: "signal-suspended",
-      pendingSignals
-    }))
-  ])
-
-const syncRunEvents = async (
-  repository: WorkflowRepository,
-  client: WorkflowClient,
-  runId: string
-) => {
-  const existingCount = (await repository.listRunEvents(runId)).length
-  const records = (await client.history(runId)).filter((record) => record.sequence > existingCount)
-
+const awaitAndPrintRun = async (options: {
+  readonly client: WorkflowClient
+  readonly runId: string
+  readonly historyLength: number
+}) => {
+  const outcome = await options.client.observe(options.runId)
+  const records = (await options.client.history(options.runId))
+    .filter((record) => record.sequence > options.historyLength)
   for (const record of records) {
-    await repository.appendRunEvent({
-      runId,
-      type: record.event.type,
-      event: record.event
-    })
     if (isPrintableWorkflowEvent(record.event)) {
       printWorkflowEvent(record.event)
     }
   }
-}
-
-const awaitSyncAndPersistRun = async (options: {
-  readonly repository: WorkflowRepository
-  readonly client: WorkflowClient
-  readonly runId: string
-}) => {
-  const outcome = await awaitWorkflowOutcome(options.client, options.runId)
-  await syncRunEvents(options.repository, options.client, options.runId)
 
   if (outcome.type === "signal-suspended") {
     printPendingSignalHint(options.runId, outcome.pendingSignals)
@@ -941,12 +893,10 @@ const awaitSyncAndPersistRun = async (options: {
   }
 
   if (outcome.result.type === "completed") {
-    await options.repository.completeRun({ runId: options.runId, result: outcome.result.value })
     printRunResult(outcome.result.value)
     return
   }
 
-  await options.repository.failRun({ runId: options.runId, error: outcome.result.error })
   throw outcome.result.error
 }
 
@@ -1080,7 +1030,12 @@ export const runWfkitCli = async (options: {
     }
 
     case "runs": {
-      printRuns(await repository.listRuns())
+      const { client } = createEngineBackedClient(storageDir)
+      try {
+        printRuns(await lifecycleRunRecords(client, await repository.list()))
+      } finally {
+        await client.dispose()
+      }
       return
     }
 
@@ -1091,7 +1046,12 @@ export const runWfkitCli = async (options: {
         throw new Error("wf history requires an execution id")
       }
 
-      printRunEvents(await repository.listRunEvents(runId))
+      const { client } = createEngineBackedClient(storageDir)
+      try {
+        printRunEvents(await client.history(runId))
+      } finally {
+        await client.dispose()
+      }
       return
     }
 
@@ -1108,47 +1068,50 @@ export const runWfkitCli = async (options: {
       const loaded = await loadWorkflowArtifact(artifact)
       const input = parseJsonInput(rawInput)
       const { client } = createEngineBackedClient(storageDir)
-      const handle = await client.start(loaded.workflow, input)
-      console.error(`${eventTag("run")} id ${bold(handle.executionId)}`)
-      await repository.startRun({ id: handle.executionId, workflow: artifact, input })
-
-      await awaitSyncAndPersistRun({ repository, client, runId: handle.executionId })
+      try {
+        const handle = await client.start(loaded.workflow, input, { artifactId: artifact.id })
+        console.error(`${eventTag("run")} id ${bold(handle.executionId)}`)
+        await awaitAndPrintRun({ client, runId: handle.executionId, historyLength: 1 })
+      } finally {
+        await client.dispose()
+      }
       return
     }
 
     case "signal": {
       const options = parseSignalCommandOptions(args)
-      const run = await repository.getRun(options.runId)
-      if (run === undefined) {
-        throw new Error(`Unknown workflow run: ${options.runId}`)
-      }
-
-      const artifact = await repository.get(run.workflowId)
-      if (artifact === undefined) {
-        throw new Error(`Workflow artifact was deleted for run ${options.runId}: ${run.workflowId}`)
-      }
-
-      const loaded = await loadWorkflowArtifact(artifact)
       const { runtime, client } = createEngineBackedClient(storageDir)
-      runtime.register([loaded.workflow])
-
       try {
-        await client.signal(
-          options.runId,
-          options.signalName,
-          options.payload,
-          options.actor === undefined ? {} : { actor: options.actor }
-        )
-      } catch (error) {
-        const pendingSignals = await client.pendingSignals(options.runId).catch(() => [])
-        if (pendingSignals.length === 0) {
-          throw error
+        const execution = await client.execution(options.runId)
+        const artifact = execution.artifactId === undefined
+          ? (await repository.list()).find((candidate) => candidate.name === execution.workflowName)
+          : await repository.get(execution.artifactId)
+        if (artifact === undefined) {
+          throw new Error(`Workflow artifact was deleted for run ${options.runId}: ${execution.workflowName}`)
         }
-        const lines = pendingSignals.map((signal) => describePendingSignal(options.runId, signal))
-        throw new Error(`${formatError(error)}\n${lines.join("\n")}`)
-      }
 
-      await awaitSyncAndPersistRun({ repository, client, runId: options.runId })
+        const loaded = await loadWorkflowArtifact(artifact)
+        runtime.register([loaded.workflow])
+        const historyLength = (await client.history(options.runId)).length
+        try {
+          await client.signal(
+            options.runId,
+            options.signalName,
+            options.payload,
+            options.actor === undefined ? {} : { actor: options.actor }
+          )
+          await awaitAndPrintRun({ client, runId: options.runId, historyLength })
+        } catch (error) {
+          const pendingSignals = await client.pendingSignals(options.runId).catch(() => [])
+          if (pendingSignals.length === 0) {
+            throw error
+          }
+          const lines = pendingSignals.map((signal) => describePendingSignal(options.runId, signal))
+          throw new Error(`${formatError(error)}\n${lines.join("\n")}`)
+        }
+      } finally {
+        await client.dispose()
+      }
       return
     }
 
@@ -1159,10 +1122,10 @@ export const runWfkitCli = async (options: {
 
 if (import.meta.main) {
   runWfkitCli({ arguments: process.argv.slice(2), rootDir: process.cwd() }).then(
-  () => process.exit(process.exitCode ?? 0),
-  (error) => {
-    console.error(formatError(error))
-    process.exit(1)
-  }
+    () => {},
+    (error) => {
+      console.error(formatError(error))
+      process.exitCode = 1
+    }
   )
 }

@@ -5,7 +5,14 @@ import type * as Duration from "effect/Duration"
 import { currentWorkflowEventSink, emitWorkflowEvent } from "./events.ts"
 import type { WorkflowEvent } from "./schemas.ts"
 import { ExecutionId, jsonSchemaOf } from "./schemas.ts"
-import { awaitSignal, registerSignalSchema, SignalDeliveryError, takeBufferedSignal } from "./signal.ts"
+import {
+  awaitSignal,
+  defaultSignalTransport,
+  registerSignalSchema,
+  SignalDeliveryError,
+  takeBufferedSignal
+} from "./signal.ts"
+import type { SignalTransport } from "./signal.ts"
 
 type AnySchema<A = any> = Schema.Codec<A, any, any, any>
 
@@ -285,6 +292,8 @@ export interface InMemoryExecutionOptions {
     readonly name: string
     readonly schema: AnySchema
   }) => unknown | Promise<unknown>
+  /** Execution-scoped signal adapter. Defaults to the legacy singleton. */
+  readonly signalTransport?: SignalTransport
   readonly secrets?: SecretResolver
 }
 
@@ -962,13 +971,14 @@ const makeInMemoryCtx = <WErrors>(
   emit: (event: WorkflowEvent) => Promise<void>,
   options: Pick<
     InMemoryExecutionOptions,
-    "stepExecutors" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "secrets"
+    "stepExecutors" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "signalTransport" | "secrets"
   > = {}
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
   let journalPosition = 0
   let blockPosition = 0
   const branchCollectors: Array<OrchestrationCall[]> = []
+  const signals = options.signalTransport ?? defaultSignalTransport
 
   const recordCall = async (actual: OrchestrationCall): Promise<void> => {
     const index = journalPosition++
@@ -1102,7 +1112,7 @@ const makeInMemoryCtx = <WErrors>(
       return Effect.tryPromise({
         try: async () => {
           await recordCall({ kind: "signal", name, counter: invocation })
-          registerSignalSchema(executionId, name, schema)
+          signals.registerSchema(executionId, name, schema)
           await emit({
             type: "signal.waiting",
             executionId,
@@ -1113,17 +1123,17 @@ const makeInMemoryCtx = <WErrors>(
             ...(payloadSchema === undefined ? {} : { payloadSchema })
           })
 
-          const buffered = takeBufferedSignal(executionId, name, schema)
-          if (buffered !== undefined) {
+          const buffered = signals.takeBuffered(executionId, name, schema)
+          if (buffered.present) {
             await emit({
               type: "signal.received",
               executionId,
               name,
               invocation,
               activityName,
-              payload: buffered
+              payload: buffered.value
             })
-            return { type: "signal", value: buffered } as const
+            return { type: "signal", value: buffered.value } as const
           }
 
           if (options.signalValue !== undefined) {
@@ -1141,11 +1151,13 @@ const makeInMemoryCtx = <WErrors>(
 
           if (opts?.timeout !== undefined) {
             if (options.signalTimeout !== undefined) {
+              const controller = new AbortController()
               const outcome = await Promise.race([
-                awaitSignal(executionId, name, schema).then((value) => ({ type: "signal", value }) as const),
+                signals.await(executionId, name, schema, { signal: controller.signal })
+                  .then((value) => ({ type: "signal", value }) as const),
                 options.signalTimeout({ executionId, name: activityName, duration: opts.timeout })
                   .then(() => ({ type: "timeout" }) as const)
-              ])
+              ]).finally(() => controller.abort())
               if (outcome.type === "signal") {
                 await emit({
                   type: "signal.received",
@@ -1178,7 +1190,7 @@ const makeInMemoryCtx = <WErrors>(
             return { type: "timeout" } as const
           }
 
-          const value = await awaitSignal(executionId, name, schema)
+          const value = await signals.await(executionId, name, schema)
           await emit({
             type: "signal.received",
             executionId,
@@ -1440,6 +1452,7 @@ export const defineWorkflow = <
       ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
       ...(options.signalTimeout === undefined ? {} : { signalTimeout: options.signalTimeout }),
       ...(options.signalValue === undefined ? {} : { signalValue: options.signalValue }),
+      ...(options.signalTransport === undefined ? {} : { signalTransport: options.signalTransport }),
       ...(options.secrets === undefined ? {} : { secrets: options.secrets })
     })
 

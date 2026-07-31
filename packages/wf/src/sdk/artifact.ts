@@ -28,7 +28,6 @@ export interface WorkflowRunStore {
   }): Promise<WorkflowRunRecord>
   appendRunEvent(options: {
     readonly runId: string
-    readonly type: string
     readonly event: unknown
   }): Promise<void>
   completeRun(options: {

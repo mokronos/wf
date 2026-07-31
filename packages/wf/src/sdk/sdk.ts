@@ -6,11 +6,12 @@ import type { DefinedWorkflow } from "../core.ts"
 import { Cancelled, cancellationDeferredName, createInMemoryDeterminismState } from "../core.ts"
 import type { WorkflowEvent } from "../events.ts"
 import { ExecutionId, WorkflowHistoryEvent as WorkflowHistoryEventSchema } from "../schemas.ts"
-import type { JsonSchema, WorkflowHistoryEvent } from "../schemas.ts"
+import type { JsonSchema, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowRunStatus } from "../schemas.ts"
+import { isTerminalRunStatus, statusAfterEvent } from "../run-lifecycle.ts"
 import { createWorkflowRuntime, executeWorkflow } from "../runtime.ts"
 import type { ExecuteWorkflowOptions } from "../runtime.ts"
 import type { WorkflowRuntime } from "../runtime.ts"
-import { cancelSignalWaits, decodeSignal, deliverSignal, getSignalSchema } from "../signal.ts"
+import { createSignalTransport, decodeSignal, getSignalSchema } from "../signal.ts"
 import type {
   WorkflowArtifact,
   WorkflowRunEventRecord,
@@ -23,12 +24,7 @@ import { parseJsonText, toJsonText } from "./json.ts"
 import { loadWorkflowArtifact } from "./loader.ts"
 import { replayDedupeKey } from "../replay.ts"
 
-export type WorkflowExecutionStatus =
-  | "running"
-  | "suspended"
-  | "completed"
-  | "failed"
-  | "compensating"
+export type WorkflowExecutionStatus = WorkflowRunStatus
 
 export interface WorkflowExecutionHandle {
   readonly executionId: string
@@ -39,12 +35,23 @@ export type WorkflowResult =
   | { readonly type: "completed"; readonly value: unknown }
   | { readonly type: "failed"; readonly error: unknown }
 
+export type WorkflowObservation =
+  | { readonly type: "terminal"; readonly result: WorkflowResult }
+  | { readonly type: "signal-suspended"; readonly pendingSignals: ReadonlyArray<PendingSignal> }
+
 export type { WorkflowHistoryEvent }
 
-export interface WorkflowHistoryRecord {
-  readonly sequence: number
-  readonly createdAt: string
-  readonly event: WorkflowHistoryEvent
+export type { WorkflowHistoryRecord }
+
+export interface WorkflowExecutionRecord {
+  readonly executionId: string
+  readonly artifactId?: string
+  readonly workflowName: string
+  readonly version: number
+  readonly status: WorkflowExecutionStatus
+  readonly payload: unknown
+  readonly startedAt: string
+  readonly finishedAt?: string
 }
 
 export interface PendingSignal {
@@ -72,7 +79,7 @@ export interface WorkflowClient {
   start<I, O, E>(
     workflow: DefinedWorkflow<I, O, E>,
     payload: I,
-    opts?: { readonly idempotencyKey?: string; readonly actor?: string; readonly version?: number }
+    opts?: { readonly idempotencyKey?: string; readonly actor?: string; readonly version?: number; readonly artifactId?: string }
   ): Promise<WorkflowExecutionHandle>
   signal(
     executionId: string,
@@ -82,6 +89,8 @@ export interface WorkflowClient {
   ): Promise<void>
   result(executionId: string): Promise<WorkflowResult>
   status(executionId: string): Promise<WorkflowExecutionStatus>
+  execution(executionId: string): Promise<WorkflowExecutionRecord>
+  executions(): Promise<ReadonlyArray<WorkflowExecutionRecord>>
   list<I, O, E>(
     workflow: DefinedWorkflow<I, O, E>,
     opts?: {
@@ -97,7 +106,30 @@ export interface WorkflowClient {
     executionId: string,
     opts?: { readonly compensate?: boolean; readonly actor?: string }
   ): Promise<void>
+  /** Waits for a terminal result or signal suspension without exposing polling. */
+  observe(executionId: string, options?: { readonly signal?: AbortSignal }): Promise<WorkflowObservation>
+  dispose(): Promise<void>
 }
+
+/** Catalog artifacts annotate executions; lifecycle state itself stays engine-owned. */
+export const lifecycleRunRecords = async (
+  client: WorkflowClient,
+  artifacts: ReadonlyArray<WorkflowArtifact>
+): Promise<ReadonlyArray<WorkflowRunRecord>> =>
+  (await client.executions()).map((execution) => {
+    const artifact = execution.artifactId === undefined
+      ? artifacts.find((candidate) => candidate.name === execution.workflowName)
+      : artifacts.find((candidate) => candidate.id === execution.artifactId)
+    return {
+      id: execution.executionId,
+      workflowId: artifact?.id ?? execution.workflowName,
+      workflowVersion: artifact?.version ?? String(execution.version),
+      status: execution.status,
+      input: execution.payload,
+      startedAt: execution.startedAt,
+      ...(execution.finishedAt === undefined ? {} : { finishedAt: execution.finishedAt })
+    }
+  })
 
 export { Cancelled } from "../core.ts"
 
@@ -118,6 +150,7 @@ export class MissingWorkflowVersionError extends Error {
 
 interface ExecutionRecord {
   readonly executionId: string
+  readonly artifactId?: string
   readonly workflow: DefinedWorkflow<any, any, any>
   readonly payload: unknown
   status: WorkflowExecutionStatus
@@ -143,6 +176,46 @@ const signalKey = (event: { readonly name: string; readonly invocation: number }
   `${event.name}:${event.invocation}`
 const optionalTimeout = (timeout: unknown): { readonly timeout?: unknown } =>
   timeout === undefined ? {} : { timeout }
+
+const waitForObservationTick = (signal: AbortSignal | undefined): Promise<void> => new Promise((resolve, reject) => {
+  const timeout = setTimeout(finish, 50)
+  const abort = () => {
+    clearTimeout(timeout)
+    reject(signal?.reason ?? new Error("Workflow observation aborted"))
+  }
+  function finish() {
+    signal?.removeEventListener("abort", abort)
+    resolve()
+  }
+  if (signal?.aborted === true) {
+    abort()
+    return
+  }
+  signal?.addEventListener("abort", abort, { once: true })
+})
+
+const observeExecution = async (
+  client: Pick<WorkflowClient, "status" | "result" | "pendingSignals">,
+  executionId: string,
+  signal: AbortSignal | undefined
+): Promise<WorkflowObservation> => {
+  // A process resuming a durable execution has no local runner yet. Starting
+  // result observation here gives it the same lifecycle owner as a fresh run.
+  void client.result(executionId)
+  while (true) {
+    const status = await client.status(executionId)
+    if (isTerminalRunStatus(status)) {
+      return { type: "terminal", result: await client.result(executionId) }
+    }
+    if (status === "suspended") {
+      const pendingSignals = await client.pendingSignals(executionId)
+      if (pendingSignals.length > 0) {
+        return { type: "signal-suspended", pendingSignals }
+      }
+    }
+    await waitForObservationTick(signal)
+  }
+}
 
 export const pendingSignalsFromHistory = (
   history: ReadonlyArray<WorkflowHistoryRecord>
@@ -178,6 +251,7 @@ export const createWorkflowClient = (
 const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient => {
   const executions = new Map<string, ExecutionRecord>()
   const idempotencyKeys = new Map<string, string>()
+  const signals = createSignalTransport()
 
   const appendHistory = (record: ExecutionRecord, event: WorkflowHistoryEvent) => {
     record.history.push({
@@ -193,22 +267,6 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       throw new Error(`Unknown workflow execution: ${id}`)
     }
     return execution
-  }
-
-  const statusFromEvent = (event: WorkflowEvent): WorkflowExecutionStatus | undefined => {
-    switch (event.type) {
-      case "sleep.started":
-      case "signal.waiting":
-        return "suspended"
-      case "sleep.completed":
-      case "signal.received":
-      case "signal.timeout":
-      case "step.started":
-      case "step.completed":
-        return "running"
-      default:
-        return undefined
-    }
   }
 
   return {
@@ -228,6 +286,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       })
       const execution: ExecutionRecord = {
         executionId: id,
+        ...(opts.artifactId === undefined ? {} : { artifactId: opts.artifactId }),
         workflow,
         payload,
         status: "running",
@@ -254,10 +313,11 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
         .executeInMemory(payload, {
           executionId: id,
           determinism: createInMemoryDeterminismState(),
+          signalTransport: signals,
           ...(runtime?.secrets === undefined ? {} : { secrets: runtime.secrets }),
           onEvent: async (event) => {
             appendHistory(execution, event)
-            const nextStatus = statusFromEvent(event)
+        const nextStatus = statusAfterEvent(event)
             if (nextStatus !== undefined && execution.status !== "failed") {
               execution.status = nextStatus
             }
@@ -272,12 +332,14 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
             execution.finishedAt = nowIso()
             execution.result = { type: "completed", value }
             execution.resolveResult(execution.result)
+            signals.cleanup(id)
           },
           (error) => {
             execution.status = "failed"
             execution.finishedAt = nowIso()
             execution.result = { type: "failed", error }
             execution.resolveResult(execution.result)
+            signals.cleanup(id, error)
           }
         )
 
@@ -286,7 +348,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
 
     async signal(id, name, payload, opts = {}) {
       const execution = requireExecution(id)
-      await deliverSignal(id, name, payload)
+      await signals.deliver(id, name, payload)
       appendHistory(execution, {
         type: "signal.delivered",
         executionId: ExecutionId.make(id),
@@ -302,6 +364,35 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
 
     async status(id) {
       return requireExecution(id).status
+    },
+
+    async execution(id) {
+      const execution = requireExecution(id)
+      return {
+        executionId: execution.executionId,
+        ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
+        workflowName: execution.workflow.name,
+        version: execution.workflow.version,
+        status: execution.status,
+        payload: execution.payload,
+        startedAt: execution.startedAt,
+        ...optionalFinishedAt(execution.finishedAt)
+      }
+    },
+
+    async executions() {
+      return Array.from(executions.values())
+        .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+        .map((execution) => ({
+          executionId: execution.executionId,
+          ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
+          workflowName: execution.workflow.name,
+          version: execution.workflow.version,
+          status: execution.status,
+          payload: execution.payload,
+          startedAt: execution.startedAt,
+          ...optionalFinishedAt(execution.finishedAt)
+        }))
     },
 
     async list(workflow, opts = {}) {
@@ -347,17 +438,31 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       if (compensate) {
         execution.status = "compensating"
       }
-      cancelSignalWaits(id, new Cancelled({ compensate }))
+      signals.cancel(id, new Cancelled({ compensate }))
       const result = await execution.resultPromise
       if (result.type === "failed") {
         execution.status = "failed"
       }
+    },
+
+    observe(id, options = {}) {
+      return observeExecution({
+        status: async (executionId) => requireExecution(executionId).status,
+        result: (executionId) => requireExecution(executionId).resultPromise,
+        pendingSignals: async (executionId) => pendingSignalsFromHistory(requireExecution(executionId).history)
+      }, id, options.signal)
+    },
+
+    async dispose() {
+      executions.clear()
+      idempotencyKeys.clear()
     }
   }
 }
 
 interface DurableExecutionRow {
   readonly id: string
+  readonly artifact_id: string | null
   readonly workflow_name: string
   readonly workflow_version: number
   readonly status: WorkflowExecutionStatus
@@ -386,7 +491,8 @@ interface DurableHistoryRow {
 const migrateClientDb = (db: Database) => {
   db.exec(`
     CREATE TABLE IF NOT EXISTS wf_client_executions (
-      id TEXT PRIMARY KEY,
+       id TEXT PRIMARY KEY,
+       artifact_id TEXT,
       workflow_name TEXT NOT NULL,
       workflow_version INTEGER NOT NULL,
       status TEXT NOT NULL,
@@ -426,6 +532,10 @@ const migrateClientDb = (db: Database) => {
   if (!columns.some((column) => column.name === "dedupe_key")) {
     db.exec("ALTER TABLE wf_client_history ADD COLUMN dedupe_key TEXT")
   }
+  const executionColumns = db.query<{ name: string }, []>("PRAGMA table_info(wf_client_executions)").all()
+  if (!executionColumns.some((column) => column.name === "artifact_id")) {
+    db.exec("ALTER TABLE wf_client_executions ADD COLUMN artifact_id TEXT")
+  }
   db.exec(`
     CREATE INDEX IF NOT EXISTS wf_client_history_dedupe_idx
       ON wf_client_history(execution_id, dedupe_key)
@@ -442,6 +552,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
   const db = new Database(databasePath, { create: true, readwrite: true })
   migrateClientDb(db)
   const runPromises = new Map<string, Promise<WorkflowResult>>()
+  let closing = false
 
   const registerCatalog = (workflow: DefinedWorkflow) => {
     const existing = db.query<DurableWorkflowCatalogRow, [string, number]>(`
@@ -520,6 +631,17 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     return row
   }
 
+  const executionRecord = (row: DurableExecutionRow): WorkflowExecutionRecord => ({
+    executionId: row.id,
+    ...(row.artifact_id === null ? {} : { artifactId: row.artifact_id }),
+    workflowName: row.workflow_name,
+    version: row.workflow_version,
+    status: row.status,
+    payload: decodeStoredValue(row.payload_json),
+    startedAt: row.started_at,
+    ...optionalFinishedAt(row.finished_at ?? undefined)
+  })
+
   const workflowFor = (row: DurableExecutionRow): DefinedWorkflow => {
     const workflow = runtime.getWorkflow(row.workflow_name, row.workflow_version)
     if (workflow === undefined) {
@@ -550,29 +672,13 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     return selected
   }
 
-  const statusFromEvent = (event: WorkflowEvent): WorkflowExecutionStatus | undefined => {
-    switch (event.type) {
-      case "sleep.started":
-      case "signal.waiting":
-        return "suspended"
-      case "sleep.completed":
-      case "signal.received":
-      case "signal.timeout":
-      case "step.started":
-      case "step.completed":
-        return "running"
-      default:
-        return undefined
-    }
-  }
-
   const makeEventSink = (executionId: string) => async (event: WorkflowEvent) => {
     if (!appendHistory(executionId, event)) {
       // Replay re-emission: the status transition already happened when the
       // event fired for real, so don't let the replay flap it.
       return
     }
-    const status = statusFromEvent(event)
+    const status = statusAfterEvent(event)
     if (status !== undefined) {
       updateStatus(executionId, status)
     }
@@ -623,6 +729,11 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         `).run(toJsonText(value), nowIso(), row.id)
         return { type: "completed", value }
       } catch (error) {
+        // Releasing a process-local engine while a workflow is durably parked
+        // must not turn that resource shutdown into a persisted failure.
+        if (closing) {
+          return { type: "failed", error }
+        }
         db.query<unknown, [string, string, string]>(`
           UPDATE wf_client_executions
           SET status = 'failed',
@@ -660,9 +771,10 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       }
 
       const id = executionId()
-      db.query<unknown, [string, string, number, string, string | null, string | null, string]>(`
+      db.query<unknown, [string, string | null, string, number, string, string | null, string | null, string]>(`
         INSERT INTO wf_client_executions (
           id,
+          artifact_id,
           workflow_name,
           workflow_version,
           status,
@@ -671,9 +783,10 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
           actor,
           started_at
         )
-        VALUES (?, ?, ?, 'running', ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'running', ?, ?, ?, ?)
       `).run(
         id,
+        opts.artifactId ?? null,
         selectedWorkflow.name,
         selectedWorkflow.version,
         encodeStoredValue(payload),
@@ -744,6 +857,18 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       return getRow(executionId).status
     },
 
+    async execution(executionId) {
+      return executionRecord(getRow(executionId))
+    },
+
+    async executions() {
+      return db.query<DurableExecutionRow, []>(`
+        SELECT *
+        FROM wf_client_executions
+        ORDER BY started_at DESC
+      `).all().map(executionRecord)
+    },
+
     async list(workflow, opts = {}) {
       const rows = db.query<DurableExecutionRow, [string]>(`
         SELECT *
@@ -812,6 +937,21 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         updateStatus(executionId, "failed")
         await runtime.interrupt({ workflow, executionId })
       }
+    },
+
+    observe(executionId, options = {}) {
+      return observeExecution({
+        status: async (id) => getRow(id).status,
+        result: (id) => runToTerminal(getRow(id)),
+        pendingSignals: async (id) => pendingSignalsFromHistory(readHistory(id))
+      }, executionId, options.signal)
+    },
+
+    async dispose() {
+      closing = true
+      await runtime.dispose()
+      await Promise.allSettled(runPromises.values())
+      db.close()
     }
   }
 }
@@ -876,7 +1016,7 @@ export const createWorkflowSdk = (options: WorkflowSdkOptions = {}): WorkflowSdk
       const loaded = await loadWorkflowArtifact(artifact)
 
       const onRuntimeEvent: ExecuteWorkflowOptions["onEvent"] = async (event) => {
-        await runStore?.appendRunEvent({ runId, type: event.type, event })
+        await runStore?.appendRunEvent({ runId, event })
         await onEvent?.(event)
       }
 

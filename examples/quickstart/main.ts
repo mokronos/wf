@@ -7,24 +7,19 @@ const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: ".wf/qu
 runtime.register([OrderWorkflow])
 const client = createWorkflowClient(runtime)
 
-const handle = await client.start(OrderWorkflow, { orderId: "123", amount: 42 })
-console.log(`started execution ${handle.executionId}`)
+try {
+  const handle = await client.start(OrderWorkflow, { orderId: "123", amount: 42 })
+  console.log(`started execution ${handle.executionId}`)
 
-// Approve the order once the workflow suspends on the managerApproval signal.
-const waitingForApproval = async () => {
-  const history = await client.history(handle.executionId)
-  return history.some((record) => record.event.type === "signal.waiting" && record.event.name === "managerApproval")
+  // The client owns observation: callers only describe what happens once the
+  // workflow reaches a meaningful lifecycle state.
+  const observation = await client.observe(handle.executionId)
+  if (observation.type === "signal-suspended") {
+    await client.signal(handle.executionId, "managerApproval", { approved: true }, { actor: "manager" })
+  }
+
+  console.log("result:", await client.result(handle.executionId))
+  console.log(`${(await client.history(handle.executionId)).length} history events recorded`)
+} finally {
+  await client.dispose()
 }
-while (!(await waitingForApproval())) {
-  await new Promise((resolve) => setTimeout(resolve, 100))
-}
-await client.signal(handle.executionId, "managerApproval", { approved: true }, { actor: "manager" })
-
-const result = await client.result(handle.executionId)
-console.log("result:", result)
-
-const history = await client.history(handle.executionId)
-console.log(`${history.length} history events recorded`)
-
-// The engine's SQLite connection keeps the event loop alive.
-process.exit(0)

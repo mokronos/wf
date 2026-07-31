@@ -1,6 +1,13 @@
 #!/usr/bin/env bun
 import path from "node:path"
-import { createSqliteWorkflowRepository, toJsonText, workflowArtifactToGraph } from "@mokronos/wfkit"
+import {
+  createSqliteWorkflowRepository,
+  createWorkflowClient,
+  createWorkflowRuntime,
+  lifecycleRunRecords,
+  toJsonText,
+  workflowArtifactToGraph
+} from "@mokronos/wfkit"
 import type { WorkflowRepository } from "@mokronos/wfkit"
 import { runWfkitCli } from "./cli/main.ts"
 import assets from "./embedded-web-assets.gen.ts"
@@ -117,22 +124,44 @@ const dashboardResponse = async (pathname: string): Promise<Response> => {
   })
 }
 
-const api = async (repository: WorkflowRepository, pathname: string): Promise<Response> => {
+const api = async (
+  repository: WorkflowRepository,
+  engineDatabasePath: string,
+  pathname: string
+): Promise<Response> => {
   if (pathname === "/api/workflows") {
     const artifacts = await repository.list()
     const workflows = await Promise.all(artifacts.map((artifact) => workflowArtifactToGraph(artifact, { maxNodes: 120 })))
     return json(JSON.stringify({ generatedAt: new Date().toISOString(), workflows }))
   }
   if (pathname === "/api/runs") {
-    return json(JSON.stringify({ generatedAt: new Date().toISOString(), runs: await repository.listRuns() }))
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: engineDatabasePath })
+    const client = createWorkflowClient(runtime)
+    try {
+      return json(JSON.stringify({
+        generatedAt: new Date().toISOString(),
+        runs: await lifecycleRunRecords(client, await repository.list())
+      }))
+    } finally {
+      await client.dispose()
+    }
   }
   const eventRoute = /^\/api\/runs\/([^/]+)\/events$/.exec(pathname)
   if (eventRoute === null) return json(JSON.stringify({ error: "Not found" }), 404)
   const runId = eventRoute[1]
   if (runId === undefined) return json(JSON.stringify({ error: "Not found" }), 404)
-  const run = await repository.getRun(decodeURIComponent(runId))
-  if (run === undefined) return json(JSON.stringify({ error: "Run not found" }), 404)
-  return json(JSON.stringify({ generatedAt: new Date().toISOString(), run, events: await repository.listRunEvents(run.id) }))
+  const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: engineDatabasePath })
+  const client = createWorkflowClient(runtime)
+  try {
+    const execution = await client.execution(decodeURIComponent(runId)).catch(() => undefined)
+    if (execution === undefined) return json(JSON.stringify({ error: "Run not found" }), 404)
+    const runs = await lifecycleRunRecords(client, await repository.list())
+    const run = runs.find((candidate) => candidate.id === execution.executionId)
+    if (run === undefined) return json(JSON.stringify({ error: "Run not found" }), 404)
+    return json(JSON.stringify({ generatedAt: new Date().toISOString(), run, events: await client.history(run.id) }))
+  } finally {
+    await client.dispose()
+  }
 }
 
 const parsePort = (value: string | undefined): number => {
@@ -194,7 +223,7 @@ const runServer = async (options: ServerOptions): Promise<void> => {
       const pathname = new URL(request.url).pathname
       if (pathname.startsWith("/api/")) {
         try {
-          return await api(repository, pathname)
+          return await api(repository, path.join(home, "engine.sqlite"), pathname)
         } catch (error) {
           const message = error instanceof Error ? error.message : "Dashboard API request failed"
           return json(JSON.stringify({ error: message }), 500)

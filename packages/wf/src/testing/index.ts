@@ -15,8 +15,9 @@ import type {
   WorkflowResult
 } from "../sdk/index.ts"
 import { Cancelled } from "../sdk/index.ts"
-import { cancelSignalWaits, deliverSignal } from "../signal.ts"
-import { ExecutionId } from "../schemas.ts"
+import { createSignalTransport } from "../signal.ts"
+import { ExecutionId, isWorkflowEvent } from "../schemas.ts"
+import { statusAfterEvent } from "../run-lifecycle.ts"
 
 export interface TestRuntimeOptions {
   readonly timeSkipping?: boolean
@@ -94,21 +95,8 @@ const parseDurationMs = (duration: Duration.Input): number => {
   return value
 }
 
-const statusFromEvent = (event: WorkflowHistoryEvent): WorkflowExecutionStatus | undefined => {
-  switch (event.type) {
-    case "sleep.started":
-    case "signal.waiting":
-      return "suspended"
-    case "sleep.completed":
-    case "signal.received":
-    case "signal.timeout":
-    case "step.started":
-    case "step.completed":
-      return "running"
-    default:
-      return undefined
-  }
-}
+const statusFromEvent = (event: WorkflowHistoryEvent): WorkflowExecutionStatus | undefined =>
+  isWorkflowEvent(event) ? statusAfterEvent(event) : undefined
 
 export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime => {
   const timeSkipping = options.timeSkipping ?? true
@@ -119,6 +107,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
   const recorders: CompensationRecorder[] = []
   const timers: VirtualTimer[] = []
   const secrets = new Map<string, string>()
+  const signals = createSignalTransport()
   let virtualNow = 0
 
   const secretResolver = {
@@ -192,6 +181,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
     void workflow.executeInMemory(payload as never, {
       executionId: record.executionId,
       determinism: record.determinism,
+      signalTransport: signals,
       stepExecutors: buildStepExecutors(),
       sleep: ({ duration }) => makeDelay(duration),
       signalTimeout: ({ duration }) => makeDelay(duration),
@@ -289,7 +279,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
     },
 
     sendSignal(executionId, name, payload) {
-      return deliverSignal(executionId, name, payload)
+      return signals.deliver(executionId, name, payload)
     },
 
     result(executionId) {
@@ -316,7 +306,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
       if (compensate) {
         record.status = "compensating"
       }
-      cancelSignalWaits(executionId, new Cancelled({ compensate }))
+      signals.cancel(executionId, new Cancelled({ compensate }))
     },
 
     setSecret(name, value) {

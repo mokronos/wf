@@ -7,6 +7,7 @@ import type {
 } from "../core.ts"
 import { Schema } from "effect"
 import { createInMemoryDeterminismState } from "../core.ts"
+import { createSignalTransport } from "../signal.ts"
 import type { WorkflowEvent } from "../events.ts"
 import {
   jsonSchemaOf,
@@ -21,7 +22,7 @@ import {
   type WorkflowGraphSchemas
 } from "../schemas.ts"
 import type { WorkflowArtifact } from "./artifact.ts"
-import { loadWorkflowArtifact } from "./loader.ts"
+import { validateWorkflowArtifact } from "./loader.ts"
 
 interface SchemaAst {
   readonly _tag?: string
@@ -425,6 +426,7 @@ export const workflowToGraph = async <I, O, E>(
     await workflow.executeInMemory(input, {
       executionId: `graph-${workflow.name}-${workflow.version}`,
       determinism,
+      signalTransport: createSignalTransport(),
       onEvent: (event) => {
         events.push(event)
       },
@@ -469,18 +471,17 @@ export const workflowArtifactToGraph = async (
   artifact: WorkflowArtifact,
   options: WorkflowGraphOptions = {}
 ): Promise<WorkflowArtifactGraph> => {
-  try {
-    const loaded = await loadWorkflowArtifact(artifact)
+  const validation = await validateWorkflowArtifact(artifact)
+  if (!validation.valid) {
     return {
       artifact,
-      exportName: loaded.exportName,
-      graph: await workflowToGraph(loaded.workflow, options),
-      diagnostics: []
+      diagnostics: validation.diagnostics
     }
-  } catch (error) {
-    return {
-      artifact,
-      diagnostics: [error instanceof Error ? error.message : String(error)]
-    }
+  }
+  return {
+    artifact,
+    exportName: validation.loaded.exportName,
+    graph: await workflowToGraph(validation.loaded.workflow, options),
+    diagnostics: validation.diagnostics
   }
 }
