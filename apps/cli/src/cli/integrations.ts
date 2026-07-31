@@ -1,8 +1,11 @@
 import { BunServices } from "@effect/platform-bun"
-import { Console, Data, Effect, Option, Schema } from "effect"
+import { Data, Effect, Option, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import {
+  closeExecutor,
   createExecutorConnection,
+  executeExecutorTool,
+  ExecutorToolAddress,
   listExecutorConnections,
   listExecutorIntegrations,
   listExecutorTools,
@@ -32,6 +35,25 @@ const cliError = (message: string): IntegrationCliError =>
 
 const errorMessage = (error: Error): string => error.message
 
+const writeStdoutLine = (text: string): Effect.Effect<void, IntegrationCliError> =>
+  Effect.tryPromise({
+    try: () => new Promise<void>((resolve, reject) => {
+      process.stdout.write(`${text}\n`, (error) => {
+        if (error === undefined || error === null) resolve()
+        else reject(error)
+      })
+    }),
+    catch: (error) => cliError(`Could not write output: ${String(error)}`)
+  })
+
+const inlineLimit = 800
+
+const inline = (value: string, limit = inlineLimit): string => {
+  const flattened = value.replace(/\s+/g, " ").trim()
+  if (flattened.length <= limit) return flattened
+  return `${flattened.slice(0, limit)}… (+${flattened.length - limit} chars)`
+}
+
 const decodeJson = (
   text: string
 ): Effect.Effect<Schema.Schema.Type<typeof Schema.Json>, IntegrationCliError> =>
@@ -43,9 +65,9 @@ const decodeJson = (
 const formatTool = (tool: ExecutorTool): string => {
   const lines = [
     `\n${tool.address}`,
-    tool.description,
-    `input: ${JSON.stringify(tool.inputSchema ?? {})}`,
-    `output: ${JSON.stringify(tool.outputSchema ?? {})}`,
+    inline(tool.description, 240),
+    `input: ${inline(tool.inputTypeScript ?? JSON.stringify(tool.inputSchema ?? {}))}`,
+    `output: ${inline(tool.outputTypeScript ?? JSON.stringify(tool.outputSchema ?? {}))}`,
     "integration({",
     `  source: { kind: "executor", address: ${JSON.stringify(tool.address)} },`,
     "  input: t.struct({ /* derive from input schema */ }),",
@@ -54,6 +76,25 @@ const formatTool = (tool: ExecutorTool): string => {
   ]
   return lines.join("\n")
 }
+
+const toolForJson = (tool: ExecutorTool) => ({
+  address: tool.address,
+  name: tool.name,
+  description: tool.description,
+  integration: tool.integration,
+  connection: tool.connection,
+  ...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+  ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema })
+})
+
+const connectedSummary = (
+  connection: Awaited<ReturnType<typeof createExecutorConnection>>,
+  tools: ReadonlyArray<ExecutorTool>
+): string => [
+  `Connected ${connection.address}`,
+  `tools: ${tools.length}`,
+  `next: wf integrations tools --integration ${connection.integration} --connection ${connection.name} --json`
+].join("\n")
 
 const formatDiscovery = (discovery: Awaited<ReturnType<typeof discoverIntegration>>): string => {
   const lines = [
@@ -124,7 +165,7 @@ const makeDiscover = () => Command.make(
       )
     }).pipe(
       Effect.flatMap((result) =>
-        Console.log(json ? JSON.stringify(result, null, 2) : formatDiscovery(result))
+        writeStdoutLine(json ? JSON.stringify(result, null, 2) : formatDiscovery(result))
       )
     )
 ).pipe(
@@ -138,7 +179,7 @@ const makeCatalog = () => Command.make(
     try: () => listExecutorIntegrations(),
     catch: (error) => cliError(`Could not list integrations: ${String(error)}`)
   }).pipe(
-    Effect.flatMap((integrations) => Console.log(
+    Effect.flatMap((integrations) => writeStdoutLine(
       json
         ? JSON.stringify({ integrations }, null, 2)
         : integrations.map((integration) =>
@@ -168,9 +209,9 @@ const makeTools = () => Command.make(
     }),
     catch: (error) => cliError(`Could not list tools: ${String(error)}`)
   }).pipe(
-    Effect.flatMap((tools) => Console.log(
+    Effect.flatMap((tools) => writeStdoutLine(
       json
-        ? JSON.stringify({ tools }, null, 2)
+        ? JSON.stringify({ tools: tools.map(toolForJson) }, null, 2)
         : tools.map(formatTool).join("\n") || "No tools available."
     ))
   )
@@ -235,7 +276,7 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
           integration: integration.slug,
           connection: connected.name
         })
-        return `Connected ${connected.address}\n${tools.map(formatTool).join("\n")}`
+        return connectedSummary(connected, tools)
       }
       const envName = Option.getOrUndefined(credentialEnv)
       if (envName === undefined) {
@@ -253,12 +294,12 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
         integration: integration.slug,
         connection: connected.name
       })
-      return `Connected ${connected.address}\n${tools.map(formatTool).join("\n")}`
+      return connectedSummary(connected, tools)
     },
     catch: (error) => cliError(
       `Connection failed: ${error instanceof Error ? errorMessage(error) : String(error)}`
     )
-  }).pipe(Effect.flatMap(Console.log))
+  }).pipe(Effect.flatMap(writeStdoutLine))
 ).pipe(Command.withDescription("Authorize an Executor integration and discover its tool schemas"))
 
 const makeConnections = () => Command.make(
@@ -268,7 +309,7 @@ const makeConnections = () => Command.make(
     try: () => listExecutorConnections(),
     catch: (error) => cliError(`Could not list connections: ${String(error)}`)
   }).pipe(
-    Effect.flatMap((connections) => Console.log(
+    Effect.flatMap((connections) => writeStdoutLine(
       json
         ? JSON.stringify({ connections }, null, 2)
         : connections.map((connection) =>
@@ -287,8 +328,42 @@ const makeDisconnect = () => Command.make(
   ({ integration, connection }) => Effect.tryPromise({
     try: () => removeExecutorConnection({ integration, name: connection }),
     catch: (error) => cliError(`Disconnect failed: ${String(error)}`)
-  }).pipe(Effect.flatMap(() => Console.log(`Disconnected ${integration}/${connection}`)))
+  }).pipe(Effect.flatMap(() => writeStdoutLine(`Disconnected ${integration}/${connection}`)))
 ).pipe(Command.withDescription("Delete an Executor connection and its stored credential"))
+
+const makeInvoke = () => Command.make(
+  "invoke",
+  {
+    address: Argument.string("tool-address"),
+    input: Argument.string("json").pipe(Argument.optional),
+    file: Flag.string("file").pipe(
+      Flag.optional,
+      Flag.withDescription("Read the JSON input from a file")
+    )
+  },
+  ({ address, input, file }) => Effect.gen(function*() {
+    const inlineInput = Option.getOrUndefined(input)
+    const filePath = Option.getOrUndefined(file)
+    if (inlineInput !== undefined && filePath !== undefined) {
+      return yield* cliError("Provide JSON input or --file, not both")
+    }
+    const source = filePath === undefined
+      ? inlineInput ?? "{}"
+      : yield* Effect.tryPromise({
+        try: () => Bun.file(filePath).text(),
+        catch: () => cliError(`Could not read integration input: ${filePath}`)
+      })
+    const payload = yield* decodeJson(source)
+    const result = yield* Effect.tryPromise({
+      try: async () => {
+        const decodedAddress = await Schema.decodeUnknownPromise(ExecutorToolAddress)(address)
+        return await executeExecutorTool(decodedAddress, payload)
+      },
+      catch: (error) => cliError(`Invocation failed: ${String(error)}`)
+    })
+    yield* writeStdoutLine(JSON.stringify(result, null, 2))
+  })
+).pipe(Command.withDescription("Invoke an Executor tool with JSON input"))
 
 const makeValidate = () => Command.make(
   "validate",
@@ -319,7 +394,7 @@ const makeValidate = () => Command.make(
       try: () => validateIntegrationNode(node, { live }),
       catch: (error) => cliError(`Integration validation failed: ${String(error)}`)
     })
-    yield* Console.log(
+    yield* writeStdoutLine(
       json
         ? JSON.stringify(report, null, 2)
         : report.findings.map((entry) =>
@@ -340,6 +415,7 @@ const integrationsCommand = (options: IntegrationsCliOptions) =>
       makeConnect(options),
       makeConnections(),
       makeDisconnect(),
+      makeInvoke(),
       makeValidate()
     ])
   )
@@ -356,5 +432,5 @@ export const runIntegrationsCli = (
         : Effect.sync(() => { process.exitCode = 1 })),
       Effect.provide(BunServices.layer)
     )
-  )
+  ).finally(() => closeExecutor(options.storageDir))
 }

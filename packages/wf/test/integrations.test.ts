@@ -3,7 +3,12 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { closeExecutor, setExecutorStorageDirectory } from "../src/executor.ts"
+import {
+  closeExecutor,
+  normalizeExecutorToolOutputSchema,
+  normalizeExecutorToolResult,
+  setExecutorStorageDirectory
+} from "../src/executor.ts"
 import {
   discoverIntegration,
   validateIntegrationNode
@@ -24,6 +29,43 @@ const json = (text: string): Schema.Schema.Type<typeof Schema.Json> =>
   Schema.decodeUnknownSync(Schema.Json)(JSON.parse(text))
 
 describe("Executor discovery SDK", () => {
+  test("normalizes MCP envelopes into workflow-facing JSON", () => {
+    expect(normalizeExecutorToolResult({
+      structuredContent: { id: "DOC-1", title: "Typed result" },
+      content: [{ type: "text", text: "fallback" }],
+      isError: false
+    })).toEqual({ id: "DOC-1", title: "Typed result" })
+
+    expect(normalizeExecutorToolResult({
+      content: [{
+        type: "text",
+        text: JSON.stringify([{ id: "DOC-2", title: "JSON text result" }])
+      }],
+      isError: false
+    })).toEqual([{ id: "DOC-2", title: "JSON text result" }])
+
+    expect(normalizeExecutorToolResult({
+      content: [{ type: "text", text: "plain text result" }],
+      isError: false
+    })).toBe("plain text result")
+
+    expect(() => normalizeExecutorToolResult({
+      content: [{ type: "text", text: "permission denied" }],
+      isError: true
+    })).toThrow("permission denied")
+  })
+
+  test("collapses generic MCP envelope schemas to JSON", () => {
+    expect(normalizeExecutorToolOutputSchema({
+      type: "object",
+      properties: {
+        content: { type: "array" },
+        structuredContent: { type: "object" },
+        isError: { const: false }
+      }
+    })).toEqual({})
+  })
+
   test("runs URL detection, auth discovery, and input/output schema discovery", async () => {
     const directory = await mkdtemp(path.join(os.tmpdir(), "wf-executor-discovery-"))
     directories.push(directory)

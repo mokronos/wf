@@ -29,6 +29,23 @@ const AuthorizeExecutorOptions = Schema.Struct({
 })
 type AuthorizeExecutorOptions = typeof AuthorizeExecutorOptions.Type
 
+const normalizedScopes = (scopes: ReadonlyArray<string>): ReadonlyArray<string> =>
+  [...new Set(scopes.map((scope) => scope.trim()).filter((scope) => scope.length > 0))]
+
+export const authorizationUrlWithScopes = (
+  authorizationUrl: string,
+  scopes: ReadonlyArray<string>
+): string => {
+  const url = new URL(authorizationUrl)
+  const requested = normalizedScopes(scopes)
+  if (requested.length === 0) {
+    url.searchParams.delete("scope")
+  } else {
+    url.searchParams.set("scope", requested.join(" "))
+  }
+  return url.toString()
+}
+
 const browserResponse = (options: {
   readonly title: string
   readonly message: string
@@ -112,6 +129,9 @@ export const authorizeExecutorInBrowser = async (
   try {
     const redirectUri = `http://127.0.0.1:${server.port}/oauth/callback`
     const oauth = options.authMethod.oauth
+    const requestedScopes = options.scopes === undefined
+      ? undefined
+      : normalizedScopes(options.scopes)
     const discovered = oauth.discoveryUrl === undefined
       ? undefined
       : await probeExecutorOAuth(oauth.discoveryUrl)
@@ -145,7 +165,7 @@ export const authorizeExecutorInBrowser = async (
         registrationEndpoint,
         authorizationUrl,
         tokenUrl,
-        scopes: options.scopes ?? oauth.scopes ?? discovered?.scopesSupported ?? [],
+        scopes: requestedScopes ?? oauth.scopes ?? discovered?.scopesSupported ?? [],
         ...(discovered?.issuer === undefined ? {} : { issuer: discovered.issuer }),
         ...(resource === undefined ? {} : { resource }),
         ...(discovered?.tokenEndpointAuthMethodsSupported === undefined
@@ -178,8 +198,11 @@ export const authorizeExecutorInBrowser = async (
           : { expiresAt: started.connection.expiresAt })
       }
     }
-    input.onAuthorizationUrl?.(started.authorizationUrl)
-    await (input.open ?? openBrowser)(started.authorizationUrl)
+    const authorizationUrlToOpen = requestedScopes === undefined
+      ? started.authorizationUrl
+      : authorizationUrlWithScopes(started.authorizationUrl, requestedScopes)
+    input.onAuthorizationUrl?.(authorizationUrlToOpen)
+    await (input.open ?? openBrowser)(authorizationUrlToOpen)
     return await completion.promise
   } finally {
     clearTimeout(timeout)

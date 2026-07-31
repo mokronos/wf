@@ -158,6 +158,57 @@ const McpToolEnvelope = Schema.Struct({
   isError: Schema.optional(Schema.Boolean)
 })
 
+const McpTextContent = Schema.Struct({
+  type: Schema.Literal("text"),
+  text: Schema.String
+})
+
+const McpEnvelopeOutputSchema = Schema.Struct({
+  type: Schema.optional(Schema.Literal("object")),
+  properties: Schema.Struct({
+    content: Schema.Json,
+    structuredContent: Schema.optional(Schema.Json),
+    isError: Schema.Struct({
+      const: Schema.Literal(false)
+    })
+  })
+})
+
+type Json = typeof Schema.Json.Type
+
+const compactMcpOutputSchema: Json = {}
+
+const isMcpEnvelopeOutputSchema = (schema: Json): boolean =>
+  Option.isSome(Schema.decodeUnknownOption(McpEnvelopeOutputSchema)(schema))
+
+export const normalizeExecutorToolOutputSchema = (schema: Json): Json =>
+  isMcpEnvelopeOutputSchema(schema) ? compactMcpOutputSchema : schema
+
+const mcpText = (content: ReadonlyArray<Json>): string | undefined => {
+  const first = content[0]
+  if (content.length !== 1 || first === undefined) return undefined
+  return Option.getOrUndefined(Schema.decodeUnknownOption(McpTextContent)(first))?.text
+}
+
+export const normalizeExecutorToolResult = (data: Json): Json => {
+  const envelope = Option.getOrUndefined(Schema.decodeUnknownOption(McpToolEnvelope)(data))
+  if (envelope === undefined) return data
+
+  const content = envelope.content ?? []
+  const text = mcpText(content)
+  if (envelope.isError === true) {
+    throw new Error(text ?? "MCP tool returned an error")
+  }
+  if (envelope.structuredContent !== undefined) return envelope.structuredContent
+  if (text !== undefined) {
+    return Option.getOrElse(
+      Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Json))(text),
+      () => text
+    )
+  }
+  return content.length > 0 ? content : data
+}
+
 const defaultStorageDirectory = (): string =>
   process.env["WF_STORAGE_DIR"] ?? path.join(process.cwd(), ".wf")
 
@@ -516,6 +567,10 @@ export const listExecutorTools = async (filter: {
     const schema = await Effect.runPromise(executor.tools.schema(tool.address))
     const inputSchema = optionalJson(schema?.inputSchema)
     const outputSchema = optionalJson(schema?.outputSchema)
+    const normalizedOutputSchema = outputSchema === undefined
+      ? undefined
+      : normalizeExecutorToolOutputSchema(outputSchema)
+    const hasMcpEnvelopeOutput = normalizedOutputSchema === compactMcpOutputSchema
     return {
       address: ExecutorToolAddress.make(String(tool.address)),
       name: String(tool.name),
@@ -523,9 +578,13 @@ export const listExecutorTools = async (filter: {
       integration: String(tool.integration),
       connection: String(tool.connection),
       ...(inputSchema === undefined ? {} : { inputSchema }),
-      ...(outputSchema === undefined ? {} : { outputSchema }),
+      ...(normalizedOutputSchema === undefined ? {} : { outputSchema: normalizedOutputSchema }),
       ...(schema?.inputTypeScript === undefined ? {} : { inputTypeScript: schema.inputTypeScript }),
-      ...(schema?.outputTypeScript === undefined ? {} : { outputTypeScript: schema.outputTypeScript })
+      ...(hasMcpEnvelopeOutput
+        ? { outputTypeScript: "Json" }
+        : schema?.outputTypeScript === undefined
+          ? {}
+          : { outputTypeScript: schema.outputTypeScript })
     }
   }))
 }
@@ -539,8 +598,7 @@ export const executeExecutorTool = async (
   if (!decoded.ok) {
     throw new Error(`${decoded.error.code}: ${decoded.error.message}`)
   }
-  const envelope = Option.getOrUndefined(Schema.decodeUnknownOption(McpToolEnvelope)(decoded.data))
-  return envelope?.structuredContent ?? decoded.data
+  return normalizeExecutorToolResult(decoded.data)
 }
 
 export const probeExecutorOAuth = async (url: string) =>

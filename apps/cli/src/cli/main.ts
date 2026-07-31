@@ -145,6 +145,7 @@ Usage:
   wf integrations tools [--integration <slug>] [--connection <name>] [--json]
   wf integrations connections [--json]
   wf integrations disconnect <integration> [--connection <name>]
+  wf integrations invoke <tool-address> [<json>] [--file <path>]
   wf integrations validate [<json>] [--file <path>] [--live] [--json]
 `
     case undefined:
@@ -493,13 +494,21 @@ const printRunEvents = (events: ReadonlyArray<WorkflowHistoryRecord>) => {
   }
 }
 
-const printRunResult = (result: unknown) => {
+const writeStdoutLine = (text: string): Promise<void> =>
+  new Promise<void>((resolve, reject) => {
+    process.stdout.write(`${text}\n`, (error) => {
+      if (error === undefined || error === null) resolve()
+      else reject(error)
+    })
+  })
+
+const printRunResult = async (result: unknown): Promise<void> => {
   if (result === undefined) {
-    console.log("Workflow completed.")
+    await writeStdoutLine("Workflow completed.")
     return
   }
 
-  console.log(JSON.stringify(result, null, 2))
+  await writeStdoutLine(JSON.stringify(result, null, 2))
 }
 
 const samplePayloadFor = (signal: PendingSignal): unknown =>
@@ -570,6 +579,14 @@ const stringifyEventValue = (value: unknown): string => {
   } catch {
     return String(value)
   }
+}
+
+const eventDetailLimit = 320
+
+const summarizeEventValue = (value: unknown): string => {
+  const serialized = stringifyEventValue(value)
+  if (serialized.length <= eventDetailLimit) return serialized
+  return `${serialized.slice(0, eventDetailLimit)}… (+${serialized.length - eventDetailLimit} chars)`
 }
 
 // Derived from the graph schema rather than restated, so widening a metadata
@@ -760,22 +777,22 @@ const printEventLine = (
   console.error(`${eventTag(category)} ${paintVerb(verb)} ${bold(subject)}${detailText}`)
 }
 
-const errorDetail = (error: unknown): EventDetail => ["error", red(stringifyEventValue(error))]
+const errorDetail = (error: unknown): EventDetail => ["error", red(summarizeEventValue(error))]
 
 const reasonDetails = (reason: string | undefined): ReadonlyArray<EventDetail> =>
-  reason === undefined ? [] : [["reason", stringifyEventValue(reason)]]
+  reason === undefined ? [] : [["reason", summarizeEventValue(reason)]]
 
 const printWorkflowEvent = (event: WorkflowEvent) => {
   switch (event.type) {
     case "workflow.started":
       printEventLine("workflow", "started", event.workflowName, [
-        ["input", stringifyEventValue(event.payload)]
+        ["input", summarizeEventValue(event.payload)]
       ])
       return
 
     case "workflow.completed":
       printEventLine("workflow", "completed", event.workflowName, [
-        ["result", stringifyEventValue(event.result)]
+        ["result", summarizeEventValue(event.result)]
       ])
       return
 
@@ -790,7 +807,7 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
     case "step.completed":
       printEventLine("step", "completed", event.activityName, [
         ["attempt", String(event.attempt)],
-        ["result", stringifyEventValue(event.result)]
+        ["result", summarizeEventValue(event.result)]
       ])
       return
 
@@ -800,7 +817,7 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
 
     case "compensation.started":
       printEventLine("compensation", "started", event.activityName, [
-        ["reason", stringifyEventValue(event.reason)]
+        ["reason", summarizeEventValue(event.reason)]
       ])
       return
 
@@ -814,7 +831,7 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
 
     case "sleep.started":
       printEventLine("sleep", "started", event.activityName, [
-        ["duration", stringifyEventValue(event.duration)]
+        ["duration", summarizeEventValue(event.duration)]
       ])
       return
 
@@ -828,13 +845,13 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
 
     case "signal.received":
       printEventLine("signal", "received", event.activityName, [
-        ["payload", stringifyEventValue(event.payload)]
+        ["payload", summarizeEventValue(event.payload)]
       ])
       return
 
     case "signal.timeout":
       printEventLine("signal", "timeout", event.activityName, [
-        ["timeout", stringifyEventValue(event.timeout)]
+        ["timeout", summarizeEventValue(event.timeout)]
       ])
       return
 
@@ -845,7 +862,7 @@ const printWorkflowEvent = (event: WorkflowEvent) => {
     case "code.completed":
       printEventLine("code", "completed", event.activityName, [
         ...reasonDetails(event.reason),
-        ["result", stringifyEventValue(event.result)]
+        ["result", summarizeEventValue(event.result)]
       ])
       return
 
@@ -893,7 +910,7 @@ const awaitAndPrintRun = async (options: {
   }
 
   if (outcome.result.type === "completed") {
-    printRunResult(outcome.result.value)
+    await printRunResult(outcome.result.value)
     return
   }
 

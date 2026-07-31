@@ -145,7 +145,8 @@ describe("agent integration acceptance flow", () => {
       "WF_AGENT_TOKEN"
     ], environment)
     expect(connected.exitCode).toBe(0)
-    expect(connected.stdout).toContain("tools.agent_acceptance.org.default.tickets.create")
+    expect(connected.stdout).toContain("Connected tools.agent_acceptance.org.default")
+    expect(connected.stdout).toContain("tools: 1")
     expect(connected.stdout).not.toContain("acceptance-secret")
 
     const listed = await runCli([
@@ -161,6 +162,16 @@ describe("agent integration acceptance flow", () => {
     if (createTicket === undefined) throw new Error("Executor did not discover tickets.create")
     expect(createTicket.inputSchema).toBeDefined()
     expect(createTicket.outputSchema).toBeDefined()
+
+    const invoked = await runCli([
+      "integrations",
+      "invoke",
+      createTicket.address,
+      JSON.stringify({ body: { title: "Direct Executor invocation" } })
+    ], environment)
+    expect(invoked.exitCode).toBe(0)
+    expect(invoked.stdout).toContain('"title": "Direct Executor invocation"')
+    expect(invocationCount).toBe(1)
 
     const source = `import { defineWorkflow, integration, t } from "@mokronos/wfkit"
 const Output = t.struct({ id: t.string, title: t.string })
@@ -188,14 +199,17 @@ export const AgentAcceptance = defineWorkflow({
     ], environment)
     expect(created.exitCode).toBe(0)
 
+    const longTitle = `Executor migration ${"x".repeat(5_000)}`
     const run = await runCli([
       "run",
       "agent-acceptance",
-      JSON.stringify({ title: "Executor migration" })
+      JSON.stringify({ title: longTitle })
     ], environment)
     expect(run.exitCode).toBe(0)
     expect(run.stdout).toContain('"id": "T-1"')
-    expect(invocationCount).toBe(1)
+    expect(run.stderr).toContain("… (+")
+    expect(run.stderr.length).toBeLessThan(2_000)
+    expect(invocationCount).toBe(2)
 
     const catalog = new Database(path.join(home, "wf.sqlite"), { readonly: true })
     const stored = Schema.decodeUnknownSync(Schema.Struct({ source: Schema.String }))(

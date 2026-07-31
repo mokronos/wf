@@ -176,7 +176,8 @@ For OAuth, Executor discovers authorization metadata, dynamically registers a
 client when supported, and runs authorization code + PKCE against a loopback
 callback. Add `--no-open` to print the URL instead of launching a browser. For
 API keys and bearer tokens, use `--credential-env NAME`; the secret value is not
-printed.
+printed. When `--scopes` is provided, those exact scopes replace the provider's
+discovered defaults in the authorization request.
 
 Confirm it landed, and see every connection you hold:
 
@@ -192,6 +193,15 @@ wf integrations tools --integration <integration-slug> --connection default --js
 
 This lists Executor tool addresses with their input and output JSON Schemas.
 Pick an address and mirror its schema in the workflow's `input` and `output`.
+Generic MCP envelopes are normalized before they reach workflows: structured
+content is returned directly, JSON text is parsed, and plain text remains a
+string.
+
+Safely inspect a read-only tool before authoring:
+
+```bash
+wf integrations invoke <tool-address> '{"query":"workflow integrations"}'
+```
 
 > Linear does not publish a stable list of MCP tool names, so the address and
 > field names below are illustrative. Replace them with the exact tool output.
@@ -333,13 +343,15 @@ wf integrations connect <integration-or-url> [--connection <name>] [--template <
 wf integrations connections [--json]
 wf integrations tools [--integration <slug>] [--connection <name>] [--json]
 wf integrations disconnect <integration> [--connection <name>]
+wf integrations invoke <tool-address> [<json>] [--file <path>]
 wf integrations validate [<json>] [--file <path>] [--live] [--json]
 ```
 
 `discover` uses Executor to identify MCP or OpenAPI, register the integration,
 discover auth, and list tool schemas. After `connect`, `tools` returns canonical
 addresses and input/output schemas. `validate --live` confirms an authored
-Executor address still exists in the local catalog.
+Executor address still exists in the local catalog. `invoke` executes one tool
+directly and prints its normalized JSON result.
 
 ### Storage
 

@@ -75,6 +75,7 @@ registration, and tool-schema discovery:
 wf integrations discover https://mcp.example.com/mcp --json
 wf integrations connect <integration-slug> --connection default
 wf integrations tools --integration <integration-slug> --connection default --json
+wf integrations invoke <tool-address> '{"query":"status"}'
 wf integrations connections
 ```
 

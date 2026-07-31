@@ -325,11 +325,23 @@ export const main = async (): Promise<void> => {
 }
 
 if (import.meta.main) {
-  main().then(
-    () => process.exit(process.exitCode ?? 0),
-    (error) => {
-      console.error(error instanceof Error ? error.message : toJsonText(error))
-      process.exit(1)
-    }
-  )
+  try {
+    await main()
+    await new Promise<void>((resolve, reject) => {
+      process.stdout.write("", (error) => {
+        if (error === undefined || error === null) resolve()
+        else reject(error)
+      })
+    })
+    process.exitCode = process.exitCode ?? 0
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : toJsonText(error))
+    await new Promise<void>((resolve, reject) => {
+      process.stderr.write("", (drainError) => {
+        if (drainError === undefined || drainError === null) resolve()
+        else reject(drainError)
+      })
+    })
+    process.exitCode = 1
+  }
 }

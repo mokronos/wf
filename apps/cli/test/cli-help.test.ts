@@ -52,6 +52,7 @@ describe("wf help", () => {
     expect(parent.exitCode).toBe(0)
     expect(parent.stdout).toContain("SUBCOMMANDS")
     expect(parent.stdout).toContain("discover")
+    expect(parent.stdout).toContain("invoke")
     expect(helpCommand.stdout).toBe(parent.stdout)
     expect(helpFlag.stdout).toBe(parent.stdout)
     expect(subcommandHelp.stdout).toContain("ARGUMENTS")

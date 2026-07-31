@@ -70,6 +70,13 @@ address into the workflow:
 wf integrations tools --integration <integration-slug> --connection default --json
 ```
 
+For a safe read-only smoke test, invoke the selected address directly before
+authoring:
+
+```sh
+wf integrations invoke <tool-address> '{"query":"status"}'
+```
+
 Author the node as
 `source: { kind: "executor", address: "tools.<integration>.org.<connection>.<tool>" }`.
 Never put a returned credential into workflow source or input. Treat unsupported
