@@ -2,7 +2,7 @@ import { AlertTriangle, Braces, CircleDot, Clock3, GitCommitVertical, Radio, Rot
 
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import type { WorkflowEvent, WorkflowHistoryEvent, WorkflowRunEventRecord } from "@/lib/api"
+import type { WorkflowEvent, WorkflowHistoryEvent, WorkflowHistoryRecord } from "@/lib/api"
 import { compactDate, prettyJson } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -73,7 +73,7 @@ const eventName = (event: WorkflowHistoryEvent): string | undefined => {
   }
 }
 
-const payloadChips = (record: WorkflowRunEventRecord): ReadonlyArray<[string, string]> => {
+const payloadChips = (record: WorkflowHistoryRecord): ReadonlyArray<[string, string]> => {
   const event = record.event
   const chips: Array<[string, string]> = []
   const name = eventName(event)
@@ -100,7 +100,7 @@ export function RunTimeline({
   loading,
   error
 }: {
-  readonly events: ReadonlyArray<WorkflowRunEventRecord>
+  readonly events: ReadonlyArray<WorkflowHistoryRecord>
   readonly loading: boolean
   readonly error: string | undefined
 }) {
@@ -137,18 +137,18 @@ export function RunTimeline({
   return (
     <ol className="timeline">
       {events.map((record) => {
-        const family = eventFamily(record.type)
+        const family = eventFamily(record.event.type)
         const Icon = familyIcon[family]
         const chips = payloadChips(record)
         return (
-          <li key={`${record.runId}:${record.sequence}`} className={cn("timeline-item", `event-${family}`)}>
+          <li key={record.sequence} className={cn("timeline-item", `event-${family}`)}>
             <div className="timeline-marker">
               <Icon aria-hidden="true" />
             </div>
             <div className="timeline-card">
               <div className="timeline-head">
                 <Badge variant="outline">#{record.sequence}</Badge>
-                <strong>{record.type}</strong>
+                <strong>{record.event.type}</strong>
                 <span>{compactDate(record.createdAt)}</span>
               </div>
               {chips.length === 0 ? null : (

@@ -118,10 +118,14 @@ export const lifecycleRunRecords = async (
 ): Promise<ReadonlyArray<WorkflowRunRecord>> =>
   (await client.executions()).map((execution) => {
     const artifact = execution.artifactId === undefined
-      ? artifacts.find((candidate) => candidate.name === execution.workflowName)
+      ? artifacts.find(
+        (candidate) =>
+          candidate.name === execution.workflowName &&
+          candidate.version === String(execution.version)
+      )
       : artifacts.find((candidate) => candidate.id === execution.artifactId)
     return {
-      id: execution.executionId,
+      id: ExecutionId.make(execution.executionId),
       workflowId: artifact?.id ?? execution.workflowName,
       workflowVersion: artifact?.version ?? String(execution.version),
       status: execution.status,

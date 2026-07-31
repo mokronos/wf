@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { createWorkflowClient, defineStep, defineWorkflow } from "../src"
+import { createWorkflowClient, defineStep, defineWorkflow, lifecycleRunRecords } from "../src"
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -218,6 +218,44 @@ describe("Phase 4 workflow client", () => {
           event: expect.objectContaining({ type: "sleep.completed" })
         })
       ])
+    )
+  })
+
+  test("lifecycle run projection matches name-only executions by version", async () => {
+    const workflow = defineWorkflow({
+      name: "versionedProjection",
+      version: 2,
+      input: Schema.Void,
+      output: Schema.String,
+      run: function* () {
+        return "ok"
+      }
+    })
+    const client = createWorkflowClient()
+    const handle = await client.start(workflow, undefined)
+    await client.result(handle.executionId)
+
+    const runs = await lifecycleRunRecords(client, [
+      {
+        id: "versioned-projection-v1",
+        name: workflow.name,
+        version: "1",
+        source: "v1"
+      },
+      {
+        id: "versioned-projection-v2",
+        name: workflow.name,
+        version: "2",
+        source: "v2"
+      }
+    ])
+
+    expect(runs).toContainEqual(
+      expect.objectContaining({
+        id: handle.executionId,
+        workflowId: "versioned-projection-v2",
+        workflowVersion: "2"
+      })
     )
   })
 })

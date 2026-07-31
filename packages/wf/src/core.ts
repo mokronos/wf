@@ -6,11 +6,9 @@ import { currentWorkflowEventSink, emitWorkflowEvent } from "./events.ts"
 import type { WorkflowEvent } from "./schemas.ts"
 import { ExecutionId, jsonSchemaOf } from "./schemas.ts"
 import {
-  awaitSignal,
   defaultSignalTransport,
   registerSignalSchema,
-  SignalDeliveryError,
-  takeBufferedSignal
+  SignalDeliveryError
 } from "./signal.ts"
 import type { SignalTransport } from "./signal.ts"
 

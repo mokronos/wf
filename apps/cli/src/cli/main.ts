@@ -1084,7 +1084,11 @@ export const runWfkitCli = async (options: {
       try {
         const execution = await client.execution(options.runId)
         const artifact = execution.artifactId === undefined
-          ? (await repository.list()).find((candidate) => candidate.name === execution.workflowName)
+          ? (await repository.list()).find(
+            (candidate) =>
+              candidate.name === execution.workflowName &&
+              candidate.version === String(execution.version)
+          )
           : await repository.get(execution.artifactId)
         if (artifact === undefined) {
           throw new Error(`Workflow artifact was deleted for run ${options.runId}: ${execution.workflowName}`)
