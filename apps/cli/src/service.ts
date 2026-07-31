@@ -24,9 +24,12 @@ export interface SystemdUnitOptions {
 
 const bareSystemdValue = /^[A-Za-z0-9_@%+=:,./-]+$/
 
-export const systemdQuote = (value: string): string => bareSystemdValue.test(value)
-  ? value
-  : `"${value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`
+export const systemdQuote = (value: string): string => {
+  const escapedPercent = value.replaceAll("%", "%%")
+  return bareSystemdValue.test(value)
+    ? escapedPercent
+    : `"${escapedPercent.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll("\n", "\\n")}"`
+}
 
 export const systemdUnit = (options: SystemdUnitOptions): string => {
   const command = options.program.map(systemdQuote).join(" ")
@@ -93,7 +96,8 @@ export const installService = async (program: ReadonlyArray<string>): Promise<vo
       stdoutPath: serviceLogPath(home), stderrPath: serviceErrorLogPath(home)
     }), { mode: 0o600 })
     await command("systemctl", ["--user", "daemon-reload"])
-    await command("systemctl", ["--user", "enable", "--now", `${serviceLabel}.service`])
+    await command("systemctl", ["--user", "enable", `${serviceLabel}.service`])
+    await command("systemctl", ["--user", "restart", `${serviceLabel}.service`])
     await command("loginctl", ["enable-linger", userInfo().username]).catch(() => undefined)
     return
   }

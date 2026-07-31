@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
-const cliPath = path.join(repoRoot, "packages", "wf", "src", "cli", "main.ts")
+const cliPath = path.join(repoRoot, "apps", "cli", "src", "cli", "main.ts")
 const tempRoot = path.join(repoRoot, ".tmp", "cli-validate-tests")
 const decoder = new TextDecoder()
 
@@ -66,7 +66,7 @@ describe("wf validate", () => {
   test("validates a registered workflow and prints its traced flow", () => {
     const cwd = makeTempDir()
     const create = runCli(cwd, ["create", "validate-demo", "--source", validWorkflowSource])
-    expect(create.exitCode).toBe(0)
+    expect(create.exitCode, create.stderr).toBe(0)
 
     const result = runCli(cwd, ["validate", "validate-demo"])
     expect(result.exitCode).toBe(0)
@@ -109,7 +109,7 @@ describe("wf validate", () => {
   test("emits complete JSON for successful and failing validation", () => {
     const cwd = makeTempDir()
     const create = runCli(cwd, ["create", "validate-demo", "--source", validWorkflowSource])
-    expect(create.exitCode).toBe(0)
+    expect(create.exitCode, create.stderr).toBe(0)
 
     const success = runCli(cwd, ["validate", "validate-demo", "--json"])
     expect(success.exitCode).toBe(0)
@@ -128,7 +128,8 @@ describe("wf validate", () => {
 
   test("omits the errors line when the workflow declares no typed errors", () => {
     const cwd = makeTempDir()
-    expect(runCli(cwd, ["create", "validate-demo", "--source", validWorkflowSource]).exitCode).toBe(0)
+    const create = runCli(cwd, ["create", "validate-demo", "--source", validWorkflowSource])
+    expect(create.exitCode, create.stderr).toBe(0)
 
     // A workflow without typed errors serialises as JSON Schema never
     // ({"not":{}}); printing that reads like a defect in the success block.

@@ -4,6 +4,8 @@ import { launchdPlist, serviceLabel, systemdQuote, systemdUnit } from "../src/se
 describe("service definitions", () => {
   test("quotes systemd values and includes daemon arguments", () => {
     expect(systemdQuote("/tmp/wf home")).toBe('"/tmp/wf home"')
+    expect(systemdQuote("/tmp/wf%20home")).toBe("/tmp/wf%%20home")
+    expect(systemdQuote("/tmp/wf % home")).toBe('"/tmp/wf %% home"')
     expect(systemdUnit({
       program: ["/opt/wf", "daemon", "--foreground", "--port", "4787"],
       environment: { WF_HOME: "/tmp/wf home" },
