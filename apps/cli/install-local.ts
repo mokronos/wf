@@ -21,6 +21,8 @@ Usage:
   (default)     Install a shim that runs src/main.ts, so source changes take
                 effect with no rebuild. The dashboard is served from
                 apps/web/dist, refreshed by: bun run --cwd apps/web build
+                The background service keeps running the code it started with,
+                so restart it after source changes with: wf install
   --compiled    Build the current-platform binary and link that instead. Slower
                 and needs a rebuild per change, but matches the published shape.
   --dir <path>  Install directory. Defaults to the first of ~/.bun/bin or
@@ -165,6 +167,8 @@ const main = async (): Promise<void> => {
   console.log(`installed wf -> ${target} (${options.mode})`)
   if (options.mode === "source") {
     console.log(`runs ${entryPoint}; no rebuild needed after source changes`)
+    // The shim only affects new processes; a running service still holds the old code.
+    console.log("restart the dashboard service to pick up source changes: wf install")
   }
   await reportShadowing(target)
 }

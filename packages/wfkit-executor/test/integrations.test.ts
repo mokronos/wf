@@ -4,7 +4,9 @@ import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 import {
+  addExecutorOpenApi,
   closeExecutor,
+  decodeIntegrationsResponse,
   listExecutorIntegrations,
   normalizeExecutorToolOutputSchema,
   normalizeExecutorToolResult,
@@ -12,6 +14,7 @@ import {
 } from "../src/index.ts"
 import {
   discoverIntegration,
+  listIntegrationOverviews,
   searchIntegrations,
   validateIntegrationNode
 } from "../src/index.ts"
@@ -200,6 +203,95 @@ describe("Executor discovery SDK", () => {
       }
     })), { live: true })
     expect(report.ok).toBe(true)
+  })
+
+  test("reports connections and tool schemas the dashboard can decode", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "wf-executor-overview-"))
+    directories.push(directory)
+    setExecutorStorageDirectory(directory)
+    const server = Bun.serve({
+      port: 0,
+      fetch(request): Response {
+        const url = new URL(request.url)
+        const baseUrl = `http://127.0.0.1:${server.port}`
+        if (url.pathname === "/open.json") {
+          return Response.json({
+            openapi: "3.1.0",
+            info: { title: "Open Docs", version: "1.0.0" },
+            servers: [{ url: baseUrl }],
+            paths: {
+              "/docs/{id}": {
+                get: {
+                  operationId: "docs.get",
+                  parameters: [
+                    { name: "id", in: "path", required: true, schema: { type: "string" } }
+                  ],
+                  responses: {
+                    "200": {
+                      description: "Doc",
+                      content: {
+                        "application/json": {
+                          schema: {
+                            type: "object",
+                            required: ["id"],
+                            properties: { id: { type: "string" }, title: { type: "string" } }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          })
+        }
+        if (url.pathname === "/secured.json") {
+          return Response.json({
+            openapi: "3.1.0",
+            info: { title: "Secured Docs", version: "1.0.0" },
+            servers: [{ url: baseUrl }],
+            paths: {},
+            components: {
+              securitySchemes: { bearer: { type: "http", scheme: "bearer" } }
+            },
+            security: [{ bearer: [] }]
+          })
+        }
+        return new Response("not found", { status: 404 })
+      }
+    })
+    servers.push(server)
+
+    await discoverIntegration(`http://127.0.0.1:${server.port}/open.json`)
+    await addExecutorOpenApi({
+      spec: `http://127.0.0.1:${server.port}/secured.json`,
+      slug: "secured_docs"
+    })
+
+    const overviews = await listIntegrationOverviews()
+    const open = overviews.find((overview) => overview.slug === "open_docs")
+    const secured = overviews.find((overview) => overview.slug === "secured_docs")
+
+    expect(open?.connections.map((connection) => connection.name)).toEqual(["default"])
+    expect(open?.requiresAuthentication).toBe(false)
+    expect(open?.tools.map((tool) => tool.name)).toEqual(["docs.get"])
+    expect(open?.tools[0]?.connection).toBe("default")
+    expect(open?.tools[0]?.inputSchema).toBeDefined()
+    expect(open?.tools[0]?.outputSchema).toBeDefined()
+    expect(open?.toolError).toBeUndefined()
+
+    expect(secured?.requiresAuthentication).toBe(true)
+    expect(secured?.connections).toEqual([])
+    expect(secured?.tools).toEqual([])
+
+    // The dashboard decodes the same payload the server serializes.
+    const decoded = decodeIntegrationsResponse(JSON.parse(JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      integrations: overviews
+    })))
+    expect(decoded.integrations.map((overview) => overview.slug)).toEqual(
+      overviews.map((overview) => overview.slug)
+    )
   })
 
   test("rejects structurally invalid workflow integration configuration", async () => {

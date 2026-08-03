@@ -1,4 +1,6 @@
 export {
+  decodeIntegrationsResponse,
+  errorPayloadMessage,
   ExecutorAuthMethod,
   ExecutorConnection,
   ExecutorDetection,
@@ -7,6 +9,10 @@ export {
   ExecutorOpenApiPreview,
   ExecutorTool,
   ExecutorToolAddress,
+  IntegrationOverview,
+  IntegrationsResponse
+} from "./schemas.ts"
+export {
   addExecutorMcp,
   addExecutorOpenApi,
   closeExecutor,
@@ -56,6 +62,7 @@ export {
   IntegrationSearchSurface as IntegrationSearchSurfaceSchema,
   IntegrationValidationFinding as IntegrationValidationFindingSchema,
   IntegrationValidationReport as IntegrationValidationReportSchema,
+  listIntegrationOverviews,
   searchIntegrations,
   validateIntegrationNode
 } from "./integrations.ts"

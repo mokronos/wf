@@ -42,6 +42,7 @@
       "dependencies": {
         "@fontsource-variable/geist": "^5.2.9",
         "@mokronos/wfkit": "workspace:*",
+        "@mokronos/wfkit-executor": "workspace:*",
         "@tailwindcss/vite": "^4.3.2",
         "@types/dagre": "^0.7.53",
         "@vitejs/plugin-react": "^6.0.3",

@@ -17,6 +17,7 @@
     "paths": {
       "@mokronos/wfkit": ["packages/wf/src/index.ts"],
       "@mokronos/wfkit-executor": ["packages/wfkit-executor/src/index.ts"],
+      "@mokronos/wfkit-executor/schemas": ["packages/wfkit-executor/src/schemas.ts"],
       "@mokronos/wfkit/schemas": ["packages/wf/src/schemas.ts"],
       "@mokronos/wfkit/testing": ["packages/wf/src/testing/index.ts"],
       "@/*": ["apps/web/src/*"]

@@ -1132,6 +1132,250 @@ h3 {
   border-color: var(--border);
 }
 
+.integrations-layout {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: minmax(320px, 0.8fr) minmax(0, 1.6fr);
+  gap: 14px;
+}
+
+.integrations-list-card,
+.integration-tools-card {
+  min-height: 0;
+}
+
+.integration-table {
+  display: grid;
+  gap: 8px;
+}
+
+.integration-row {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  color: var(--foreground);
+  cursor: pointer;
+  padding: 11px;
+  text-align: left;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.integration-row:hover,
+.integration-row.active {
+  border-color: oklch(0.62 0.1 198);
+  background: oklch(0.96 0.014 198);
+}
+
+.integration-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.integration-main strong,
+.integration-main code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.integration-main code,
+.integration-row-meta > span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.integration-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.integration-connected {
+  background: oklch(0.93 0.07 150);
+  color: oklch(0.28 0.07 150);
+}
+
+.integration-detail {
+  display: grid;
+  min-height: 0;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.integration-title-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--primary);
+}
+
+.integration-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integration-summary-grid > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.integration-summary-grid > div > span:first-child {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.integration-summary-grid code,
+.integration-summary-grid p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.integration-summary-wide {
+  grid-column: 1 / -1;
+}
+
+.integration-summary-grid a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.integration-summary-grid a svg {
+  width: 13px;
+  height: 13px;
+}
+
+.connection-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.connection-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  padding: 7px 9px;
+  font-size: 13px;
+}
+
+.connection-list code,
+.connection-list span {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+/* The sidebar search styling assumes a dark surface; restate it for the light card. */
+.integration-tool-search {
+  margin-top: 8px;
+  border-color: var(--border);
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.integration-tool-search input {
+  color: var(--foreground);
+}
+
+.integration-tool-search input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.tool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.tool-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+}
+
+.tool-card > summary {
+  display: grid;
+  gap: 4px;
+  cursor: pointer;
+  padding: 10px 11px;
+}
+
+.tool-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.tool-address {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tool-description {
+  border-top: 1px solid var(--border);
+  padding: 10px 11px 0;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+
+.tool-schema-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 10px 11px 12px;
+}
+
+.tool-schema {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: oklch(0.98 0.004 95);
+  padding: 9px 11px;
+}
+
+.tool-schema h4 {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 720;
+  text-transform: uppercase;
+}
+
+.tool-schema .schema-view {
+  border-top: none;
+  padding: 8px 0 0;
+}
+
+.tool-signature {
+  overflow: auto;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+  padding: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @keyframes status-pulse {
   0%, 100% {
     box-shadow: 0 0 0 0 rgba(234, 180, 68, 0.16);
@@ -1189,6 +1433,16 @@ h3 {
   }
 
   .run-row {
+    grid-template-columns: 1fr;
+  }
+
+  .integrations-layout,
+  .integration-summary-grid,
+  .tool-schema-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .integration-row {
     grid-template-columns: 1fr;
   }
 }

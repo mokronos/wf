@@ -5,6 +5,10 @@ import { defineConfig } from "vite"
 import { homedir } from "node:os"
 import { workflowArtifactToGraph } from "../../packages/wf/src/sdk/graph"
 import { createDirectoryWorkflowCatalog } from "../../packages/wf/src/sdk/catalog"
+import {
+  listIntegrationOverviews,
+  setExecutorStorageDirectory
+} from "../../packages/wfkit-executor/src/index"
 
 const wfHome = process.env["WF_HOME"] ?? path.join(homedir(), ".wf")
 
@@ -12,6 +16,13 @@ const wfHome = process.env["WF_HOME"] ?? path.join(homedir(), ".wf")
 // server runs under Node. Workflows are plain files, so they are served here;
 // anything about runs is proxied to `wf daemon --foreground`.
 const daemonTarget = process.env["WF_DAEMON_URL"] ?? "http://127.0.0.1:4787"
+
+const executorStorageDirectory = (): string => {
+  const configured = process.env["WF_STORAGE_DIR"] ?? process.env["WF_HOME"]
+  return configured === undefined || configured.length === 0
+    ? path.join(homedir(), ".wf")
+    : path.resolve(configured)
+}
 
 const json = (response: { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void }, statusCode: number, body: unknown) => {
   response.statusCode = statusCode
@@ -45,6 +56,16 @@ export default defineConfig({
               json(response, 200, {
                 generatedAt: new Date().toISOString(),
                 workflows
+              })
+              return
+            }
+
+            if (pathname === "/integrations") {
+              setExecutorStorageDirectory(executorStorageDirectory())
+
+              json(response, 200, {
+                generatedAt: new Date().toISOString(),
+                integrations: await listIntegrationOverviews()
               })
               return
             }

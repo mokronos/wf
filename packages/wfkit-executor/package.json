@@ -35,6 +35,12 @@
       "bun": "./src/index.ts",
       "development": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./schemas": {
+      "types": "./dist/schemas.d.ts",
+      "bun": "./src/schemas.ts",
+      "development": "./src/schemas.ts",
+      "default": "./dist/schemas.js"
     }
   },
   "scripts": {

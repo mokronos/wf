@@ -149,8 +149,9 @@ wf web
 ```
 
 `wf install` registers a per-user background service (`systemd --user` on Linux,
-`launchd` on macOS) that serves the workflow graphs and run history from `~/.wf`
-at `http://127.0.0.1:4787`. It does not execute workflows. The standalone
+`launchd` on macOS) that serves the workflow graphs, run history, and connected
+integrations from `~/.wf` at `http://127.0.0.1:4787`. It does not execute
+workflows. The standalone
 workflow commands also build for Windows; Windows service registration is not
 implemented yet.
 
@@ -366,6 +367,10 @@ After `connect`, `tools` returns JSON by default with complete schemas; use
 `--text` for concise canonical addresses and input shapes. The default connection is `default`. `validate <tool-address>` checks
 an authored address against the live catalog. `invoke` executes one tool directly
 and prints its normalized JSON result.
+
+The dashboard's **Integrations** view (`wf web`) shows the same catalog in the
+browser: which integrations are connected, the connections authorizing them, and
+every tool with its input and output schema.
 
 ### Storage
 

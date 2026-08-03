@@ -4,6 +4,13 @@ import {
   addExecutorOpenApi,
   createExecutorConnection,
   detectExecutorIntegration,
+  listExecutorConnections,
+  listExecutorIntegrations,
+  listExecutorTools,
+  previewExecutorOpenApi,
+  probeExecutorMcp
+} from "./executor.ts"
+import {
   ExecutorAuthMethod,
   ExecutorDetection,
   ExecutorIntegration,
@@ -11,12 +18,8 @@ import {
   ExecutorOpenApiPreview,
   ExecutorTool,
   ExecutorToolAddress,
-  listExecutorConnections,
-  listExecutorIntegrations,
-  listExecutorTools,
-  previewExecutorOpenApi,
-  probeExecutorMcp
-} from "./executor.ts"
+  IntegrationOverview
+} from "./schemas.ts"
 
 export const IntegrationKind = Schema.Literals(["mcp", "openapi"])
 export type IntegrationKind = typeof IntegrationKind.Type
@@ -299,6 +302,55 @@ export const discoverIntegration = async (
     authMethods: registered.authMethods,
     tools: await listExecutorTools({ integration: registered.slug, connection: connectionName })
   }
+}
+
+const toolsForConnection = async (
+  integration: string,
+  connection: string
+): Promise<{ readonly tools: ReadonlyArray<ExecutorTool>; readonly error?: string }> => {
+  try {
+    return { tools: await listExecutorTools({ integration, connection }) }
+  } catch (cause) {
+    return {
+      tools: [],
+      error: `${connection}: ${cause instanceof Error ? cause.message : String(cause)}`
+    }
+  }
+}
+
+/** The full picture of what is connected: every catalog integration with its
+ *  connections and the tools each connection exposes. Listing tools reaches the
+ *  live endpoint, so a failing integration reports `toolError` instead of
+ *  failing the whole overview. */
+export const listIntegrationOverviews = async (): Promise<ReadonlyArray<IntegrationOverview>> => {
+  const [integrations, connections] = await Promise.all([
+    listExecutorIntegrations(),
+    listExecutorConnections()
+  ])
+  const overviews = await Promise.all(integrations.map(async (integration) => {
+    const owned = connections.filter((connection) => connection.integration === integration.slug)
+    const listings = await Promise.all(owned.map((connection) =>
+      toolsForConnection(integration.slug, connection.name)
+    ))
+    const errors = listings.flatMap((listing) => listing.error === undefined ? [] : [listing.error])
+    const tools = listings
+      .flatMap((listing) => listing.tools)
+      .toSorted((left, right) => left.name.localeCompare(right.name))
+    return {
+      slug: integration.slug,
+      name: integration.name,
+      description: integration.description,
+      kind: integration.kind,
+      ...(integration.displayUrl === undefined ? {} : { displayUrl: integration.displayUrl }),
+      requiresAuthentication: integration.authMethods.length > 0 &&
+        !integration.authMethods.some((method) => method.kind === "none"),
+      authMethods: integration.authMethods,
+      connections: owned,
+      tools,
+      ...(errors.length === 0 ? {} : { toolError: errors.join("; ") })
+    }
+  }))
+  return overviews.toSorted((left, right) => left.name.localeCompare(right.name))
 }
 
 const finding = (

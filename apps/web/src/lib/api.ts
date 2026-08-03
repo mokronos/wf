@@ -3,6 +3,14 @@ import {
   decodeRunsResponse,
   decodeWorkflowsResponse
 } from "@mokronos/wfkit/schemas"
+import { decodeIntegrationsResponse, errorPayloadMessage } from "@mokronos/wfkit-executor/schemas"
+import type {
+  ExecutorAuthMethod,
+  ExecutorConnection,
+  ExecutorTool,
+  IntegrationOverview,
+  IntegrationsResponse
+} from "@mokronos/wfkit-executor/schemas"
 import type {
   RunEventsResponse,
   RunsResponse,
@@ -22,6 +30,11 @@ import type {
 } from "@mokronos/wfkit/schemas"
 
 export type {
+  ExecutorAuthMethod,
+  ExecutorConnection,
+  ExecutorTool,
+  IntegrationOverview,
+  IntegrationsResponse,
   RunEventsResponse,
   RunsResponse,
   WorkflowArtifactGraph,
@@ -72,6 +85,19 @@ const getRunEventsJson = async (url: string): Promise<RunEventsResponse> => {
   return payload
 }
 
+const getIntegrationsJson = async (url: string): Promise<IntegrationsResponse> => {
+  const response = await fetch(url)
+  const raw: unknown = await response.json()
+  const failure = errorPayloadMessage(raw)
+  if (failure !== undefined) {
+    throw new Error(failure)
+  }
+  if (!response.ok) {
+    throw new Error(`Request failed with ${response.status}`)
+  }
+  return decodeIntegrationsResponse(raw)
+}
+
 export const workflowKey = (item: WorkflowArtifactGraph): string =>
   item.artifact.id
 
@@ -84,6 +110,9 @@ export const workflowLabel = (item: WorkflowArtifactGraph): string =>
 
 export const fetchWorkflows = (): Promise<WorkflowsResponse> =>
   getWorkflowsJson("/api/workflows")
+
+export const fetchIntegrations = (): Promise<IntegrationsResponse> =>
+  getIntegrationsJson("/api/integrations")
 
 export const fetchRuns = (): Promise<RunsResponse> =>
   getRunsJson("/api/runs")

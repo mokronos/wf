@@ -11,7 +11,11 @@ import {
   toJsonText,
   workflowArtifactToGraph
 } from "@mokronos/wfkit"
-import { closeExecutor, setExecutorStorageDirectory } from "@mokronos/wfkit-executor"
+import {
+  closeExecutor,
+  listIntegrationOverviews,
+  setExecutorStorageDirectory
+} from "@mokronos/wfkit-executor"
 import type { WorkflowCatalog } from "@mokronos/wfkit"
 import { makeWorkflowCommands, type CliRuntimeOptions } from "./cli/main.ts"
 import assets from "./embedded-web-assets.gen.ts"
@@ -73,6 +77,12 @@ const api = async (
     const artifacts = await catalog.list()
     const workflows = await Promise.all(artifacts.map((artifact) => workflowArtifactToGraph(artifact, { maxNodes: 120 })))
     return json(JSON.stringify({ generatedAt: new Date().toISOString(), workflows }))
+  }
+  if (pathname === "/api/integrations") {
+    return json(JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      integrations: await listIntegrationOverviews()
+    }))
   }
   if (pathname === "/api/runs") {
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: engineDatabasePath })

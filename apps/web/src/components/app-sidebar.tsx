@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, History, Layers3, Search, Workflow } from "lucide-react"
+import { ChevronLeft, ChevronRight, History, Layers3, Plug, Search, Workflow } from "lucide-react"
 import type { ReactElement } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -12,11 +12,12 @@ import type { WorkflowArtifactGraph } from "@/lib/api"
 import { workflowKey, workflowLabel } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
-export type AppView = "workflows" | "runs"
+export type AppView = "workflows" | "runs" | "integrations"
 
 const navItems = [
   { id: "workflows", label: "Workflows", icon: Workflow },
-  { id: "runs", label: "Runs", icon: History }
+  { id: "runs", label: "Runs", icon: History },
+  { id: "integrations", label: "Integrations", icon: Plug }
 ] satisfies ReadonlyArray<{ readonly id: AppView; readonly label: string; readonly icon: typeof Workflow }>
 
 const SidebarButton = ({
