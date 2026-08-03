@@ -8,20 +8,11 @@ import type { WorkflowEvent } from "../events.ts"
 import { ExecutionId, WorkflowHistoryEvent as WorkflowHistoryEventSchema } from "../schemas.ts"
 import type { JsonSchema, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowRunStatus } from "../schemas.ts"
 import { isTerminalRunStatus, statusAfterEvent } from "../run-lifecycle.ts"
-import { createWorkflowRuntime, executeWorkflow } from "../runtime.ts"
-import type { ExecuteWorkflowOptions } from "../runtime.ts"
+import { createWorkflowRuntime } from "../runtime.ts"
 import type { WorkflowRuntime } from "../runtime.ts"
 import { createSignalTransport, decodeSignal, getSignalSchema } from "../signal.ts"
-import type {
-  WorkflowArtifact,
-  WorkflowRunEventRecord,
-  WorkflowRunRecord,
-  WorkflowRunStore,
-  WorkflowStore
-} from "./artifact.ts"
-import { createFileWorkflowStore } from "./artifact.ts"
+import type { WorkflowArtifact, WorkflowRunRecord } from "./artifact.ts"
 import { parseJsonText, toJsonText } from "./json.ts"
-import { loadWorkflowArtifact } from "./loader.ts"
 import { replayDedupeKey } from "../replay.ts"
 
 export type WorkflowExecutionStatus = WorkflowRunStatus
@@ -50,6 +41,11 @@ export interface WorkflowExecutionRecord {
   readonly payload: unknown
   readonly startedAt: string
   readonly finishedAt?: string
+  /**
+   * The snapshot of the workflow source this execution started against. Resuming
+   * it replays that source, not whatever the catalog file says now.
+   */
+  readonly sourceHash?: string
 }
 
 export interface PendingSignal {
@@ -76,7 +72,13 @@ export interface WorkflowClient {
   start<I, O, E>(
     workflow: DefinedWorkflow<I, O, E>,
     payload: I,
-    opts?: { readonly idempotencyKey?: string; readonly actor?: string; readonly artifactId?: string }
+    opts?: {
+      readonly idempotencyKey?: string
+      readonly actor?: string
+      readonly artifactId?: string
+      /** Snapshot to pin this execution to, so later edits cannot change its replay. */
+      readonly sourceHash?: string
+    }
   ): Promise<WorkflowExecutionHandle>
   signal(
     executionId: string,
@@ -113,11 +115,9 @@ export const lifecycleRunRecords = async (
   artifacts: ReadonlyArray<WorkflowArtifact>
 ): Promise<ReadonlyArray<WorkflowRunRecord>> =>
   (await client.executions()).map((execution) => {
-    const artifact = execution.artifactId === undefined
-      ? artifacts.find(
-        (candidate) => candidate.name === execution.workflowName
-      )
-      : artifacts.find((candidate) => candidate.id === execution.artifactId)
+    // A run names the catalog entry it started from. When that entry is gone the
+    // run still stands on its own, labelled by the workflow name in its history.
+    const artifact = artifacts.find((candidate) => candidate.id === execution.artifactId)
     return {
       id: ExecutionId.make(execution.executionId),
       workflowId: artifact?.id ?? execution.workflowName,
@@ -133,6 +133,7 @@ export { Cancelled } from "../core.ts"
 interface ExecutionRecord {
   readonly executionId: string
   readonly artifactId?: string
+  readonly sourceHash?: string
   readonly workflow: DefinedWorkflow<any, any, any>
   readonly payload: unknown
   status: WorkflowExecutionStatus
@@ -230,6 +231,17 @@ export const createWorkflowClient = (
 ): WorkflowClient =>
   runtime.backend === "sqlite" ? createDurableWorkflowClient(runtime) : createMemoryWorkflowClient(runtime)
 
+const memoryExecutionRecord = (execution: ExecutionRecord): WorkflowExecutionRecord => ({
+  executionId: execution.executionId,
+  ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
+  workflowName: execution.workflow.name,
+  status: execution.status,
+  payload: execution.payload,
+  startedAt: execution.startedAt,
+  ...optionalFinishedAt(execution.finishedAt),
+  ...(execution.sourceHash === undefined ? {} : { sourceHash: execution.sourceHash })
+})
+
 const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient => {
   const executions = new Map<string, ExecutionRecord>()
   const idempotencyKeys = new Map<string, string>()
@@ -269,6 +281,7 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
       const execution: ExecutionRecord = {
         executionId: id,
         ...(opts.artifactId === undefined ? {} : { artifactId: opts.artifactId }),
+        ...(opts.sourceHash === undefined ? {} : { sourceHash: opts.sourceHash }),
         workflow,
         payload,
         status: "running",
@@ -348,30 +361,13 @@ const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient =
     },
 
     async execution(id) {
-      const execution = requireExecution(id)
-      return {
-        executionId: execution.executionId,
-        ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
-        workflowName: execution.workflow.name,
-        status: execution.status,
-        payload: execution.payload,
-        startedAt: execution.startedAt,
-        ...optionalFinishedAt(execution.finishedAt)
-      }
+      return memoryExecutionRecord(requireExecution(id))
     },
 
     async executions() {
       return Array.from(executions.values())
         .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
-        .map((execution) => ({
-          executionId: execution.executionId,
-          ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
-          workflowName: execution.workflow.name,
-          status: execution.status,
-          payload: execution.payload,
-          startedAt: execution.startedAt,
-          ...optionalFinishedAt(execution.finishedAt)
-        }))
+        .map(memoryExecutionRecord)
     },
 
     async list(workflow, opts = {}) {
@@ -445,16 +441,11 @@ interface DurableExecutionRow {
   readonly payload_json: string
   readonly idempotency_key: string | null
   readonly actor: string | null
+  readonly source_hash: string | null
   readonly result_json: string | null
   readonly error_json: string | null
   readonly started_at: string
   readonly finished_at: string | null
-}
-
-interface DurableWorkflowCatalogRow {
-  readonly workflow_name: string
-  readonly source_hash: string
-  readonly registered_at: string
 }
 
 interface DurableHistoryRow {
@@ -473,6 +464,7 @@ const migrateClientDb = (db: Database) => {
       payload_json TEXT NOT NULL,
       idempotency_key TEXT,
       actor TEXT,
+      source_hash TEXT,
       result_json TEXT,
       error_json TEXT,
       started_at TEXT NOT NULL,
@@ -482,13 +474,6 @@ const migrateClientDb = (db: Database) => {
     CREATE UNIQUE INDEX IF NOT EXISTS wf_client_executions_idempotency_idx
       ON wf_client_executions(workflow_name, idempotency_key)
       WHERE idempotency_key IS NOT NULL;
-
-    CREATE TABLE IF NOT EXISTS wf_client_workflows (
-      workflow_name TEXT NOT NULL,
-      source_hash TEXT NOT NULL,
-      registered_at TEXT NOT NULL,
-      PRIMARY KEY (workflow_name)
-    );
 
     CREATE TABLE IF NOT EXISTS wf_client_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -509,6 +494,27 @@ const migrateClientDb = (db: Database) => {
   if (!executionColumns.some((column) => column.name === "artifact_id")) {
     db.exec("ALTER TABLE wf_client_executions ADD COLUMN artifact_id TEXT")
   }
+  if (!executionColumns.some((column) => column.name === "source_hash")) {
+    db.exec("ALTER TABLE wf_client_executions ADD COLUMN source_hash TEXT")
+  }
+  // Workflow versioning was removed from the engine, but a database written
+  // before that still carries a NOT NULL workflow_version that nothing fills —
+  // which fails every insert until the column goes. The idempotency index is
+  // rebuilt from the current definition because the old one keyed on the
+  // version, which would block the drop and no longer describes uniqueness.
+  if (executionColumns.some((column) => column.name === "workflow_version")) {
+    db.exec(`
+      DROP INDEX IF EXISTS wf_client_executions_idempotency_idx;
+      ALTER TABLE wf_client_executions DROP COLUMN workflow_version;
+      CREATE UNIQUE INDEX IF NOT EXISTS wf_client_executions_idempotency_idx
+        ON wf_client_executions(workflow_name, idempotency_key)
+        WHERE idempotency_key IS NOT NULL;
+    `)
+  }
+  // wf_client_workflows pinned one source hash per workflow *name* for all time,
+  // which made editing a workflow that had ever run a hard error. Executions pin
+  // their own snapshot now (source_hash above), so the table is dropped.
+  db.exec("DROP TABLE IF EXISTS wf_client_workflows")
   db.exec(`
     CREATE INDEX IF NOT EXISTS wf_client_history_dedupe_idx
       ON wf_client_history(execution_id, dedupe_key)
@@ -526,34 +532,6 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
   migrateClientDb(db)
   const runPromises = new Map<string, Promise<WorkflowResult>>()
   let closing = false
-
-  const registerCatalog = (workflow: DefinedWorkflow) => {
-    const existing = db.query<DurableWorkflowCatalogRow, [string]>(`
-      SELECT workflow_name, source_hash, registered_at
-      FROM wf_client_workflows
-      WHERE workflow_name = ?
-    `).get(workflow.name)
-
-    if (existing !== null) {
-      if (existing.source_hash !== workflow.sourceHash) {
-        throw new Error(
-          `Workflow ${workflow.name} is already cataloged with different source`
-        )
-      }
-      return
-    }
-
-    db.query<unknown, [string, string, string]>(`
-      INSERT INTO wf_client_workflows (workflow_name, source_hash, registered_at)
-      VALUES (?, ?, ?)
-    `).run(workflow.name, workflow.sourceHash, nowIso())
-  }
-
-  const registerCatalogFromRuntime = (name: string) => {
-    for (const workflow of runtime.listWorkflows(name)) {
-      registerCatalog(workflow)
-    }
-  }
 
   // Returns false when the event is a replay re-emission that is already
   // recorded (the engine replays workflow code whenever a suspended run
@@ -610,7 +588,8 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
     status: row.status,
     payload: decodeStoredValue(row.payload_json),
     startedAt: row.started_at,
-    ...optionalFinishedAt(row.finished_at ?? undefined)
+    ...optionalFinishedAt(row.finished_at ?? undefined),
+    ...(row.source_hash === null ? {} : { sourceHash: row.source_hash })
   })
 
   const workflowFor = (row: DurableExecutionRow): DefinedWorkflow => {
@@ -623,8 +602,6 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
 
   const workflowForStart = (workflow: DefinedWorkflow): DefinedWorkflow => {
     runtime.register([workflow])
-    registerCatalogFromRuntime(workflow.name)
-    registerCatalog(workflow)
     return workflow
   }
 
@@ -726,7 +703,10 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       }
 
       const id = executionId()
-      db.query<unknown, [string, string | null, string, string, string | null, string | null, string]>(`
+      db.query<
+        unknown,
+        [string, string | null, string, string, string | null, string | null, string | null, string]
+      >(`
         INSERT INTO wf_client_executions (
           id,
           artifact_id,
@@ -735,9 +715,10 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
           payload_json,
           idempotency_key,
           actor,
+          source_hash,
           started_at
         )
-        VALUES (?, ?, ?, 'running', ?, ?, ?, ?)
+        VALUES (?, ?, ?, 'running', ?, ?, ?, ?, ?)
       `).run(
         id,
         opts.artifactId ?? null,
@@ -745,6 +726,7 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
         encodeStoredValue(payload),
         opts.idempotencyKey ?? null,
         opts.actor ?? null,
+        opts.sourceHash ?? null,
         nowIso()
       )
       appendHistory(id, {
@@ -904,98 +886,4 @@ const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowClient =
       db.close()
     }
   }
-}
-
-export interface RunWorkflowOptions {
-  readonly id: string
-  readonly input: unknown
-  readonly onEvent?: ExecuteWorkflowOptions["onEvent"]
-}
-
-export interface WorkflowRunResult {
-  readonly artifact: WorkflowArtifact
-  readonly exportName: string
-  readonly runId?: string
-  readonly result: unknown
-}
-
-export interface WorkflowSdk {
-  listWorkflows(): Promise<ReadonlyArray<WorkflowArtifact>>
-  getWorkflow(id: string): Promise<WorkflowArtifact | undefined>
-  listRuns(): Promise<ReadonlyArray<WorkflowRunRecord>>
-  listRunEvents(runId: string): Promise<ReadonlyArray<WorkflowRunEventRecord>>
-  runWorkflow(options: RunWorkflowOptions): Promise<WorkflowRunResult>
-}
-
-export interface WorkflowSdkOptions {
-  readonly store?: WorkflowStore
-  readonly runStore?: WorkflowRunStore
-}
-
-export const createWorkflowSdk = (options: WorkflowSdkOptions = {}): WorkflowSdk => {
-  const store = options.store ?? createFileWorkflowStore()
-  const runStore = options.runStore
-
-  return {
-    listWorkflows() {
-      return store.list()
-    },
-
-    getWorkflow(id) {
-      return store.get(id)
-    },
-
-    listRuns() {
-      return runStore?.listRuns() ?? Promise.resolve([])
-    },
-
-    listRunEvents(runId) {
-      return runStore?.listRunEvents(runId) ?? Promise.resolve([])
-    },
-
-    async runWorkflow({ id, input, onEvent }) {
-      const artifact = await store.get(id)
-
-      if (artifact === undefined) {
-        throw new Error(`Unknown workflow id: ${id}`)
-      }
-
-      const runId = `${artifact.id}:${executionId()}`
-      await runStore?.startRun({ id: runId, workflow: artifact, input })
-
-      const loaded = await loadWorkflowArtifact(artifact)
-
-      const onRuntimeEvent: ExecuteWorkflowOptions["onEvent"] = async (event) => {
-        await runStore?.appendRunEvent({ runId, event })
-        await onEvent?.(event)
-      }
-
-      try {
-        const result = await executeWorkflow(loaded.workflow, input, { onEvent: onRuntimeEvent })
-        await runStore?.completeRun({ runId, result })
-
-        return {
-          artifact: loaded.artifact,
-          exportName: loaded.exportName,
-          runId,
-          result
-        }
-      } catch (error) {
-        await runStore?.failRun({ runId, error: serializeError(error) })
-        throw error
-      }
-    }
-  }
-}
-
-const serializeError = (error: unknown): unknown => {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack
-    }
-  }
-
-  return JSON.parse(toJsonText(error))
 }

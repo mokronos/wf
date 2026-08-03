@@ -3,6 +3,19 @@ import { Schema } from "effect"
 export const ExecutionId = Schema.String.pipe(Schema.brand("ExecutionId"))
 export type ExecutionId = typeof ExecutionId.Type
 
+export const workflowIdPattern = /^[a-z][a-z0-9-]*$/
+
+/**
+ * A catalog id, which is also the workflow's filename stem. The pattern is
+ * enforced here rather than at each call site: it is what keeps an id from
+ * escaping the catalog directory once it is joined into a path.
+ */
+export const WorkflowId = Schema.String.pipe(
+  Schema.refine((value): value is string => workflowIdPattern.test(value)),
+  Schema.brand("WorkflowId")
+)
+export type WorkflowId = typeof WorkflowId.Type
+
 const OptionalString = Schema.optionalKey(Schema.String)
 const OptionalUnknown = Schema.optionalKey(Schema.Unknown)
 
@@ -310,29 +323,18 @@ export const WorkflowHistoryRecord = Schema.Struct({
 })
 export type WorkflowHistoryRecord = typeof WorkflowHistoryRecord.Type
 
+/**
+ * A workflow as the catalog knows it: an id and the TypeScript source behind it.
+ * The workflow's own name and the export it lives under are derived by loading
+ * the source, never stored beside it — a stored copy would go stale the moment
+ * the file is edited by hand.
+ */
 export const WorkflowArtifact = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
+  id: WorkflowId,
   source: Schema.String,
-  exportName: OptionalString,
   createdAt: OptionalString
 })
 export type WorkflowArtifact = typeof WorkflowArtifact.Type
-
-export const WorkflowManifestEntry = Schema.Struct({
-  id: Schema.String,
-  name: Schema.String,
-  source: OptionalString,
-  entrypoint: OptionalString,
-  exportName: OptionalString,
-  createdAt: OptionalString
-})
-export type WorkflowManifestEntry = typeof WorkflowManifestEntry.Type
-
-export const WorkflowManifest = Schema.Struct({
-  workflows: Schema.Array(WorkflowManifestEntry)
-})
-export type WorkflowManifest = typeof WorkflowManifest.Type
 
 export const WorkflowRunRecord = Schema.Struct({
   id: ExecutionId,
@@ -345,15 +347,6 @@ export const WorkflowRunRecord = Schema.Struct({
   finishedAt: OptionalString
 })
 export type WorkflowRunRecord = typeof WorkflowRunRecord.Type
-
-export const WorkflowRunEventRecord = Schema.Struct({
-  id: Schema.Number,
-  runId: ExecutionId,
-  sequence: Schema.Number,
-  event: WorkflowHistoryEvent,
-  createdAt: Schema.String
-})
-export type WorkflowRunEventRecord = typeof WorkflowRunEventRecord.Type
 
 export const WorkflowGraphNodeKind = Schema.Literals([
   "step",

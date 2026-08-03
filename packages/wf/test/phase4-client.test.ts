@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { createWorkflowClient, defineStep, defineWorkflow, lifecycleRunRecords } from "../src"
+import { createWorkflowClient, defineStep, defineWorkflow, lifecycleRunRecords, parseWorkflowId } from "../src"
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -226,13 +226,12 @@ describe("Phase 4 workflow client", () => {
       }
     })
     const client = createWorkflowClient()
-    const handle = await client.start(workflow, undefined)
+    const handle = await client.start(workflow, undefined, { artifactId: "workflow-projection" })
     await client.result(handle.executionId)
 
     const runs = await lifecycleRunRecords(client, [
       {
-        id: "workflow-projection",
-        name: workflow.name,
+        id: parseWorkflowId("workflow-projection"),
         source: "workflow source"
       }
     ])

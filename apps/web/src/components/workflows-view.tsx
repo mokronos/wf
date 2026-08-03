@@ -14,7 +14,7 @@ import { SchemaView } from "@/components/schema-view"
 import { WorkflowCanvas } from "@/components/workflow-canvas"
 import { kindClass, kindIcon } from "@/components/workflow-node"
 import type { WorkflowArtifactGraph, WorkflowGraphNode } from "@/lib/api"
-import { workflowKey } from "@/lib/api"
+import { workflowKey, workflowLabel } from "@/lib/api"
 import { compactDate, shortId } from "@/lib/format"
 import { cn } from "@/lib/utils"
 
@@ -77,7 +77,7 @@ export function WorkflowsView({
       <header className="topbar">
         <div className="topbar-copy">
           <p className="eyebrow">read-only trace</p>
-          <h2>{selected?.artifact.name ?? "No workflow selected"}</h2>
+          <h2>{selected === undefined ? "No workflow selected" : workflowLabel(selected)}</h2>
         </div>
         <div className="topbar-actions">
           <Select
@@ -93,7 +93,7 @@ export function WorkflowsView({
                 const key = workflowKey(item)
                 return (
                   <SelectItem key={key} value={key}>
-                    {item.artifact.name}
+                    {workflowLabel(item)}
                   </SelectItem>
                 )
               })}
@@ -194,7 +194,7 @@ function WorkflowDetails({
       </Tooltip>
       <SheetContent className="details-sheet">
         <SheetHeader>
-          <SheetTitle>{selected?.artifact.name ?? "Workflow details"}</SheetTitle>
+          <SheetTitle>{selected === undefined ? "Workflow details" : workflowLabel(selected)}</SheetTitle>
         </SheetHeader>
         <Tabs defaultValue="workflow">
           <TabsList>
@@ -206,7 +206,7 @@ function WorkflowDetails({
               <div className="stack">
                 <MetadataList
                   value={{
-                    name: selected.artifact.name,
+                    name: workflowLabel(selected),
                     sourceHash: selected.graph?.sourceHash === undefined
                       ? undefined
                       : shortId(selected.graph.sourceHash),

@@ -128,9 +128,10 @@ wf
 Use `wf --help` or `wf <command> --help` for arguments, flags, examples, and
 nested subcommands.
 
-Global CLI state lives in `~/.wf/wf.sqlite`; durable engine state lives in
-`~/.wf/engine.sqlite`; Executor's catalog lives in `~/.wf/executor.sqlite`; and
-encrypted credentials live in `~/.wf/executor-auth.json` with their user-only
-key in `~/.wf/executor-auth.key`.
+Workflows are editable files in `~/.wf/workflows/<id>.ts`, with the source each
+run started against snapshotted in `~/.wf/sources/`; durable engine state lives
+in `~/.wf/engine.sqlite`; Executor's catalog lives in `~/.wf/executor.sqlite`;
+and encrypted credentials live in `~/.wf/executor-auth.json` with their
+user-only key in `~/.wf/executor-auth.key`.
 
 Bun is the supported runtime. Source and documentation live at https://github.com/mokronos/wf.

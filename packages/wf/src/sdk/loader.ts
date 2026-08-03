@@ -105,20 +105,6 @@ export const loadWorkflowArtifact = async (
 ): Promise<LoadedWorkflow> => {
   const module = await importArtifactModule(artifact)
 
-  if (artifact.exportName !== undefined) {
-    const exported = module[artifact.exportName]
-    if (isDefinedWorkflow(exported)) {
-      return {
-        artifact,
-        exportName: artifact.exportName,
-        workflow: workflowWithArtifactHash(exported, artifact, artifact.exportName)
-      }
-    }
-    throw new Error(
-      `Workflow ${artifact.id} expected export ${artifact.exportName}, but it was not a wf workflow`
-    )
-  }
-
   if (isDefinedWorkflow(module.default)) {
     return {
       artifact,
@@ -146,7 +132,7 @@ export const loadWorkflowArtifact = async (
   if (candidates.length > 1) {
     const names = candidates.map(([name]) => name).join(", ")
     throw new Error(
-      `Workflow ${artifact.id} exports multiple workflows (${names}); set exportName in the manifest`
+      `Workflow ${artifact.id} exports multiple workflows (${names}); mark the one to run with "export default"`
     )
   }
 

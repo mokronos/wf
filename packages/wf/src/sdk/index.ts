@@ -1,22 +1,23 @@
-export {
-  createFileWorkflowStore,
-  createMemoryWorkflowStore
-} from "./artifact.ts"
+export { createMemoryWorkflowStore } from "./artifact.ts"
 export type {
-  FileWorkflowStoreOptions,
   WorkflowArtifact,
-  WorkflowRepository,
-  WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStatus,
-  WorkflowRunStore,
   WorkflowStore
 } from "./artifact.ts"
 export {
-  createSqliteWorkflowRepository,
-  seedSqliteWorkflowRepository
-} from "./sqlite.ts"
-export type { SqliteWorkflowRepositoryOptions } from "./sqlite.ts"
+  createDirectoryWorkflowCatalog,
+  parseWorkflowId,
+  workflowIdFromFilename
+} from "./catalog.ts"
+export type { WorkflowCatalog, WorkflowCatalogOptions } from "./catalog.ts"
+export {
+  createWorkflowSourceStore,
+  hashWorkflowSource,
+  parseWorkflowSourceHash,
+  WorkflowSourceHash
+} from "./sources.ts"
+export type { WorkflowSourceStore, WorkflowSourceStoreOptions } from "./sources.ts"
 export {
   isDefinedWorkflow,
   loadWorkflowArtifact,
@@ -41,7 +42,7 @@ export type {
   WorkflowGraphOptions
 } from "./graph.ts"
 export { parseJsonText, toJsonText } from "./json.ts"
-export { Cancelled, createWorkflowClient, createWorkflowSdk, lifecycleRunRecords } from "./sdk.ts"
+export { Cancelled, createWorkflowClient, lifecycleRunRecords } from "./sdk.ts"
 export type {
   WorkflowClient,
   WorkflowExecutionHandle,
@@ -52,9 +53,5 @@ export type {
   WorkflowListResult,
   PendingSignal,
   WorkflowResult,
-  WorkflowObservation,
-  RunWorkflowOptions,
-  WorkflowRunResult,
-  WorkflowSdk,
-  WorkflowSdkOptions
+  WorkflowObservation
 } from "./sdk.ts"

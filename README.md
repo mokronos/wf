@@ -29,13 +29,14 @@ bun install -g @mokronos/wf
 `wf` command is a standalone platform binary — you do not need Bun to run it.
 
 The CLI keeps its workflow catalog and durable run history under `~/.wf`. Set
-`WF_HOME` to use another directory.
+`WF_HOME` to use another directory. Workflows are plain files in
+`~/.wf/workflows/<id>.ts` — edit them with any editor or agent, no CLI needed.
 
 ## Quickstart: create, validate, run
 
 ### 1. Create a workflow
 
-`wf create` with no source stores a small starter workflow in the catalog, so
+`wf create` with no source writes a small starter workflow into the catalog, so
 you can get to a run without writing a file first:
 
 ```bash
@@ -43,12 +44,19 @@ wf create hello
 ```
 
 ```
-Created hello	HelloWorkflow#HelloWorkflow	520 bytes
+Created hello	HelloWorkflow#HelloWorkflow	/home/you/.wf/workflows/hello.ts
 ```
 
-What it stored is the workflow shown under [Authoring reference](#authoring-reference):
+What it wrote is the workflow shown under [Authoring reference](#authoring-reference):
 one typed step that prints its input. `wf create --file ./workflow.ts` imports
 your own file instead.
+
+That path is the workflow. Editing the file changes what the next run executes,
+so an agent can patch a workflow with its normal file tools and `wf run` it —
+`wf create --force` is only a convenience for replacing one wholesale. Runs
+already in flight are unaffected: each pins the source it started with (see
+[Storage](#storage)). A file exporting several workflows needs `export default`
+to say which one `wf run` executes.
 
 ### 2. Validate it
 
@@ -319,9 +327,9 @@ wf <command>
 
 | Command | Purpose |
 | --- | --- |
-| `wf create` | Create or import a workflow into the catalog |
+| `wf create` | Create or import a workflow file into the catalog |
 | `wf validate` | Load and trace a workflow without running it |
-| `wf list` | List registered workflow artifacts |
+| `wf list` | List workflow files and their paths |
 | `wf run` | Start a run and stream its events |
 | `wf runs` | List persisted runs |
 | `wf history` / `wf events` | Show the persisted event history for a run |
@@ -361,7 +369,13 @@ and prints its normalized JSON result.
 
 ### Storage
 
-- `~/.wf/wf.sqlite` — workflow source, run rows, event rows.
+- `~/.wf/workflows/<id>.ts` — the workflow catalog. One editable file per
+  workflow, and the only authority for its source. The workflow's name and
+  exported symbol are read from the file, never stored beside it.
+- `~/.wf/sources/<sha256>.ts` — the source each run started against, written
+  when the run starts and never modified. A run parked on a signal resumes
+  against its snapshot, which is what lets you edit a workflow while it is in
+  flight.
 - `~/.wf/engine.sqlite` — durable engine state: completed step results, timers,
   suspended signal waits.
 - `~/.wf/executor.sqlite` — Executor integration, connection, and tool metadata.

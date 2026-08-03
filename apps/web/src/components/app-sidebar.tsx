@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { WorkflowArtifactGraph } from "@/lib/api"
-import { workflowKey } from "@/lib/api"
+import { workflowKey, workflowLabel } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 export type AppView = "workflows" | "runs"
@@ -173,7 +173,7 @@ export function AppSidebar({
                     className={cn("workflow-list-item", selectedKey === key && "active")}
                   >
                     <span className="list-item-top">
-                      <span>{item.artifact.name}</span>
+                      <span>{workflowLabel(item)}</span>
                     </span>
                     <span className="list-item-sub">
                       {item.artifact.id}

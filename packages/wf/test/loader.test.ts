@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { loadWorkflowArtifact } from "../src/sdk/loader.ts"
+import { parseWorkflowId } from "../src/sdk/catalog.ts"
 
 const source = (message: string): string => `
 import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
@@ -24,13 +25,12 @@ export const LoaderHashWorkflow = defineWorkflow({
 describe("workflow artifact loader", () => {
   test("hashes the complete stored source, including step and integration definitions", async () => {
     const firstArtifact = {
-      id: "loader-hash-a",
-      name: "LoaderHashWorkflow",
+      id: parseWorkflowId("loader-hash-a"),
       source: source("first")
     }
     const secondArtifact = {
       ...firstArtifact,
-      id: "loader-hash-b",
+      id: parseWorkflowId("loader-hash-b"),
       source: source("second")
     }
 

@@ -4,26 +4,33 @@ import path from "node:path"
 import { Data, Effect, Option } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import {
+  createDirectoryWorkflowCatalog,
   createWorkflowClient,
   createWorkflowRuntime,
-  createSqliteWorkflowRepository,
+  createWorkflowSourceStore,
   loadWorkflowArtifact,
   lifecycleRunRecords,
+  parseWorkflowId,
+  parseWorkflowSourceHash,
   sampleValueForJsonSchema,
   toJsonText,
   workflowArtifactToGraph
 } from "@mokronos/wfkit"
 import { makeIntegrationsCommand } from "./integrations.ts"
+import { migrateLegacyCatalog } from "../migrate-catalog.ts"
+import { sourcesPath, workflowsPath } from "../paths.ts"
 import type {
   JsonSchema,
   PendingSignal,
   WorkflowArtifact,
+  WorkflowCatalog,
   WorkflowClient,
   WorkflowEvent,
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
-  WorkflowRepository,
+  WorkflowId,
   WorkflowRunRecord,
+  WorkflowSourceStore,
   WorkflowGraphNodeKind,
   WorkflowGraphNodeMetadata
 } from "@mokronos/wfkit"
@@ -50,9 +57,8 @@ const parseJsonInput = (input: string | undefined): unknown => {
 }
 
 interface CreateWorkflowOptions {
-  readonly id: string
+  readonly id: WorkflowId
   readonly name: string
-  readonly nameProvided: boolean
   readonly source: string
   readonly force: boolean
 }
@@ -64,17 +70,10 @@ type ValidateWorkflowTarget =
   | { readonly kind: "catalog"; readonly id: string }
   | { readonly kind: "file"; readonly file: string }
 
-const workflowIdFromFile = (file: string): string => {
+const workflowIdFromFile = (file: string): WorkflowId => {
   const basename = path.basename(file, path.extname(file))
   const id = basename.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "")
-  return /^[a-z][a-z0-9-]*$/.test(id) ? id : "workflow"
-}
-
-
-const assertWorkflowId = (id: string) => {
-  if (!/^[a-z][a-z0-9-]*$/.test(id)) {
-    throw new Error("Workflow id must start with a lowercase letter and contain only lowercase letters, numbers, and dashes")
-  }
+  return parseWorkflowId(/^[a-z][a-z0-9-]*$/.test(id) ? id : "workflow")
 }
 
 const assertWorkflowName = (name: string) => {
@@ -115,23 +114,20 @@ export const ${options.name} = defineWorkflow({
 })
 `
 
-const printWorkflows = (workflows: ReadonlyArray<WorkflowArtifact>) => {
+// Listing prints the file path because that is the address an editor or agent
+// needs; it deliberately does not load the sources, so listing a catalog never
+// runs workflow module code.
+const printWorkflows = (catalog: WorkflowCatalog, workflows: ReadonlyArray<WorkflowArtifact>) => {
   if (workflows.length === 0) {
-    console.log("No workflows found.")
+    console.log(`No workflows found in ${catalog.directory}`)
     return
   }
 
   for (const workflow of workflows) {
-    const exported = workflow.exportName === undefined ? "" : `#${workflow.exportName}`
     console.log(
-      `${workflow.id}\t${workflow.name}${exported}\t${workflow.source.length} bytes`
+      `${workflow.id}\t${workflow.source.length} bytes\t${catalog.pathFor(workflow.id)}`
     )
   }
-}
-
-const printCreatedWorkflow = (workflow: WorkflowArtifact) => {
-  const exported = workflow.exportName === undefined ? "" : `#${workflow.exportName}`
-  console.log(`Created ${workflow.id}\t${workflow.name}${exported}\t${workflow.source.length} bytes`)
 }
 
 const printRuns = (runs: ReadonlyArray<WorkflowRunRecord>) => {
@@ -305,7 +301,7 @@ const printValidationResult = (result: Awaited<ReturnType<typeof workflowArtifac
     return
   }
 
-  const exportName = result.exportName ?? result.artifact.exportName ?? "default"
+  const exportName = result.exportName ?? "default"
   console.log(`${green("Valid")} ${bold(result.artifact.id)}\t${bold(graph.workflowName)}#${exportName}`)
   printSchemaLine("input", graph.schemas?.input)
   printSchemaLine("output", graph.schemas?.output)
@@ -333,21 +329,18 @@ const validationError = (result: Awaited<ReturnType<typeof workflowArtifactToGra
 }
 
 const validationArtifact = async (
-  repository: WorkflowRepository,
+  catalog: WorkflowCatalog,
   target: ValidateWorkflowTarget
 ): Promise<WorkflowArtifact> => {
   if (target.kind === "file") {
     return {
-      // The real workflow name comes from the resolved export; this placeholder
-      // only exists because an artifact needs one before the source is loaded.
       id: workflowIdFromFile(target.file),
-      name: "Workflow",
       source: await readFile(target.file, "utf8"),
       createdAt: new Date().toISOString()
     }
   }
 
-  const artifact = await repository.get(target.id)
+  const artifact = await catalog.get(target.id)
   if (artifact === undefined) {
     throw new Error(`Unknown workflow id: ${target.id}`)
   }
@@ -609,10 +602,62 @@ const cliError = (error: unknown): WorkflowCliError =>
 const runCliTask = <A>(task: () => Promise<A>): Effect.Effect<A, WorkflowCliError> =>
   Effect.tryPromise({ try: task, catch: cliError })
 
-const repositoryFor = (runtime: CliRuntimeOptions) => createSqliteWorkflowRepository({
-  rootDir: runtime.rootDir,
-  databasePath: path.join(runtime.storageDir, "wf.sqlite")
-})
+const legacyMigrations = new Map<string, Promise<void>>()
+
+const migrateOnce = (storageDir: string): Promise<void> => {
+  const pending = legacyMigrations.get(storageDir) ?? migrateLegacyCatalog(storageDir).then((ids) => {
+    if (ids.length === 0) return
+    console.error(
+      `Moved ${ids.length} workflow(s) out of wf.sqlite into ${workflowsPath(storageDir)}: ${ids.join(", ")}`
+    )
+  })
+  legacyMigrations.set(storageDir, pending)
+  return pending
+}
+
+/**
+ * Opening the catalog is also where a pre-file `wf.sqlite` gets unpacked, once.
+ * Commands that never look at workflows — help, integrations — leave storage
+ * untouched, which is what keeps `wf --help` a read-only act.
+ */
+const openCatalog = async (runtime: CliRuntimeOptions): Promise<WorkflowCatalog> => {
+  await migrateOnce(runtime.storageDir)
+  return createDirectoryWorkflowCatalog({ directory: workflowsPath(runtime.storageDir) })
+}
+
+const sourceStoreFor = (runtime: CliRuntimeOptions): WorkflowSourceStore =>
+  createWorkflowSourceStore({ directory: sourcesPath(runtime.storageDir) })
+
+/**
+ * The source a run must replay: the snapshot it was pinned to at start, not the
+ * catalog file, which may have been edited since. Runs recorded before snapshots
+ * existed fall back to the catalog entry they came from.
+ */
+const artifactForExecution = async (
+  catalog: WorkflowCatalog,
+  sources: WorkflowSourceStore,
+  execution: { readonly artifactId?: string; readonly sourceHash?: string; readonly workflowName: string },
+  runId: string
+): Promise<WorkflowArtifact> => {
+  if (execution.sourceHash !== undefined) {
+    const hash = parseWorkflowSourceHash(execution.sourceHash)
+    const source = await sources.read(hash)
+    if (source !== undefined) {
+      return {
+        id: parseWorkflowId(execution.artifactId ?? "snapshot"),
+        source
+      }
+    }
+  }
+
+  const artifact = execution.artifactId === undefined
+    ? undefined
+    : await catalog.get(execution.artifactId)
+  if (artifact === undefined) {
+    throw new Error(`Workflow source was deleted for run ${runId}: ${execution.workflowName}`)
+  }
+  return artifact
+}
 
 const createCommand = (runtime: CliRuntimeOptions) => Command.make(
   "create",
@@ -622,7 +667,7 @@ const createCommand = (runtime: CliRuntimeOptions) => Command.make(
     ),
     name: Flag.string("name").pipe(
       Flag.optional,
-      Flag.withDescription("Select a workflow export explicitly")
+      Flag.withDescription("Name the workflow in a generated template")
     ),
     source: Flag.string("source").pipe(
       Flag.optional,
@@ -637,56 +682,43 @@ const createCommand = (runtime: CliRuntimeOptions) => Command.make(
     )
   },
   ({ id, name, source, file, force }) => runCliTask(async () => {
-    assertWorkflowId(id)
+    const workflowId = parseWorkflowId(id)
     const nameValue = Option.getOrUndefined(name)
     const sourceValue = Option.getOrUndefined(source)
     const fileValue = Option.getOrUndefined(file)
     if (sourceValue !== undefined && fileValue !== undefined) {
       throw new Error("Use either --source or --file, not both")
     }
-    const nameProvided = nameValue !== undefined
-    const workflowName = nameValue ?? `${toPascalCase(id)}Workflow`
-    if (nameProvided) assertWorkflowName(workflowName)
-    const templateOptions: CreateWorkflowOptions = {
-      id,
-      name: workflowName,
-      nameProvided,
+    if (nameValue !== undefined) assertWorkflowName(nameValue)
+    const options: CreateWorkflowOptions = {
+      id: workflowId,
+      name: nameValue ?? `${toPascalCase(workflowId)}Workflow`,
       source: "",
       force
     }
     const sourceText = sourceValue ??
       (fileValue === undefined
-        ? workflowTemplate(templateOptions)
+        ? workflowTemplate(options)
         : await readFile(fileValue, "utf8"))
-    const options: CreateWorkflowOptions = { ...templateOptions, source: sourceText }
-    const repository = repositoryFor(runtime)
-    const existingWorkflow = await repository.get(options.id)
+    const catalog = await openCatalog(runtime)
+    const existingWorkflow = await catalog.get(workflowId)
     if (existingWorkflow !== undefined && !options.force) {
-      throw new Error(`Workflow id already exists: ${options.id}. Use --force to update it.`)
+      throw new Error(
+        `Workflow id already exists: ${workflowId} (${catalog.pathFor(workflowId)}). Edit that file, or use --force to replace it.`
+      )
     }
 
-    // Resolve the actual workflow export from the source instead of assuming
-    // the id-derived name. Imported files often export a differently named
-    // workflow; --name pins the export when a file has several.
-    const loaded = await loadWorkflowArtifact({
-      id: options.id,
-      name: options.name,
-      source: options.source,
-      ...(options.nameProvided ? { exportName: options.name } : {})
-    })
-    const workflow: WorkflowArtifact = {
-      id: options.id,
-      name: options.nameProvided ? options.name : loaded.workflow.name,
-      source: options.source,
-      exportName: loaded.exportName,
-      createdAt: new Date().toISOString()
-    }
-    if (existingWorkflow !== undefined) await repository.deleteWorkflow(options.id)
-    await repository.upsertWorkflow(workflow)
-    printCreatedWorkflow(workflow)
+    // Load before writing so a broken source never lands in the catalog. This
+    // also reports the workflow's real name, which lives in the source rather
+    // than beside it.
+    const loaded = await loadWorkflowArtifact({ id: workflowId, source: sourceText })
+    const written = await catalog.write(workflowId, sourceText)
+    console.log(
+      `Created ${written.id}\t${loaded.workflow.name}#${loaded.exportName}\t${catalog.pathFor(workflowId)}`
+    )
   })
 ).pipe(
-  Command.withDescription("Create or import a workflow into the local catalog"),
+  Command.withDescription("Create or import a workflow file into the local catalog"),
   Command.withExamples([
     { command: "wf create welcome-email" },
     { command: "wf create email --file workflows/email.ts" }
@@ -724,7 +756,7 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
         ? { kind: "file", file: fileValue }
         : (() => { throw new Error("wf validate requires a workflow id or --file") })()
     const inputText = Option.getOrUndefined(input)
-    const artifact = await validationArtifact(repositoryFor(runtime), target)
+    const artifact = await validationArtifact(await openCatalog(runtime), target)
     const result = await traceWorkflowArtifact(artifact, inputText)
     const invalid = result.diagnostics.length > 0 ||
       result.graph === undefined ||
@@ -748,17 +780,20 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
 const listCommand = (runtime: CliRuntimeOptions) => Command.make(
   "list",
   {},
-  () => runCliTask(async () => printWorkflows(await repositoryFor(runtime).list()))
-).pipe(Command.withDescription("List registered workflow artifacts"))
+  () => runCliTask(async () => {
+    const catalog = await openCatalog(runtime)
+    printWorkflows(catalog, await catalog.list())
+  })
+).pipe(Command.withDescription("List workflow files in the local catalog"))
 
 const runsCommand = (runtime: CliRuntimeOptions) => Command.make(
   "runs",
   {},
   () => runCliTask(async () => {
-    const repository = repositoryFor(runtime)
+    const catalog = await openCatalog(runtime)
     const { client } = createEngineBackedClient(runtime.storageDir)
     try {
-      printRuns(await lifecycleRunRecords(client, await repository.list()))
+      printRuns(await lifecycleRunRecords(client, await catalog.list()))
     } finally {
       await client.dispose()
     }
@@ -788,14 +823,18 @@ const runCommand = (runtime: CliRuntimeOptions) => Command.make(
     input: Argument.string("json-input").pipe(Argument.optional)
   },
   ({ id, input }) => runCliTask(async () => {
-    const repository = repositoryFor(runtime)
-    const artifact = await repository.get(id)
+    const catalog = await openCatalog(runtime)
+    const artifact = await catalog.get(id)
     if (artifact === undefined) throw new Error(`Unknown workflow id: ${id}`)
     const loaded = await loadWorkflowArtifact(artifact)
+    // Snapshot before starting: from here on this run replays the source as it
+    // is right now, however the catalog file changes afterwards.
+    const sourceHash = await sourceStoreFor(runtime).save(artifact.source)
     const { client } = createEngineBackedClient(runtime.storageDir)
     try {
       const handle = await client.start(loaded.workflow, parseJsonInput(Option.getOrUndefined(input)), {
-        artifactId: artifact.id
+        artifactId: artifact.id,
+        sourceHash
       })
       console.error(`${eventTag("run")} id ${bold(handle.executionId)}`)
       await awaitAndPrintRun({ client, runId: handle.executionId, historyLength: 1 })
@@ -823,19 +862,12 @@ const signalCommand = (runtime: CliRuntimeOptions) => Command.make(
     )
   },
   ({ runId, signalName, payload, actor }) => runCliTask(async () => {
-    const repository = repositoryFor(runtime)
+    const catalog = await openCatalog(runtime)
+    const sources = sourceStoreFor(runtime)
     const { runtime: engine, client } = createEngineBackedClient(runtime.storageDir)
     try {
       const execution = await client.execution(runId)
-      const artifact = execution.artifactId === undefined
-        ? (await repository.list()).find(
-          (candidate) =>
-            candidate.name === execution.workflowName
-        )
-        : await repository.get(execution.artifactId)
-      if (artifact === undefined) {
-        throw new Error(`Workflow artifact was deleted for run ${runId}: ${execution.workflowName}`)
-      }
+      const artifact = await artifactForExecution(catalog, sources, execution, runId)
       const loaded = await loadWorkflowArtifact(artifact)
       engine.register([loaded.workflow])
       const historyLength = (await client.history(runId)).length

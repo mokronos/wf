@@ -8,6 +8,11 @@ export const wfHome = (environment: NodeJS.ProcessEnv = process.env): string => 
   return configured === undefined || configured.length === 0 ? defaultWfHome() : path.resolve(configured)
 }
 
-export const repositoryPath = (home: string): string => path.join(home, "wf.sqlite")
+/** Editable workflow sources, one `.ts` file per workflow id. */
+export const workflowsPath = (home: string): string => path.join(home, "workflows")
+/** Immutable snapshots of the source each run started against. */
+export const sourcesPath = (home: string): string => path.join(home, "sources")
+export const enginePath = (home: string): string => path.join(home, "engine.sqlite")
+export const legacyCatalogPath = (home: string): string => path.join(home, "wf.sqlite")
 export const serviceLogPath = (home: string): string => path.join(home, "logs", "wf.log")
 export const serviceErrorLogPath = (home: string): string => path.join(home, "logs", "wf.error.log")

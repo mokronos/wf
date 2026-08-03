@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test"
+import { mkdtempSync } from "node:fs"
+import { tmpdir } from "node:os"
 import path from "node:path"
 
 const repoRoot = path.resolve(import.meta.dir, "../../..")
 const cliPath = path.join(repoRoot, "apps", "cli", "src", "main.ts")
 const decoder = new TextDecoder()
+// A throwaway home, so spawning the CLI can never read or write the real ~/.wf.
+const testHome = mkdtempSync(path.join(tmpdir(), "wf-cli-help-"))
 
 const runCli = (args: ReadonlyArray<string>) => {
   const subprocess = Bun.spawnSync({
@@ -13,6 +17,7 @@ const runCli = (args: ReadonlyArray<string>) => {
     stderr: "pipe",
     env: {
       ...process.env,
+      WF_HOME: testHome,
       NO_COLOR: "1"
     }
   })

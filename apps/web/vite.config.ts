@@ -2,8 +2,16 @@ import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import path from "node:path"
 import { defineConfig } from "vite"
+import { homedir } from "node:os"
 import { workflowArtifactToGraph } from "../../packages/wf/src/sdk/graph"
-import { createSqliteWorkflowRepository } from "../../packages/wf/src/sdk/sqlite"
+import { createDirectoryWorkflowCatalog } from "../../packages/wf/src/sdk/catalog"
+
+const wfHome = process.env["WF_HOME"] ?? path.join(homedir(), ".wf")
+
+// Run state lives in the engine database behind a Bun-only client, and this dev
+// server runs under Node. Workflows are plain files, so they are served here;
+// anything about runs is proxied to `wf daemon --foreground`.
+const daemonTarget = process.env["WF_DAEMON_URL"] ?? "http://127.0.0.1:4787"
 
 const json = (response: { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void }, statusCode: number, body: unknown) => {
   response.statusCode = statusCode
@@ -18,8 +26,8 @@ export default defineConfig({
     {
       name: "wf-dashboard-api",
       configureServer(server) {
-        const repository = createSqliteWorkflowRepository({
-          rootDir: path.resolve(import.meta.dirname, "../..")
+        const catalog = createDirectoryWorkflowCatalog({
+          directory: path.join(wfHome, "workflows")
         })
 
         server.middlewares.use("/api", async (request, response, next) => {
@@ -29,7 +37,7 @@ export default defineConfig({
             : url.pathname
           try {
             if (pathname === "/workflows") {
-              const artifacts = await repository.list()
+              const artifacts = await catalog.list()
               const workflows = await Promise.all(
                 artifacts.map((artifact) => workflowArtifactToGraph(artifact, { maxNodes: 120 }))
               )
@@ -37,30 +45,6 @@ export default defineConfig({
               json(response, 200, {
                 generatedAt: new Date().toISOString(),
                 workflows
-              })
-              return
-            }
-
-            if (pathname === "/runs") {
-              json(response, 200, {
-                generatedAt: new Date().toISOString(),
-                runs: await repository.listRuns()
-              })
-              return
-            }
-
-            const eventsMatch = /^\/runs\/([^/]+)\/events$/.exec(pathname)
-            if (eventsMatch !== null) {
-              const run = await repository.getRun(decodeURIComponent(eventsMatch[1]!))
-              if (run === undefined) {
-                json(response, 404, { error: "Run not found" })
-                return
-              }
-
-              json(response, 200, {
-                generatedAt: new Date().toISOString(),
-                run,
-                events: await repository.listRunEvents(run.id)
               })
               return
             }
@@ -82,6 +66,12 @@ export default defineConfig({
     }
   },
   server: {
+    proxy: {
+      "/api/runs": {
+        target: daemonTarget,
+        changeOrigin: true
+      }
+    },
     fs: {
       allow: [path.resolve(import.meta.dirname, "../..")]
     }

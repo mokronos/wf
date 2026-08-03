@@ -5,7 +5,7 @@ import { RunsView } from "@/components/runs-view"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { WorkflowsView } from "@/components/workflows-view"
 import { useApi } from "@/hooks/use-api"
-import { fetchRuns, fetchWorkflows, workflowKey } from "@/lib/api"
+import { fetchRuns, fetchWorkflows, workflowKey, workflowLabel } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const SIDEBAR_STORAGE_KEY = "wf.sidebarCollapsed"
@@ -30,7 +30,7 @@ export default function App() {
       return workflows
     }
     return workflows.filter((item) =>
-      `${item.artifact.id} ${item.artifact.name} ${item.exportName ?? ""}`
+      `${item.artifact.id} ${workflowLabel(item)} ${item.exportName ?? ""}`
         .toLowerCase()
         .includes(needle)
     )

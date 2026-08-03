@@ -1,7 +1,6 @@
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { Database } from "bun:sqlite"
 import { afterEach, describe, expect, test } from "bun:test"
 import { Schema } from "effect"
 
@@ -249,22 +248,16 @@ export const AgentAcceptance = defineWorkflow({
     expect(run.stderr.length).toBeLessThan(2_000)
     expect(invocationCount).toBe(2)
 
-    const catalog = new Database(path.join(home, "wf.sqlite"), { readonly: true })
-    const stored = Schema.decodeUnknownSync(Schema.Struct({ source: Schema.String }))(
-      catalog.query<{ readonly source: string }, []>(
-        "SELECT source FROM workflows WHERE id = 'agent-acceptance'"
-      ).get()
-    )
-    catalog.close()
-    expect(stored.source).toContain(createTicket.address)
-    expect(stored.source).not.toContain("acceptance-secret")
-    expect(stored.source).not.toContain(specUrl)
+    const stored = await readFile(path.join(home, "workflows", "agent-acceptance.ts"), "utf8")
+    expect(stored).toContain(createTicket.address)
+    expect(stored).not.toContain("acceptance-secret")
+    expect(stored).not.toContain(specUrl)
 
-    const databaseFiles = (await readdir(home)).filter((file) =>
-      file !== "executor-auth.json"
-    )
+    const storedFiles = (await readdir(home, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile() && entry.name !== "executor-auth.json")
+      .map((entry) => path.join(entry.parentPath, entry.name))
     const persisted = Buffer.concat(
-      await Promise.all(databaseFiles.map((file) => readFile(path.join(home, file))))
+      await Promise.all(storedFiles.map((file) => readFile(file)))
     ).toString("utf8")
     expect(persisted).not.toContain("acceptance-secret")
   }, 20_000)

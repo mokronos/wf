@@ -16,7 +16,6 @@ import type {
   WorkflowGraphNodeSchemas,
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
-  WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowsResponse
@@ -34,7 +33,6 @@ export type {
   WorkflowGraphNodeSchemas,
   WorkflowHistoryEvent,
   WorkflowHistoryRecord,
-  WorkflowRunEventRecord,
   WorkflowRunRecord,
   WorkflowRunStatus,
   WorkflowEvent,
@@ -76,6 +74,13 @@ const getRunEventsJson = async (url: string): Promise<RunEventsResponse> => {
 
 export const workflowKey = (item: WorkflowArtifactGraph): string =>
   item.artifact.id
+
+/**
+ * A workflow's name lives in its source, so it arrives with the traced graph.
+ * Sources that failed to load have no name to show and fall back to the id.
+ */
+export const workflowLabel = (item: WorkflowArtifactGraph): string =>
+  item.graph?.workflowName ?? item.artifact.id
 
 export const fetchWorkflows = (): Promise<WorkflowsResponse> =>
   getWorkflowsJson("/api/workflows")

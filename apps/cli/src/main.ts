@@ -4,7 +4,7 @@ import { BunServices } from "@effect/platform-bun"
 import { Command, Flag } from "effect/unstable/cli"
 import { Data, Effect } from "effect"
 import {
-  createSqliteWorkflowRepository,
+  createDirectoryWorkflowCatalog,
   createWorkflowClient,
   createWorkflowRuntime,
   lifecycleRunRecords,
@@ -12,10 +12,10 @@ import {
   workflowArtifactToGraph
 } from "@mokronos/wfkit"
 import { closeExecutor, setExecutorStorageDirectory } from "@mokronos/wfkit-executor"
-import type { WorkflowRepository } from "@mokronos/wfkit"
+import type { WorkflowCatalog } from "@mokronos/wfkit"
 import { makeWorkflowCommands, type CliRuntimeOptions } from "./cli/main.ts"
 import assets from "./embedded-web-assets.gen.ts"
-import { repositoryPath, wfHome } from "./paths.ts"
+import { enginePath, wfHome, workflowsPath } from "./paths.ts"
 import { defaultPort, installService } from "./service.ts"
 import packageMetadata from "../package.json" with { type: "json" }
 
@@ -65,12 +65,12 @@ const dashboardResponse = async (pathname: string): Promise<Response> => {
 }
 
 const api = async (
-  repository: WorkflowRepository,
+  catalog: WorkflowCatalog,
   engineDatabasePath: string,
   pathname: string
 ): Promise<Response> => {
   if (pathname === "/api/workflows") {
-    const artifacts = await repository.list()
+    const artifacts = await catalog.list()
     const workflows = await Promise.all(artifacts.map((artifact) => workflowArtifactToGraph(artifact, { maxNodes: 120 })))
     return json(JSON.stringify({ generatedAt: new Date().toISOString(), workflows }))
   }
@@ -80,7 +80,7 @@ const api = async (
     try {
       return json(JSON.stringify({
         generatedAt: new Date().toISOString(),
-        runs: await lifecycleRunRecords(client, await repository.list())
+        runs: await lifecycleRunRecords(client, await catalog.list())
       }))
     } finally {
       await client.dispose()
@@ -95,7 +95,7 @@ const api = async (
   try {
     const execution = await client.execution(decodeURIComponent(runId)).catch(() => undefined)
     if (execution === undefined) return json(JSON.stringify({ error: "Run not found" }), 404)
-    const runs = await lifecycleRunRecords(client, await repository.list())
+    const runs = await lifecycleRunRecords(client, await catalog.list())
     const run = runs.find((candidate) => candidate.id === execution.executionId)
     if (run === undefined) return json(JSON.stringify({ error: "Run not found" }), 404)
     return json(JSON.stringify({ generatedAt: new Date().toISOString(), run, events: await client.history(run.id) }))
@@ -126,10 +126,7 @@ const openBrowser = (url: string): void => {
 
 const runServer = async (options: ServerOptions): Promise<void> => {
   const home = wfHome()
-  const repository = createSqliteWorkflowRepository({
-    databasePath: repositoryPath(home),
-    rootDir: process.cwd()
-  })
+  const catalog = createDirectoryWorkflowCatalog({ directory: workflowsPath(home) })
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: options.port,
@@ -137,7 +134,7 @@ const runServer = async (options: ServerOptions): Promise<void> => {
       const pathname = new URL(request.url).pathname
       if (pathname.startsWith("/api/")) {
         try {
-          return await api(repository, path.join(home, "engine.sqlite"), pathname)
+          return await api(catalog, enginePath(home), pathname)
         } catch (error) {
           const message = error instanceof Error ? error.message : "Dashboard API request failed"
           return json(JSON.stringify({ error: message }), 500)
