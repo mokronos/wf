@@ -513,7 +513,27 @@ const migrateClientDb = (db: Database) => {
   }
   // wf_client_workflows pinned one source hash per workflow *name* for all time,
   // which made editing a workflow that had ever run a hard error. Executions pin
-  // their own snapshot now (source_hash above), so the table is dropped.
+  // their own snapshot now (source_hash above). Preserve every existing pin
+  // before the legacy per-name table is dropped.
+  const legacyWorkflowTable = db.query<{ readonly name: string }, []>(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wf_client_workflows'"
+  ).get()
+  if (legacyWorkflowTable !== null) {
+    db.exec(`
+      UPDATE wf_client_executions
+      SET source_hash = (
+        SELECT source_hash
+        FROM wf_client_workflows
+        WHERE wf_client_workflows.workflow_name = wf_client_executions.workflow_name
+      )
+      WHERE source_hash IS NULL
+        AND EXISTS (
+          SELECT 1
+          FROM wf_client_workflows
+          WHERE wf_client_workflows.workflow_name = wf_client_executions.workflow_name
+        );
+    `)
+  }
   db.exec("DROP TABLE IF EXISTS wf_client_workflows")
   db.exec(`
     CREATE INDEX IF NOT EXISTS wf_client_history_dedupe_idx

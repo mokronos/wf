@@ -11,6 +11,12 @@ const LegacyRow = Schema.Struct({
 
 const decodeLegacyRows = Schema.decodeUnknownSync(Schema.Array(LegacyRow))
 
+interface WalCheckpoint {
+  readonly busy: number
+  readonly log: number
+  readonly checkpointed: number
+}
+
 const readLegacyRows = async (
   legacyPath: string
 ): Promise<ReadonlyArray<{ readonly id: string; readonly source: string }>> => {
@@ -29,7 +35,10 @@ const readLegacyRows = async (
     // The catalog ran in WAL mode, so most of its content can still be sitting
     // in the -wal file. Fold it into the database itself before the file is
     // renamed, or the copy left behind for the user is an empty shell.
-    database.exec("PRAGMA wal_checkpoint(TRUNCATE)")
+    const checkpoint = database.query<WalCheckpoint, []>("PRAGMA wal_checkpoint(TRUNCATE)").get()
+    if (checkpoint === null || checkpoint.busy !== 0 || checkpoint.log !== checkpoint.checkpointed) {
+      throw new Error("Cannot archive the legacy catalog while its WAL checkpoint is incomplete")
+    }
     return rows
   } finally {
     database.close()

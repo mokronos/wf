@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto"
-import { mkdir, readFile, writeFile } from "node:fs/promises"
+import { createHash, randomUUID } from "node:crypto"
+import { link, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import { Schema } from "effect"
 
@@ -8,8 +8,10 @@ import { Schema } from "effect"
  * Content addressing is what makes the snapshot store append-only: the same
  * source saved twice is one file, and a saved source is never rewritten.
  */
+export const workflowSourceHashPattern = /^[0-9a-f]{64}$/
+
 export const WorkflowSourceHash = Schema.String.pipe(
-  Schema.refine((value): value is string => /^[0-9a-f]{64}$/.test(value)),
+  Schema.refine((value): value is string => workflowSourceHashPattern.test(value)),
   Schema.brand("WorkflowSourceHash")
 )
 export type WorkflowSourceHash = typeof WorkflowSourceHash.Type
@@ -20,7 +22,7 @@ export const hashWorkflowSource = (source: string): WorkflowSourceHash =>
   decodeHash(createHash("sha256").update(source).digest("hex"))
 
 export const parseWorkflowSourceHash = (value: string): WorkflowSourceHash => {
-  if (!/^[0-9a-f]{64}$/.test(value)) {
+  if (!workflowSourceHashPattern.test(value)) {
     throw new Error(`Invalid workflow source hash: ${value}`)
   }
   return decodeHash(value)
@@ -51,6 +53,8 @@ export const createWorkflowSourceStore = (
 ): WorkflowSourceStore => {
   const directory = path.resolve(options.directory)
   const fileFor = (hash: WorkflowSourceHash) => path.join(directory, `${hash}.ts`)
+  const temporaryFileFor = (hash: WorkflowSourceHash) =>
+    path.join(directory, `.${hash}.${randomUUID()}.tmp`)
 
   return {
     directory,
@@ -62,12 +66,19 @@ export const createWorkflowSourceStore = (
     async save(source) {
       const hash = hashWorkflowSource(source)
       await mkdir(directory, { recursive: true })
-      // wx: identical content is already there, and a snapshot is never updated.
-      await writeFile(fileFor(hash), source, { encoding: "utf8", flag: "wx" }).catch(
-        (error: NodeJS.ErrnoException) => {
-          if (error.code !== "EEXIST") throw error
+      const temporaryFile = temporaryFileFor(hash)
+      await writeFile(temporaryFile, source, { encoding: "utf8", flag: "wx" })
+      try {
+        // link atomically publishes the complete temporary file without
+        // replacing a snapshot another process already published.
+        await link(temporaryFile, fileFor(hash))
+      } catch (error) {
+        if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) {
+          throw error
         }
-      )
+      } finally {
+        await rm(temporaryFile, { force: true })
+      }
       return hash
     },
 

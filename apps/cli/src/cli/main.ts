@@ -328,18 +328,18 @@ const validationError = (result: Awaited<ReturnType<typeof workflowArtifactToGra
   return new Error(`Invalid ${result.artifact.id}${diagnostics.map((diagnostic) => `\n  - ${diagnostic}`).join("")}`)
 }
 
-const validationArtifact = async (
-  catalog: WorkflowCatalog,
-  target: ValidateWorkflowTarget
-): Promise<WorkflowArtifact> => {
-  if (target.kind === "file") {
-    return {
-      id: workflowIdFromFile(target.file),
-      source: await readFile(target.file, "utf8"),
-      createdAt: new Date().toISOString()
-    }
-  }
+const fileValidationArtifact = async (
+  target: Extract<ValidateWorkflowTarget, { readonly kind: "file" }>
+): Promise<WorkflowArtifact> => ({
+  id: workflowIdFromFile(target.file),
+  source: await readFile(target.file, "utf8"),
+  createdAt: new Date().toISOString()
+})
 
+const catalogValidationArtifact = async (
+  catalog: WorkflowCatalog,
+  target: Extract<ValidateWorkflowTarget, { readonly kind: "catalog" }>
+): Promise<WorkflowArtifact> => {
   const artifact = await catalog.get(target.id)
   if (artifact === undefined) {
     throw new Error(`Unknown workflow id: ${target.id}`)
@@ -756,7 +756,9 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
         ? { kind: "file", file: fileValue }
         : (() => { throw new Error("wf validate requires a workflow id or --file") })()
     const inputText = Option.getOrUndefined(input)
-    const artifact = await validationArtifact(await openCatalog(runtime), target)
+    const artifact = target.kind === "catalog"
+      ? await catalogValidationArtifact(await openCatalog(runtime), target)
+      : await fileValidationArtifact(target)
     const result = await traceWorkflowArtifact(artifact, inputText)
     const invalid = result.diagnostics.length > 0 ||
       result.graph === undefined ||

@@ -43,7 +43,7 @@ you can get to a run without writing a file first:
 wf create hello
 ```
 
-```
+```text
 Created hello	HelloWorkflow#HelloWorkflow	/home/you/.wf/workflows/hello.ts
 ```
 

@@ -49,6 +49,7 @@ describe("directory workflow catalog", () => {
   test("ignores directory entries that are not workflow files", async () => {
     const directory = path.join(makeDirectory(), "workflows")
     await mkdir(path.join(directory, ".git"), { recursive: true })
+    await mkdir(path.join(directory, "build.ts"), { recursive: true })
     await writeFile(path.join(directory, "notes.md"), "not a workflow", "utf8")
     await writeFile(path.join(directory, "Draft Copy.ts"), "invalid id", "utf8")
     await writeFile(path.join(directory, "real.ts"), "export const real = 1\n", "utf8")
@@ -84,6 +85,7 @@ describe("workflow source snapshots", () => {
     expect(await store.read(hash)).toBe(source)
     // Saving the same source twice is the same snapshot, not a second copy.
     expect(await store.save(source)).toBe(hash)
+    expect(await store.read(hash)).toBe(source)
     expect(await store.read(hashWorkflowSource("export const other = 2\n"))).toBeUndefined()
   })
 

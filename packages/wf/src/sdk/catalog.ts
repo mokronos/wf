@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises"
+import type { Dirent } from "node:fs"
 import path from "node:path"
 import { Schema } from "effect"
 import { WorkflowId, workflowIdPattern } from "../schemas.ts"
@@ -51,7 +52,9 @@ export const workflowIdFromFilename = (filename: string): WorkflowId | undefined
 
 const createdAtOf = async (file: string): Promise<string | undefined> => {
   try {
-    return (await stat(file)).mtime.toISOString()
+    const metadata = await stat(file)
+    const createdAt = metadata.birthtime.getTime() > 0 ? metadata.birthtime : metadata.mtime
+    return createdAt.toISOString()
   } catch {
     return undefined
   }
@@ -88,13 +91,13 @@ export const createDirectoryWorkflowCatalog = (
     directory,
 
     pathFor(id) {
-      return path.join(directory, `${id}${workflowExtension}`)
+      return path.join(directory, `${parseWorkflowId(id)}${workflowExtension}`)
     },
 
     async list() {
-      let entries: ReadonlyArray<string>
+      let entries: ReadonlyArray<Dirent<string>>
       try {
-        entries = await readdir(directory)
+        entries = await readdir(directory, { withFileTypes: true })
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === "ENOENT") {
           return []
@@ -105,9 +108,10 @@ export const createDirectoryWorkflowCatalog = (
       // as broken workflows: the directory is a user-visible place and may hold
       // notes, drafts, or a .git directory.
       const ids = entries
-        .filter((entry) => entry.endsWith(workflowExtension))
+        .filter((entry) => entry.isFile())
+        .filter((entry) => entry.name.endsWith(workflowExtension))
         .flatMap((entry) => {
-          const id = workflowIdFromFilename(entry)
+          const id = workflowIdFromFilename(entry.name)
           return id === undefined ? [] : [id]
         })
         .sort()
@@ -122,10 +126,11 @@ export const createDirectoryWorkflowCatalog = (
     },
 
     async write(id, source) {
+      const workflowId = parseWorkflowId(id)
       await mkdir(directory, { recursive: true })
-      const file = path.join(directory, `${parseWorkflowId(id)}${workflowExtension}`)
+      const file = path.join(directory, `${workflowId}${workflowExtension}`)
       await writeFile(file, source, "utf8")
-      const artifact = await readArtifact(directory, id)
+      const artifact = await readArtifact(directory, workflowId)
       if (artifact === undefined) {
         throw new Error(`Failed to write workflow ${id} to ${file}`)
       }

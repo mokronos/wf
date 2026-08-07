@@ -11,6 +11,7 @@ export {
   workflowIdFromFilename
 } from "./catalog.ts"
 export type { WorkflowCatalog, WorkflowCatalogOptions } from "./catalog.ts"
+export type { WorkflowId } from "../schemas.ts"
 export {
   createWorkflowSourceStore,
   hashWorkflowSource,

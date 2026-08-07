@@ -94,6 +94,7 @@ describe("durable client database migration", () => {
 
       // Existing runs are still readable, and the new run records its pin.
       expect((await client.executions()).map((execution) => execution.executionId)).toContain("old-run")
+      expect((await client.execution("old-run")).sourceHash).toBe("a-hash-from-before")
       expect((await client.execution(handle.executionId)).sourceHash).toBe("a".repeat(64))
     } finally {
       await client.dispose()
