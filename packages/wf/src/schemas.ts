@@ -334,7 +334,8 @@ export type WorkflowHistoryRecord = typeof WorkflowHistoryRecord.Type
 export const WorkflowArtifact = Schema.Struct({
   id: WorkflowId,
   source: Schema.String,
-  createdAt: OptionalString
+  createdAt: OptionalString,
+  updatedAt: OptionalString
 })
 export type WorkflowArtifact = typeof WorkflowArtifact.Type
 

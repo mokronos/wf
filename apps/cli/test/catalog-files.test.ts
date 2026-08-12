@@ -84,8 +84,11 @@ describe("file-backed workflow catalog", () => {
 
     const listed = runCli(home, ["list"])
     expect(listed.exitCode, listed.stderr).toBe(0)
-    expect(listed.stdout).toContain("file-demo")
-    expect(listed.stdout).toContain(workflowFile)
+    const [id, updated, file] = listed.stdout.trim().split("\t")
+    expect(id).toBe("file-demo")
+    expect(updated).toMatch(/^updated \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(file).toBe(workflowFile)
+    expect(listed.stdout).not.toContain("bytes")
 
     // No database is created for the catalog: the files are the catalog.
     expect(await readdir(home)).not.toContain("wf.sqlite")

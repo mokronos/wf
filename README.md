@@ -343,7 +343,7 @@ wf <command>
 | --- | --- |
 | `wf create` | Create or import a workflow file into the catalog |
 | `wf validate` | Load and trace a workflow without running it |
-| `wf list` | List workflow files and their paths |
+| `wf list` | List workflow files, modification times, and paths |
 | `wf run` | Start a run and stream its events |
 | `wf runs` | List persisted runs |
 | `wf history` / `wf events` | Show the persisted event history for a run |

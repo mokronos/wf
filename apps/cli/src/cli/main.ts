@@ -116,8 +116,8 @@ export const ${options.name} = defineWorkflow({
 `
 
 // Listing prints the file path because that is the address an editor or agent
-// needs; it deliberately does not load the sources, so listing a catalog never
-// runs workflow module code.
+// needs, and its modification time shows which files changed recently. It
+// deliberately does not load the sources, so listing never runs module code.
 const printWorkflows = (catalog: WorkflowCatalog, workflows: ReadonlyArray<WorkflowArtifact>) => {
   if (workflows.length === 0) {
     console.log(`No workflows found in ${catalog.directory}`)
@@ -125,9 +125,7 @@ const printWorkflows = (catalog: WorkflowCatalog, workflows: ReadonlyArray<Workf
   }
 
   for (const workflow of workflows) {
-    console.log(
-      `${workflow.id}\t${workflow.source.length} bytes\t${catalog.pathFor(workflow.id)}`
-    )
+    console.log(`${workflow.id}\tupdated ${workflow.updatedAt ?? "unknown"}\t${catalog.pathFor(workflow.id)}`)
   }
 }
 
