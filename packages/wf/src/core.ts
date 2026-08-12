@@ -40,6 +40,7 @@ import type {
   StepContext,
   StepExecutionContext,
   SignalOutcome,
+  StepIntegrationRequirement,
   SynchronousSchema,
   WorkflowAllError,
   WorkflowAllSuccess,
@@ -55,6 +56,7 @@ export type {
   StepContext,
   StepExecutionContext,
   SignalOutcome,
+  StepIntegrationRequirement,
   SynchronousSchema,
   TerminalFailure,
   WorkflowContext,
@@ -212,6 +214,7 @@ export interface InspectableStep {
   readonly retry?: StepRetryPolicy
   readonly concurrency?: { readonly limit: number; readonly key?: object }
   readonly compensate?: object
+  readonly integration?: StepIntegrationRequirement
 }
 
 export type StepExecutionOverride =

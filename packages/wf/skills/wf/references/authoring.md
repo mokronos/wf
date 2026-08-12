@@ -26,7 +26,7 @@ t.string
 t.number
 t.boolean
 t.void
-t.date
+t.date // Date in workflow code; encoded as an ISO string in durable storage/output
 t.unknown
 t.struct({ field: t.string })
 t.array(t.string)
@@ -158,7 +158,8 @@ const performAction = defineStep({
   Validate each important branch with `--input`.
 - It fakes `defineStep.execute`, integration calls, sleeps, and signal delivery,
   but runs module scope and `ctx.code`; keep those safe.
-- It does not prove that a tool is installed or connected. Live-validate every
-  address with `wf i validate <tool-address> --text`.
+- It live-checks each integration address reached by the traced branch and exits
+  nonzero when one is unavailable. Validate representative inputs and still
+  inventory source addresses so untaken branches are not missed.
 - An unbounded loop can hang validation. Keep all orchestration loops bounded by
   validated input or persisted results.

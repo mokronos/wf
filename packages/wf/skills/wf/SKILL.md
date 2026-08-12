@@ -53,6 +53,10 @@ Use the installed standalone CLI directly, not `bun wf`. `wf install` is
 optional and installs the local dashboard service; it is not required to author
 or run workflows. State is under `~/.wf`, or `$WF_HOME` when set.
 
+Run `wf` commands that share one `WF_HOME` sequentially. Separate CLI processes
+can contend for the same Executor SQLite database if an agent launches catalog,
+connection, schema, or history reads in parallel.
+
 ## Discover and connect integrations
 
 Follow this funnel. Use JSON output when extracting fields and `--text` when a
@@ -151,9 +155,10 @@ Use this loop:
    Use `--force` only when intentionally replacing that catalog ID. The catalog
    copy under `~/.wf/workflows/` is what `wf run` executes; later edits to the
    project copy are not synchronized automatically.
-5. Re-run `wf i validate '<tool-address>' --text` for every integration address.
-   Workflow validation traces integration steps with fake outputs; it does not
-   prove that integrations are installed, connected, or still expose the tool.
+5. Confirm the `integrations:` section from `wf validate` reports every address
+   as `ready`. Workflow validation traces integration steps with fake outputs
+   and live-checks the addresses it reached without invoking them. Also keep the
+   explicit `wf i validate` checks above when documenting each selected tool.
 6. Tell the human exactly what the representative run will read/write and any
    signal it may request. With approval, run and inspect it:
 
@@ -183,9 +188,11 @@ workflow:
    wf validate --file ./workflows/shared.ts
    ```
 
-4. Inventory every literal address matching
-   `tools.<integration>.<org|user>.<connection>.<tool>` in the source. For each
-   address, run:
+4. Run representative traces and use the resulting `integrations:` section as
+   the missing-connection worklist. Because validation follows one branch at a
+   time, also inventory every literal address matching
+   `tools.<integration>.<org|user>.<connection>.<tool>` in the complete source.
+   For each address, run:
 
    ```sh
    wf i validate '<tool-address>' --text
@@ -217,9 +224,10 @@ workflow:
    wf validate <lowercase-id>
    ```
 
-Do not rely on `wf validate` alone for missing connections. Until it reports
-integration preflight itself, the explicit per-address live-validation loop is
-mandatory.
+`wf validate` reports all integration requirements reached by that trace in one
+pass and exits nonzero while any are missing. The source inventory remains
+necessary for integration steps hidden behind branches not exercised by the
+chosen input.
 
 ## Completion report
 

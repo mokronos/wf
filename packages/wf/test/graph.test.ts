@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { defineStep, defineWorkflow, t, workflowToGraph } from "../src/index"
+import {
+  defineStep,
+  defineWorkflow,
+  integration,
+  t,
+  workflowGraphIntegrationAddresses,
+  workflowToGraph
+} from "../src/index"
 
 const approve = defineStep({
   name: "Approve",
@@ -163,6 +170,24 @@ describe("workflowToGraph", () => {
     expect(graph.diagnostics).toEqual([])
   })
 
+  test("renders the durable date codec as one JSON string schema", async () => {
+    const workflow = defineWorkflow({
+      name: "DateGraphWorkflow",
+      input: t.struct({}),
+      output: t.struct({ capturedAt: t.date }),
+      run: function* (_input, ctx) {
+        return { capturedAt: yield* ctx.now() }
+      }
+    })
+
+    const graph = await workflowToGraph(workflow, { input: {} })
+
+    expect(graph.schemas?.output).toMatchObject({
+      properties: { capturedAt: { type: "string" } }
+    })
+    expect(graph.schemas?.output?.properties?.["capturedAt"]?.anyOf).toBeUndefined()
+  })
+
   test("renders ctx.all as a fork with branch fan-in", async () => {
     const graph = await workflowToGraph(ParallelWorkflow, { input: { id: "demo" } })
 
@@ -195,5 +220,43 @@ describe("workflowToGraph", () => {
       { kind: "step", name: "Notify", counter: 1 }
     ])
     expect(graph.diagnostics).toEqual([])
+  })
+
+  test("exposes distinct integration addresses without invoking them", async () => {
+    const first = integration({
+      source: { kind: "executor", address: "tools.docs.org.default.lookup" },
+      input: t.struct({ query: t.string }),
+      output: t.string
+    })
+    const duplicate = integration({
+      source: { kind: "executor", address: "tools.docs.org.default.lookup" },
+      input: t.struct({ query: t.string }),
+      output: t.string
+    })
+    const second = integration({
+      source: { kind: "executor", address: "tools.catalog.org.default.list" },
+      input: t.struct({}),
+      output: t.unknown
+    })
+    const workflow = defineWorkflow({
+      name: "IntegrationGraphWorkflow",
+      input: t.struct({ query: t.string }),
+      output: t.void,
+      run: function* (input, ctx) {
+        yield* ctx.run(first, input)
+        yield* ctx.run(duplicate, input)
+        yield* ctx.run(second, {})
+      }
+    })
+
+    const graph = await workflowToGraph(workflow, { input: { query: "durability" } })
+
+    expect(workflowGraphIntegrationAddresses(graph)).toEqual([
+      "tools.docs.org.default.lookup",
+      "tools.catalog.org.default.list"
+    ])
+    expect(graph.nodes.find((node) => node.label.includes("tools.docs"))?.metadata.integration).toEqual({
+      address: "tools.docs.org.default.lookup"
+    })
   })
 })

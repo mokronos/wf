@@ -6,12 +6,14 @@ import { Schema } from "effect"
 import {
   closeExecutor,
   decodeIntegrationsResponse,
+  ExecutorToolAddress,
   listExecutorIntegrations,
   normalizeExecutorToolOutputSchema,
   normalizeExecutorToolResult,
   setExecutorStorageDirectory
 } from "../src/index.ts"
 import {
+  createIntegrationValidation,
   createIntegrationDiscovery,
   discoverIntegration,
   listIntegrationOverviews,
@@ -342,5 +344,30 @@ describe("Executor discovery SDK", () => {
     const report = await validateIntegrationNode(json('{"source":false}'))
     expect(report.ok).toBe(false)
     expect(report.findings[0]?.check).toBe("structural")
+  })
+
+  test("live validation uses tool summaries without loading schemas", async () => {
+    const validate = createIntegrationValidation({
+      tools: {
+        summaries: async () => [{
+          address: ExecutorToolAddress.make("tools.docs.org.default.get"),
+          name: "get",
+          description: "Get one doc",
+          integration: "docs",
+          connection: "default"
+        }]
+      }
+    })
+
+    const report = await validate(json(JSON.stringify({
+      source: { kind: "executor", address: "tools.docs.org.default.get" }
+    })), { live: true })
+
+    expect(report.ok).toBe(true)
+    expect(report.findings).toContainEqual({
+      severity: "info",
+      check: "catalog",
+      message: "get is available"
+    })
   })
 })
