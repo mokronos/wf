@@ -50,6 +50,16 @@ export type StepRetryPolicy = typeof StepRetryPolicy.Type
 
 export type StepConcurrency<I> = StepConcurrencyPolicy<I>
 
+export const IntegrationToolAddress = Schema.String.pipe(
+  Schema.refine((value): value is string => /^tools\.[^.]+\.(org|user)\.[^.]+\..+$/.test(value))
+)
+export type IntegrationToolAddress = typeof IntegrationToolAddress.Type
+
+export const StepIntegrationRequirement = Schema.Struct({
+  address: IntegrationToolAddress
+})
+export type StepIntegrationRequirement = typeof StepIntegrationRequirement.Type
+
 export interface DefinedStep<
   Input extends SynchronousSchema<DynamicService>,
   Output extends SynchronousSchema<DynamicService>,
@@ -70,6 +80,7 @@ export interface DefinedStep<
   ) => unknown | Promise<unknown>
   readonly retry?: StepRetryPolicy
   readonly concurrency?: StepConcurrency<Input["Type"]>
+  readonly integration?: StepIntegrationRequirement
 }
 
 export type Step<I, O, E = never> = DefinedStep<

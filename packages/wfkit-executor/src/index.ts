@@ -86,6 +86,8 @@ export {
   IntegrationValidationFinding as IntegrationValidationFindingSchema,
   IntegrationValidationReport as IntegrationValidationReportSchema,
   listIntegrationOverviews,
+  validateExecutorToolAddress,
+  validateExecutorToolAddresses,
   validateIntegrationNode
 } from "./integrations.ts"
 export type {

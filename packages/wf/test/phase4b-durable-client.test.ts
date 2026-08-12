@@ -3,7 +3,7 @@ import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { Schema } from "effect"
-import { createWorkflowClient, createWorkflowRuntime, defineStep, defineWorkflow } from "../src"
+import { createWorkflowClient, createWorkflowRuntime, defineStep, defineWorkflow, t } from "../src"
 
 const dbPath = () => path.join(mkdtempSync(path.join(tmpdir(), "wf-phase4b-")), "wf.sqlite")
 
@@ -75,6 +75,57 @@ describe("Phase 4b durable workflow client", () => {
       undefined,
       undefined
     ])
+  })
+
+  test("t.date workflow results survive durable JSON persistence", async () => {
+    const expected = new Date("2026-08-12T12:00:00.000Z")
+    const workflow = defineWorkflow({
+      name: "DurableDateResult",
+      input: t.struct({}),
+      output: t.struct({ observedAt: t.date }),
+      run: function* () {
+        return { observedAt: expected }
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    const client = createWorkflowClient(runtime)
+    try {
+      const handle = await client.start(workflow, {})
+      await expect(client.result(handle.executionId)).resolves.toEqual({
+        type: "completed",
+        value: { observedAt: expected }
+      })
+      await expect(client.result(handle.executionId)).resolves.toEqual({
+        type: "completed",
+        value: { observedAt: expected }
+      })
+    } finally {
+      await client.dispose()
+    }
+  })
+
+  test("t.date rejects invalid dates before durable persistence", async () => {
+    const workflow = defineWorkflow({
+      name: "InvalidDurableDateResult",
+      input: t.struct({}),
+      output: t.struct({ observedAt: t.date }),
+      run: function* () {
+        return { observedAt: new Date("invalid") }
+      }
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    const client = createWorkflowClient(runtime)
+    try {
+      const handle = await client.start(workflow, {})
+      await expect(client.result(handle.executionId)).resolves.toMatchObject({
+        type: "failed"
+      })
+      await expect(client.result(handle.executionId)).resolves.toMatchObject({
+        type: "failed"
+      })
+    } finally {
+      await client.dispose()
+    }
   })
 
   test("sqlite backend uses fresh execution IDs and explicit idempotency", async () => {

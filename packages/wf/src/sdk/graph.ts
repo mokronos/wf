@@ -83,6 +83,7 @@ const stepSchemas = (step: InspectableStep): WorkflowGraphNodeSchemas | undefine
 }
 
 const describeStep = (step: InspectableStep): WorkflowGraphNodeMetadata => ({
+  ...(step.integration === undefined ? {} : { integration: step.integration }),
   ...(step.retry === undefined ? {} : { retry: step.retry }),
   ...(step.concurrency === undefined
     ? {}
@@ -94,6 +95,17 @@ const describeStep = (step: InspectableStep): WorkflowGraphNodeMetadata => ({
       }),
   compensates: step.compensate !== undefined
 })
+
+export const workflowGraphIntegrationAddresses = (
+  graph: WorkflowGraph
+): ReadonlyArray<string> => {
+  const addresses = new Set<string>()
+  for (const node of graph.nodes) {
+    const address = node.metadata.integration?.address
+    if (address !== undefined) addresses.add(address)
+  }
+  return [...addresses]
+}
 
 const metadataFromEvents = (events: ReadonlyArray<WorkflowEvent>) => {
   const metadata = new Map<string, WorkflowGraphNodeMetadata>()

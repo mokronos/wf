@@ -1,4 +1,5 @@
 import { Schema } from "effect"
+import { StepIntegrationRequirement } from "./workflow-model.ts"
 
 export const ExecutionId = Schema.String.pipe(Schema.brand("ExecutionId"))
 export type ExecutionId = typeof ExecutionId.Type
@@ -54,10 +55,31 @@ export const decodeJsonSchema = (value: unknown): JsonSchema =>
  *  has no JSON representation. */
 export const jsonSchemaOf = (schema: Schema.Top): JsonSchema | undefined => {
   try {
-    return decodeJsonSchema(Schema.toJsonSchemaDocument(schema).schema)
+    return simplifyJsonSchema(decodeJsonSchema(Schema.toJsonSchemaDocument(schema).schema))
   } catch {
     return undefined
   }
+}
+
+const simplifyJsonSchema = (schema: JsonSchema): JsonSchema => {
+  const anyOf = schema.anyOf?.map(simplifyJsonSchema)
+  if (anyOf !== undefined) {
+    const distinct = [...new Map(anyOf.map((item) => [JSON.stringify(item), item])).values()]
+    if (distinct.length === 1 && Object.keys(schema).length === 1) return distinct[0]!
+    return { ...schema, anyOf: distinct }
+  }
+  const oneOf = schema.oneOf?.map(simplifyJsonSchema)
+  if (oneOf !== undefined) return { ...schema, oneOf }
+  if (schema.items !== undefined) return { ...schema, items: simplifyJsonSchema(schema.items) }
+  if (schema.properties !== undefined) {
+    return {
+      ...schema,
+      properties: Object.fromEntries(
+        Object.entries(schema.properties).map(([key, value]) => [key, simplifyJsonSchema(value)])
+      )
+    }
+  }
+  return schema
 }
 
 const WorkflowStartedEvent = Schema.Struct({
@@ -395,7 +417,8 @@ export const WorkflowGraphNodeMetadata = Schema.Struct({
     limit: Schema.Number,
     keyed: Schema.Boolean
   })),
-  compensates: Schema.optionalKey(Schema.Boolean)
+  compensates: Schema.optionalKey(Schema.Boolean),
+  integration: Schema.optionalKey(StepIntegrationRequirement)
 })
 export type WorkflowGraphNodeMetadata = typeof WorkflowGraphNodeMetadata.Type
 

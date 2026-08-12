@@ -22,5 +22,10 @@ export {
 export type { DiscoverIntegrationsOptions } from "./integration-model.ts"
 export { createIntegrationOverview, listIntegrationOverviews } from "./overview.ts"
 export type { IntegrationOverviewDependencies } from "./overview.ts"
-export { createIntegrationValidation, validateIntegrationNode } from "./validation.ts"
+export {
+  createIntegrationValidation,
+  validateExecutorToolAddress,
+  validateExecutorToolAddresses,
+  validateIntegrationNode
+} from "./validation.ts"
 export type { IntegrationValidationDependencies } from "./validation.ts"

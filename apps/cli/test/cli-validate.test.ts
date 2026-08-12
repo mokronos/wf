@@ -62,6 +62,47 @@ export const ValidateDemoWorkflow = defineWorkflow({
 })
 `
 
+const integrationWorkflowSource = `import { defineWorkflow, integration, t } from "@mokronos/wfkit"
+
+const lookup = integration({
+  source: { kind: "executor", address: "tools.missing.org.default.lookup" },
+  input: t.struct({ query: t.string }),
+  output: t.string
+})
+
+export const MissingIntegrationWorkflow = defineWorkflow({
+  name: "MissingIntegrationWorkflow",
+  input: t.struct({ query: t.string }),
+  output: t.string,
+  run: function* (input, ctx) {
+    return yield* ctx.run(lookup, input)
+  }
+})
+`
+
+const partiallyInvalidIntegrationWorkflowSource = `import { defineWorkflow, integration, t } from "@mokronos/wfkit"
+
+const lookup = integration({
+  source: { kind: "executor", address: "tools.missing.org.default.lookup" },
+  input: t.struct({ query: t.string }),
+  output: t.string
+})
+
+export const PartiallyInvalidIntegrationWorkflow = defineWorkflow({
+  name: "PartiallyInvalidIntegrationWorkflow",
+  input: t.struct({ query: t.string }),
+  output: t.string,
+  run: function* (input, ctx) {
+    yield* ctx.run(lookup, input)
+    return yield* ctx.code("explode-after-integration", {
+      reason: "Exercise integration reporting from a partial trace",
+      output: t.string,
+      run: () => { throw new Error("trace exploded") }
+    })
+  }
+})
+`
+
 describe("wf validate", () => {
   test("summarizes validation and reveals the traced flow with --verbose", () => {
     const cwd = makeTempDir()
@@ -182,5 +223,47 @@ export const BranchingWorkflow = defineWorkflow({
     const result = runCli(makeTempDir(), ["validate"])
     expect(result.exitCode).toBe(1)
     expect(result.stderr).toContain("wf validate requires a workflow id or --file")
+  })
+
+  test("reports every missing integration address reached by the trace", () => {
+    const cwd = makeTempDir()
+    const file = path.join(cwd, "missing-integration.ts")
+    writeFileSync(file, integrationWorkflowSource)
+
+    const result = runCli(cwd, ["validate", "--file", file])
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain("integrations:")
+    expect(result.stdout).toContain("missing\ttools.missing.org.default.lookup")
+    expect(result.stderr).toContain("needs 1 integration tool connected")
+  })
+
+  test("includes integration readiness in JSON validation output", () => {
+    const cwd = makeTempDir()
+    const file = path.join(cwd, "missing-integration.ts")
+    writeFileSync(file, integrationWorkflowSource)
+
+    const result = runCli(cwd, ["validate", "--file", file, "--json"])
+    const output = JSON.parse(result.stdout)
+
+    expect(result.exitCode).toBe(1)
+    expect(output.integrations).toHaveLength(1)
+    expect(output.integrations[0]).toMatchObject({
+      address: "tools.missing.org.default.lookup",
+      report: { ok: false }
+    })
+  })
+
+  test("reports reached integrations even when a later trace node fails", () => {
+    const cwd = makeTempDir()
+    const file = path.join(cwd, "partially-invalid-integration.ts")
+    writeFileSync(file, partiallyInvalidIntegrationWorkflowSource)
+
+    const result = runCli(cwd, ["validate", "--file", file])
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain("integrations:")
+    expect(result.stdout).toContain("tools.missing.org.default.lookup")
+    expect(result.stderr).toContain("trace exploded")
   })
 })

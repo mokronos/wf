@@ -14,9 +14,14 @@ import {
   parseWorkflowSourceHash,
   sampleValueForJsonSchema,
   toJsonText,
-  workflowArtifactToGraph
+  workflowArtifactToGraph,
+  workflowGraphIntegrationAddresses
 } from "@mokronos/wfkit"
-import { executorIntegrationInvoker } from "@mokronos/wfkit-executor"
+import {
+  executorIntegrationInvoker,
+  validateExecutorToolAddresses
+} from "@mokronos/wfkit-executor"
+import type { IntegrationValidationReport } from "@mokronos/wfkit-executor"
 import { makeIntegrationsCommand } from "./integrations.ts"
 import { migrateLegacyCatalog } from "../migrate-catalog.ts"
 import { sourcesPath, workflowsPath } from "../paths.ts"
@@ -386,6 +391,33 @@ const printValidationResult = (
       .map(([key, value]) => ` ${dim(`${key}=`)}${value}`)
       .join("")
     console.log(`  ${bold(node.kind)}\t${node.label}${metadata}${node.repeated ? " (repeated)" : ""}`)
+  }
+}
+
+interface IntegrationReadiness {
+  readonly address: string
+  readonly report: IntegrationValidationReport
+}
+
+const checkGraphIntegrations = async (
+  graph: NonNullable<Awaited<ReturnType<typeof workflowArtifactToGraph>>["graph"]>
+): Promise<ReadonlyArray<IntegrationReadiness>> =>
+  await validateExecutorToolAddresses(workflowGraphIntegrationAddresses(graph))
+
+const printIntegrationReadiness = (entries: ReadonlyArray<IntegrationReadiness>) => {
+  if (entries.length === 0) return
+  console.log(bold("integrations:"))
+  for (const entry of entries) {
+    const catalog = entry.report.findings.find((finding) => finding.check === "catalog")
+    const status = entry.report.ok
+      ? green("ready")
+      : catalog?.message.startsWith("Could not inspect") === true
+        ? red("error")
+        : red("missing")
+    console.log(
+      `  ${status}\t${entry.address}` +
+      (catalog === undefined ? "" : ` ${dim(catalog.message)}`)
+    )
   }
 }
 
@@ -863,16 +895,29 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
     const invalid = result.diagnostics.length > 0 ||
       result.graph === undefined ||
       result.graph.diagnostics.length > 0
+    const integrations = result.graph === undefined ? [] : await checkGraphIntegrations(result.graph)
+    const missingIntegrations = integrations.filter((entry) => !entry.report.ok)
     if (json) {
-      console.log(toJsonText(result))
-      if (invalid) process.exitCode = 1
+      console.log(toJsonText({ ...result, integrations }))
+      if (invalid || missingIntegrations.length > 0) process.exitCode = 1
       return
     }
-    if (invalid) throw validationError(result, verbose)
+    if (invalid) {
+      printIntegrationReadiness(integrations)
+      throw validationError(result, verbose)
+    }
     printValidationResult(result, verbose)
+    printIntegrationReadiness(integrations)
+    if (missingIntegrations.length > 0) {
+      throw new Error(
+        `${artifact.id} needs ${missingIntegrations.length} integration tool${missingIntegrations.length === 1 ? "" : "s"} connected before it can run`
+      )
+    }
   })
 ).pipe(
-  Command.withDescription("Validate a workflow without starting a durable run"),
+  Command.withDescription(
+    "Validate a workflow and its integration connections without starting a durable run"
+  ),
   Command.withExamples([
     { command: "wf validate welcome-email" },
     { command: "wf validate --file workflows/email.ts --json" }
