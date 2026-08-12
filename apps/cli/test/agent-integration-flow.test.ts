@@ -57,10 +57,9 @@ const ToolSchemaOutput = Schema.Struct({
   address: Schema.String,
   name: Schema.String,
   description: Schema.String,
-  integration: Schema.String,
-  connection: Schema.String,
-  inputSchema: Schema.optional(Schema.Json),
-  outputSchema: Schema.optional(Schema.Json)
+  input: Schema.String,
+  output: Schema.String,
+  next: Schema.String
 })
 
 describe("agent integration acceptance flow", () => {
@@ -153,7 +152,12 @@ describe("agent integration acceptance flow", () => {
 
     const summary = await runCli(["integrations", "discover", specUrl], environment)
     expect(summary.exitCode).toBe(0)
-    expect(summary.stdout).toContain('"tools": []')
+    expect(JSON.parse(summary.stdout)).toMatchObject({
+      integration: { slug: "agent_acceptance" },
+      toolCount: 0,
+      tools: [],
+      next: "wf i connect agent_acceptance"
+    })
 
     const textSummary = await runCli(["integrations", "discover", specUrl, "--text"], environment)
     expect(textSummary.exitCode).toBe(0)
@@ -177,8 +181,11 @@ describe("agent integration acceptance flow", () => {
       "WF_AGENT_TOKEN"
     ], environment)
     expect(connected.exitCode).toBe(0)
-    expect(connected.stdout).toContain('"name": "tickets.create"')
-    expect(connected.stdout).toContain('"tools": [')
+    expect(JSON.parse(connected.stdout)).toMatchObject({
+      toolCount: 1,
+      next: "wf i tools agent_acceptance"
+    })
+    expect(JSON.parse(connected.stdout)).not.toHaveProperty("tools")
     expect(connected.stdout).not.toContain("acceptance-secret")
 
     // The listing stays at name-and-description detail, so browsing a large
@@ -240,14 +247,15 @@ describe("agent integration acceptance flow", () => {
     expect(detailed.exitCode).toBe(0)
     const createTicket = Schema.decodeUnknownSync(ToolSchemaOutput)(JSON.parse(detailed.stdout))
     expect(createTicket.address).toStartWith("tools.agent_acceptance.org.default")
-    expect(createTicket.inputSchema).toBeDefined()
-    expect(createTicket.outputSchema).toBeDefined()
+    expect(createTicket.input).toContain("title")
+    expect(createTicket.output).toContain("id")
 
     const byAddress = await runCli([
       "integrations",
       "schema",
       createTicket.address,
-      "--text"
+      "--text",
+      "--verbose"
     ], environment)
     expect(byAddress.exitCode).toBe(0)
     expect(byAddress.stdout).toContain("input:")
@@ -306,7 +314,7 @@ describe("agent integration acceptance flow", () => {
       JSON.stringify({ body: { title: "Direct Executor invocation" } })
     ], environment)
     expect(invoked.exitCode).toBe(0)
-    expect(invoked.stdout).toContain('"title": "Direct Executor invocation"')
+    expect(invoked.stdout).toContain('"title":"Direct Executor invocation"')
     expect(invocationCount).toBe(1)
 
     const source = `import { defineWorkflow, integration, t } from "@mokronos/wfkit"
@@ -339,8 +347,16 @@ export const AgentAcceptance = defineWorkflow({
       JSON.stringify({ title: longTitle })
     ], environment)
     expect(run.exitCode).toBe(0)
-    expect(run.stdout).toContain('"id": "T-1"')
-    expect(run.stderr).toContain("… (+")
+    const runResult = Schema.decodeUnknownSync(Schema.Struct({
+      truncated: Schema.Literal(true),
+      characters: Schema.Number,
+      preview: Schema.String,
+      next: Schema.String
+    }))(JSON.parse(run.stdout))
+    expect(runResult.preview).toContain('"id":"T-1"')
+    expect(runResult.next).toContain("--verbose")
+    expect(run.stderr).not.toContain(longTitle)
+    expect(run.stderr).toContain("[run] completed")
     expect(run.stderr.length).toBeLessThan(2_000)
     expect(invocationCount).toBe(2)
 

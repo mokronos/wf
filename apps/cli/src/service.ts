@@ -78,12 +78,31 @@ export const launchdPlist = (descriptor: ServiceDescriptor): string => `<?xml ve
 </dict></plist>
 `
 
-const command = async (program: string, arguments_: ReadonlyArray<string>): Promise<void> => {
-  const process_ = Bun.spawn([program, ...arguments_], { stdout: "inherit", stderr: "inherit" })
-  if (await process_.exited !== 0) throw new Error(`${program} ${arguments_.join(" ")} failed`)
+const command = async (
+  program: string,
+  arguments_: ReadonlyArray<string>,
+  verbose: boolean
+): Promise<void> => {
+  const process_ = Bun.spawn([program, ...arguments_], {
+    stdout: verbose ? "inherit" : "pipe",
+    stderr: verbose ? "inherit" : "pipe"
+  })
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process_.exited,
+    verbose ? Promise.resolve("") : new Response(process_.stdout).text(),
+    verbose ? Promise.resolve("") : new Response(process_.stderr).text()
+  ])
+  if (exitCode !== 0) {
+    const details = [stdout.trim(), stderr.trim()].filter((line) => line.length > 0).join("\n")
+    const limit = 800
+    const bounded = details.length <= limit
+      ? details
+      : `${details.slice(0, limit)}… (+${details.length - limit} chars)`
+    throw new Error(`${program} ${arguments_.join(" ")} failed${bounded.length === 0 ? "" : `:\n${bounded}`}`)
+  }
 }
 
-export const installService = async (program: ReadonlyArray<string>): Promise<void> => {
+export const installService = async (program: ReadonlyArray<string>, verbose = false): Promise<void> => {
   const home = wfHome()
   await mkdir(path.join(home, "logs"), { recursive: true })
   const descriptor: ServiceDescriptor = { program, home, port: defaultPort }
@@ -95,10 +114,10 @@ export const installService = async (program: ReadonlyArray<string>): Promise<vo
       environment: { WF_HOME: home }, workingDirectory: home,
       stdoutPath: serviceLogPath(home), stderrPath: serviceErrorLogPath(home)
     }), { mode: 0o600 })
-    await command("systemctl", ["--user", "daemon-reload"])
-    await command("systemctl", ["--user", "enable", `${serviceLabel}.service`])
-    await command("systemctl", ["--user", "restart", `${serviceLabel}.service`])
-    await command("loginctl", ["enable-linger", userInfo().username]).catch(() => undefined)
+    await command("systemctl", ["--user", "daemon-reload"], verbose)
+    await command("systemctl", ["--user", "enable", `${serviceLabel}.service`], verbose)
+    await command("systemctl", ["--user", "restart", `${serviceLabel}.service`], verbose)
+    await command("loginctl", ["enable-linger", userInfo().username], verbose).catch(() => undefined)
     return
   }
   if (process.platform === "darwin") {
@@ -106,8 +125,8 @@ export const installService = async (program: ReadonlyArray<string>): Promise<vo
     const plist = path.join(agents, `${serviceLabel}.plist`)
     await mkdir(agents, { recursive: true })
     await writeFile(plist, launchdPlist(descriptor), { mode: 0o600 })
-    await command("launchctl", ["bootout", `gui/${process.getuid?.() ?? userInfo().uid}/${serviceLabel}`]).catch(() => undefined)
-    await command("launchctl", ["bootstrap", `gui/${process.getuid?.() ?? userInfo().uid}`, plist])
+    await command("launchctl", ["bootout", `gui/${process.getuid?.() ?? userInfo().uid}/${serviceLabel}`], verbose).catch(() => undefined)
+    await command("launchctl", ["bootstrap", `gui/${process.getuid?.() ?? userInfo().uid}`, plist], verbose)
     return
   }
   throw new Error("wf install currently supports Linux systemd --user and macOS launchd")
