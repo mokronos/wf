@@ -52,6 +52,21 @@ const withTimeout = async <A>(promise: Promise<A>, ms: number): Promise<A> => {
 }
 
 describe("Phase 4b durable workflow client", () => {
+  test("invalid input is rejected before a durable execution is persisted", async () => {
+    const workflow = defineWorkflow({
+      name: "validatedDurableInput",
+      input: Schema.String.check(Schema.isMinLength(1)),
+      output: Schema.Void,
+      run: function* () {}
+    })
+    const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
+    const client = createWorkflowClient(runtime)
+
+    await expect(client.start(workflow, "")).rejects.toThrow()
+    expect(await client.executions()).toEqual([])
+    await client.dispose()
+  })
+
   test("durable client disposal is concurrent and idempotent", async () => {
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
     const client = createWorkflowClient(runtime)

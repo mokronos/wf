@@ -208,7 +208,8 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
         .sort((left, right) => left.name.localeCompare(right.name))
     },
 
-    execute({ workflow, payload, executionId, onEvent }) {
+    async execute({ workflow, payload, executionId, onEvent }) {
+      Schema.decodeUnknownSync(workflow.input)(payload)
       const workflowName = String(workflow.workflow.name ?? workflow.name)
       registerResources(executionId, onEvent)
       const effect = Effect.gen(function* () {
@@ -228,7 +229,7 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
         )
         return result
       })
-      return runEffect(effect).finally(() => {
+      return await runEffect(effect).finally(() => {
         removeResources(executionId)
       })
     },
@@ -312,6 +313,7 @@ export const makeWorkflowEffect = (
   )
   const workflowName = String(wf.workflow.name ?? wf.name ?? "Workflow")
   const execution = Effect.gen(function* () {
+    Schema.decodeUnknownSync(wf.input)(payload)
     yield* emitWorkflowEvent({ type: "workflow.started", workflowName, payload })
     const result = yield* wf.workflow.executeStandalone({ value: payload }).pipe(
       Effect.tap((result: unknown) =>

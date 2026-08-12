@@ -84,8 +84,11 @@ describe("file-backed workflow catalog", () => {
 
     const listed = runCli(home, ["list"])
     expect(listed.exitCode, listed.stderr).toBe(0)
-    expect(listed.stdout).toContain("file-demo")
-    expect(listed.stdout).toContain(workflowFile)
+    const [id, updated, file] = listed.stdout.trim().split("\t")
+    expect(id).toBe("file-demo")
+    expect(updated).toMatch(/^updated \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/)
+    expect(file).toBe(workflowFile)
+    expect(listed.stdout).not.toContain("bytes")
 
     // No database is created for the catalog: the files are the catalog.
     expect(await readdir(home)).not.toContain("wf.sqlite")
@@ -105,6 +108,21 @@ describe("file-backed workflow catalog", () => {
     const second = runCli(home, ["run", "file-demo", "{\"message\":\"hello\"}"])
     expect(second.exitCode, second.stderr).toBe(0)
     expect(second.stdout).toContain("second:hello")
+  }, 20_000)
+
+  test("rejects missing workflow input without creating a run", () => {
+    const home = makeTempDir()
+    expect(runCli(home, ["create", "file-demo", "--source", workflowSource("first")]).exitCode).toBe(0)
+
+    const invalid = runCli(home, ["run", "file-demo"])
+    expect(invalid.exitCode).not.toBe(0)
+    expect(invalid.stderr).toContain("Missing key")
+    expect(invalid.stderr).not.toContain("[run] id")
+    expect(invalid.stderr).not.toContain("[workflow] started")
+
+    const runs = runCli(home, ["runs"])
+    expect(runs.exitCode, runs.stderr).toBe(0)
+    expect(runs.stdout).toContain("No workflow runs found.")
   }, 20_000)
 
   test("a workflow file with no workflow export is rejected without replacing the file", async () => {

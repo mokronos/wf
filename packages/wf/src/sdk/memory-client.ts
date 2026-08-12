@@ -1,3 +1,4 @@
+import { Schema } from "effect"
 import { Cancelled, createInMemoryDeterminismState } from "../core.ts"
 import { isCancellableRunStatus, isTerminalRunStatus, statusAfterEvent } from "../run-lifecycle.ts"
 import { ExecutionId } from "../schemas.ts"
@@ -80,6 +81,7 @@ export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowC
   return {
     async start(workflow, payload, opts = {}) {
       ensureActive()
+      Schema.decodeUnknownSync(workflow.input)(payload)
       const workflowKey = workflow.name
       if (opts.idempotencyKey !== undefined) {
         const existingId = idempotencyKeys.get(`${workflowKey}:${opts.idempotencyKey}`)

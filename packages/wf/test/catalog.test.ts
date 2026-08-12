@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtempSync, rmSync } from "node:fs"
-import { mkdir, writeFile } from "node:fs/promises"
+import { mkdir, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import {
@@ -40,6 +40,9 @@ describe("directory workflow catalog", () => {
     expect((await catalog.list()).map((workflow) => workflow.id)).toEqual(["alpha", "beta"].map(parseWorkflowId))
     expect((await catalog.get("alpha"))?.source).toBe("export const a = 1\n")
     expect((await catalog.get("alpha"))?.createdAt).toBeDefined()
+    const modifiedAt = new Date("2026-08-12T12:34:56.000Z")
+    await utimes(catalog.pathFor(parseWorkflowId("alpha")), modifiedAt, modifiedAt)
+    expect((await catalog.get("alpha"))?.updatedAt).toBe(modifiedAt.toISOString())
 
     await catalog.remove(parseWorkflowId("alpha"))
     expect(await catalog.get("alpha")).toBeUndefined()

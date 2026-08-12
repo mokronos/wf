@@ -53,13 +53,18 @@ export const workflowIdFromFilename = (filename: string): WorkflowId | undefined
   return workflowIdPattern.test(stem) ? decodeWorkflowId(stem) : undefined
 }
 
-const createdAtOf = async (file: string): Promise<string | undefined> => {
+const timestampsOf = async (
+  file: string
+): Promise<Pick<WorkflowArtifact, "createdAt" | "updatedAt">> => {
   try {
     const metadata = await stat(file)
     const createdAt = metadata.birthtime.getTime() > 0 ? metadata.birthtime : metadata.mtime
-    return createdAt.toISOString()
+    return {
+      createdAt: createdAt.toISOString(),
+      updatedAt: metadata.mtime.toISOString()
+    }
   } catch {
-    return undefined
+    return {}
   }
 }
 
@@ -77,11 +82,11 @@ const readArtifact = async (
     }
     throw error
   }
-  const createdAt = await createdAtOf(file)
+  const timestamps = await timestampsOf(file)
   return {
     id,
     source,
-    ...(createdAt === undefined ? {} : { createdAt })
+    ...timestamps
   }
 }
 

@@ -116,8 +116,8 @@ export const ${options.name} = defineWorkflow({
 `
 
 // Listing prints the file path because that is the address an editor or agent
-// needs; it deliberately does not load the sources, so listing a catalog never
-// runs workflow module code.
+// needs, and its modification time shows which files changed recently. It
+// deliberately does not load the sources, so listing never runs module code.
 const defaultPageSize = 10
 const defaultDiagnosticLimit = 5
 const defaultDiagnosticDetailLimit = 160
@@ -145,8 +145,8 @@ const printWorkflows = (
   for (const workflow of visible) {
     console.log(
       verbose
-        ? `${workflow.id}\t${workflow.source.length} bytes\t${catalog.pathFor(workflow.id)}`
-        : `${workflow.id}\t${catalog.pathFor(workflow.id)}`
+        ? `${workflow.id}\tupdated ${workflow.updatedAt ?? "unknown"}\t${workflow.source.length} bytes\t${catalog.pathFor(workflow.id)}`
+        : `${workflow.id}\tupdated ${workflow.updatedAt ?? "unknown"}\t${catalog.pathFor(workflow.id)}`
     )
   }
   printMoreHint(visible.length, workflows.length)
