@@ -46,6 +46,7 @@ describe("CLI help", () => {
     expect(helpFlag.stdout).toContain("workflow-id string")
     expect(helpFlag.stdout).toContain("--file string")
     expect(helpFlag.stdout).toContain("--force")
+    expect(helpFlag.stdout).toContain("--verbose")
   })
 
   test("generates nested integrations help from the command hierarchy", () => {
@@ -71,6 +72,7 @@ describe("CLI help", () => {
     expect(searchHelp.exitCode).toBe(0)
     expect(searchHelp.stdout).toContain("query string")
     expect(searchHelp.stdout).toContain("--text")
+    expect(searchHelp.stdout).toContain("--verbose")
   }, 15_000)
 
   test("rejects help for an unknown command", () => {

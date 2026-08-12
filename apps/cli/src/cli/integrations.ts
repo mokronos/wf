@@ -66,6 +66,48 @@ const decodeJson = (
 /** Listings stay browsable: one flattened line per tool, with the full text
  *  reachable through `wf i schema`. */
 const listingDescriptionLimit = 240
+const defaultPageSize = 5
+const resultDisplayLimit = 800
+const schemaSummaryLimit = 400
+const discoveryToolLimit = 3
+const discoveryDescriptionLimit = 120
+const discoverySchemaLimit = 120
+const discoveryAuthLimit = 3
+
+const verboseFlag = () => Flag.boolean("verbose").pipe(
+  Flag.withAlias("v"),
+  Flag.withDescription("Show complete details")
+)
+
+const visibleItems = <A>(items: ReadonlyArray<A>, verbose: boolean): ReadonlyArray<A> =>
+  verbose ? items : items.slice(0, defaultPageSize)
+
+const moreHint = (shown: number, total: number): string | undefined =>
+  shown < total ? `Showing ${shown} of ${total}. Rerun with --verbose for all.` : undefined
+
+const connectionSuffix = (connection: string): string =>
+  connection === "default" ? "" : ` --connection ${connection}`
+
+const jsonOutput = (
+  value: Schema.Schema.Type<typeof Schema.Json> | object,
+  verbose: boolean
+): string =>
+  JSON.stringify(value, null, verbose ? 2 : undefined)
+
+const boundedJsonResult = (
+  result: Schema.Schema.Type<typeof Schema.Json>,
+  verbose: boolean
+): Schema.Schema.Type<typeof Schema.Json> => {
+  if (verbose) return result
+  const compact = JSON.stringify(result)
+  if (compact.length <= resultDisplayLimit) return result
+  return {
+    truncated: true,
+    characters: compact.length,
+    preview: compact.slice(0, resultDisplayLimit),
+    next: "Rerun with --verbose for the complete result."
+  }
+}
 
 const summaryForJson = (tool: ExecutorToolSummary) => ({
   name: tool.name,
@@ -96,22 +138,39 @@ const groupTools = (tools: ReadonlyArray<ExecutorToolSummary>): ReadonlyArray<To
   return [...groups.values()]
 }
 
-const formatToolGroups = (groups: ReadonlyArray<ToolGroup>): string => {
+const formatToolGroups = (
+  groups: ReadonlyArray<ToolGroup>,
+  total: number,
+  verbose: boolean
+): string => {
   const lines: Array<string> = []
   for (const group of groups) {
     const count = group.tools.length
     lines.push(`\n${group.integration}/${group.connection}\t${count} tool${count === 1 ? "" : "s"}`)
     for (const tool of group.tools) {
-      lines.push(`${tool.name}\t${inline(tool.description, listingDescriptionLimit)}`)
+      lines.push(`${tool.name}\t${inline(tool.description, listingDescriptionLimit)}${verbose ? `\t${tool.address}` : ""}`)
     }
     // The slug an agent needs next, spelled out per group: a 53-tool listing
     // scrolls its header away long before the reader reaches the bottom.
-    lines.push(`next: wf i schema ${group.integration} <tool>`)
+    lines.push(`next: wf i schema ${group.integration} <tool>${connectionSuffix(group.connection)}`)
   }
+  const shown = groups.reduce((count, group) => count + group.tools.length, 0)
+  const hint = moreHint(shown, total)
+  if (hint !== undefined) lines.push(`\n${hint}`)
   return lines.join("\n").trimStart()
 }
 
-const formatToolDetail = (tool: ExecutorTool): string => {
+const formatToolDetail = (tool: ExecutorTool, verbose: boolean): string => {
+  if (!verbose) {
+    return [
+      `${tool.name}\t${tool.address}`,
+      inline(tool.description, listingDescriptionLimit),
+      `input: ${inline(tool.inputTypeScript ?? JSON.stringify(tool.inputSchema ?? {}), schemaSummaryLimit)}`,
+      `output: ${inline(tool.outputTypeScript ?? JSON.stringify(tool.outputSchema ?? {}), schemaSummaryLimit)}`,
+      `next: wf i invoke ${tool.address} '<json>'`,
+      "details: rerun with --verbose for complete schemas"
+    ].join("\n")
+  }
   const lines = [
     tool.name,
     tool.address,
@@ -128,24 +187,91 @@ const formatToolDetail = (tool: ExecutorTool): string => {
   return lines.join("\n")
 }
 
+const toolDetailResult = (tool: ExecutorTool, verbose: boolean) => verbose
+  ? {
+      address: tool.address,
+      name: tool.name,
+      description: tool.description,
+      integration: tool.integration,
+      connection: tool.connection,
+      ...(tool.inputSchema === undefined ? {} : { inputSchema: tool.inputSchema }),
+      ...(tool.outputSchema === undefined ? {} : { outputSchema: tool.outputSchema }),
+      ...(tool.inputTypeScript === undefined ? {} : { inputTypeScript: tool.inputTypeScript }),
+      ...(tool.outputTypeScript === undefined ? {} : { outputTypeScript: tool.outputTypeScript })
+    }
+  : {
+      address: tool.address,
+      name: tool.name,
+      description: inline(tool.description, listingDescriptionLimit),
+      input: inline(tool.inputTypeScript ?? JSON.stringify(tool.inputSchema ?? {}), schemaSummaryLimit),
+      output: inline(tool.outputTypeScript ?? JSON.stringify(tool.outputSchema ?? {}), schemaSummaryLimit),
+      next: `wf i invoke ${tool.address} '<json>'`
+    }
+
 const connectedSummary = (
-  connection: Awaited<ReturnType<typeof createExecutorConnection>>,
-  toolCount: number
+  connection: Pick<Awaited<ReturnType<typeof createExecutorConnection>>, "address" | "integration">,
+  toolCount: number,
+  connectionName: string
 ): string => [
   `Connected ${connection.address}`,
   `tools: ${toolCount}`,
-  `next: wf i tools ${connection.integration}`
+  `next: wf i tools ${connection.integration}${connectionSuffix(connectionName)}`
 ].join("\n")
 
 const connectedResult = (
   connection: Awaited<ReturnType<typeof createExecutorConnection>>,
-  tools: ReadonlyArray<ExecutorToolSummary>
-) => ({
-  connection,
-  tools: tools.map(summaryForJson)
-})
+  tools: ReadonlyArray<ExecutorToolSummary>,
+  verbose: boolean
+) => verbose
+  ? { connection, tools }
+  : {
+      connection: { integration: connection.integration, name: connection.name, address: connection.address },
+      toolCount: tools.length,
+      next: `wf i tools ${connection.integration}${connectionSuffix(connection.name)}`
+    }
 
-const formatDiscovery = (discovery: Awaited<ReturnType<typeof discoverIntegration>>): string => {
+const discoveryResult = (
+  discovery: Awaited<ReturnType<typeof discoverIntegration>>,
+  verbose: boolean,
+  connection: string
+) => verbose
+  ? discovery
+  : {
+      url: discovery.url,
+      detection: {
+        kind: discovery.detection.kind,
+        confidence: discovery.detection.confidence,
+        name: discovery.detection.name
+      },
+      integration: {
+        slug: discovery.integration.slug,
+        name: discovery.integration.name,
+        description: inline(discovery.integration.description, listingDescriptionLimit),
+        kind: discovery.integration.kind
+      },
+      requiresAuthentication: discovery.requiresAuthentication,
+      authMethods: discovery.authMethods.slice(0, discoveryAuthLimit).map((method) => ({
+        template: method.template,
+        kind: method.kind,
+        label: method.label
+      })),
+      authMethodCount: discovery.authMethods.length,
+      toolCount: discovery.tools.length,
+      tools: discovery.tools.slice(0, discoveryToolLimit).map((tool) => ({
+        name: tool.name,
+        description: inline(tool.description, discoveryDescriptionLimit),
+        input: inline(tool.inputTypeScript ?? JSON.stringify(tool.inputSchema ?? {}), discoverySchemaLimit),
+        output: inline(tool.outputTypeScript ?? JSON.stringify(tool.outputSchema ?? {}), discoverySchemaLimit)
+      })),
+      next: discovery.requiresAuthentication && discovery.tools.length === 0
+        ? `wf i connect ${discovery.integration.slug}${connectionSuffix(connection)}`
+        : `wf i tools ${discovery.integration.slug}${connectionSuffix(connection)}`
+    }
+
+const formatDiscovery = (
+  discovery: Awaited<ReturnType<typeof discoverIntegration>>,
+  connection: string
+): string => {
   const lines = [
     `url: ${discovery.url}`,
     `detected: ${discovery.detection.kind} (${discovery.detection.confidence})`,
@@ -153,19 +279,34 @@ const formatDiscovery = (discovery: Awaited<ReturnType<typeof discoverIntegratio
     `auth: ${discovery.requiresAuthentication ? "required" : "none"}`
   ]
   if (discovery.authMethods.length > 0) {
-    lines.push(`auth methods: ${discovery.authMethods.map((method) =>
+    const methods = discovery.authMethods.slice(0, discoveryAuthLimit)
+    lines.push(`auth methods: ${methods.map((method) =>
       `${method.template}:${method.kind}`
-    ).join(", ")}`)
+    ).join(", ")}${methods.length < discovery.authMethods.length ? ` (+${discovery.authMethods.length - methods.length} more)` : ""}`)
   }
   if (discovery.requiresAuthentication && discovery.tools.length === 0) {
-    lines.push(`next: wf i connect ${discovery.integration.slug}`)
+    lines.push(`next: wf i connect ${discovery.integration.slug}${connectionSuffix(connection)}`)
   }
   lines.push(`tools: ${discovery.tools.length}`)
   if (discovery.tools.length > 0) {
-    lines.push(`next: wf i tools ${discovery.integration.slug}`)
+    lines.push(`next: wf i tools ${discovery.integration.slug}${connectionSuffix(connection)}`)
   }
   return lines.join("\n")
 }
+
+const formatDiscoveryVerbose = (
+  discovery: Awaited<ReturnType<typeof discoverIntegration>>,
+  connection: string
+): string => [
+  formatDiscovery(discovery, connection),
+  "",
+  `detection:\n${JSON.stringify(discovery.detection, null, 2)}`,
+  "",
+  `integration:\n${JSON.stringify(discovery.integration, null, 2)}`,
+  "",
+  `${"probe" in discovery ? "probe" : "preview"}:\n${JSON.stringify("probe" in discovery ? discovery.probe : discovery.preview, null, 2)}`,
+  ...discovery.tools.flatMap((tool) => ["", formatToolDetail(tool, true)])
+].join("\n")
 
 const searchSurfaceKind = (surface: IntegrationSearchSurface): string => {
   switch (surface.type) {
@@ -177,27 +318,74 @@ const searchSurfaceKind = (surface: IntegrationSearchSurface): string => {
   }
 }
 
-const formatSearch = (search: Awaited<ReturnType<typeof searchIntegrations>>): string => {
+const preferredDiscoveryUrl = (surface: IntegrationSearchSurface): string | undefined => {
+  switch (surface.type) {
+    case "mcp":
+      return surface.discoveryUrl ?? surface.url
+    case "http":
+    case "openapi":
+      return surface.discoveryUrl ?? surface.spec ?? surface.url
+    case "graphql":
+    case "cli":
+      return undefined
+  }
+}
+
+const searchResult = (
+  search: Awaited<ReturnType<typeof searchIntegrations>>,
+  verbose: boolean
+) => verbose
+  ? search
+  : {
+      query: search.query,
+      results: search.results.slice(0, defaultPageSize).map((result) => ({
+        domain: result.domain,
+        name: result.name,
+        kinds: result.kinds,
+        discoverUrl: result.surfaces.map(preferredDiscoveryUrl).find((url) => url !== undefined)
+      })),
+      ...(search.results.length > defaultPageSize
+        ? {
+            showing: defaultPageSize,
+            total: search.results.length,
+            next: "Rerun with --verbose for all."
+          }
+        : {})
+    }
+
+const formatSearch = (
+  search: Awaited<ReturnType<typeof searchIntegrations>>,
+  verbose: boolean
+): string => {
   if (search.results.length === 0) return `No integrations found for "${search.query}".`
 
   const lines = [`query: ${search.query}`]
-  for (const result of search.results) {
+  const results = visibleItems(search.results, verbose)
+  for (const result of results) {
     lines.push(`\n${result.domain}\t${inline(result.name, 120)}`)
-    if (result.description.length > 0) lines.push(inline(result.description, 240))
-    lines.push(`catalog: ${result.url}`)
+    lines.push(`kinds: ${result.kinds.join(", ")}`)
+    if (verbose && result.description.length > 0) lines.push(inline(result.description, 240))
+    if (verbose) lines.push(`catalog: ${result.url}`)
     if (result.surfaces.length === 0) {
-      lines.push("surfaces: none")
+      if (verbose) lines.push("surfaces: none")
       continue
     }
-    for (const surface of result.surfaces) {
-      lines.push(`  ${searchSurfaceKind(surface)}\t${surface.name}`)
-      if (surface.url !== undefined) lines.push(`  url: ${surface.url}`)
-      if (surface.spec !== undefined) lines.push(`  spec: ${surface.spec}`)
-      if (surface.discoveryUrl !== undefined) {
-        lines.push(`  discover: wf i discover ${surface.discoveryUrl}`)
+    if (!verbose) {
+      const discoveryUrl = result.surfaces.map(preferredDiscoveryUrl).find((url) => url !== undefined)
+      if (discoveryUrl !== undefined) lines.push(`discover: wf i discover ${discoveryUrl}`)
+    } else {
+      for (const surface of result.surfaces) {
+        lines.push(`  ${searchSurfaceKind(surface)}\t${surface.name}`)
+        if (surface.url !== undefined) lines.push(`  url: ${surface.url}`)
+        if (surface.spec !== undefined) lines.push(`  spec: ${surface.spec}`)
+        if (surface.discoveryUrl !== undefined) {
+          lines.push(`  discover: wf i discover ${surface.discoveryUrl}`)
+        }
       }
     }
   }
+  const hint = moreHint(results.length, search.results.length)
+  if (hint !== undefined) lines.push(`\n${hint}`)
   return lines.join("\n")
 }
 
@@ -301,9 +489,10 @@ const makeDiscover = () => Command.make(
     ),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ url, connection, text }) =>
+  ({ url, connection, text, verbose }) =>
     Effect.tryPromise({
       try: () => discoverIntegration(url, { connection }),
       catch: (error) => cliError(
@@ -311,7 +500,9 @@ const makeDiscover = () => Command.make(
       )
     }).pipe(
       Effect.flatMap((result) =>
-        writeStdoutLine(text ? formatDiscovery(result) : JSON.stringify(result, null, 2))
+        writeStdoutLine(text
+          ? verbose ? formatDiscoveryVerbose(result, connection) : formatDiscovery(result, connection)
+          : jsonOutput(discoveryResult(result, verbose, connection), verbose))
       )
     )
 ).pipe(
@@ -334,9 +525,10 @@ const makeSearch = () => Command.make(
     ),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ query, kind, limit, text }) => Effect.tryPromise({
+  ({ query, kind, limit, text, verbose }) => Effect.tryPromise({
     try: () => searchIntegrations({
       q: query,
       ...(Option.isNone(kind) ? {} : { kind: kind.value }),
@@ -346,7 +538,9 @@ const makeSearch = () => Command.make(
       `Integration search failed: ${error instanceof Error ? errorMessage(error) : String(error)}`
     )
   }).pipe(
-    Effect.flatMap((result) => writeStdoutLine(text ? formatSearch(result) : JSON.stringify(result, null, 2)))
+    Effect.flatMap((result) => writeStdoutLine(
+      text ? formatSearch(result, verbose) : jsonOutput(searchResult(result, verbose), verbose)
+    ))
   )
 ).pipe(Command.withDescription("Search integrations.sh for exact integration URLs"))
 
@@ -355,19 +549,31 @@ const makeList = () => Command.make(
   {
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ text }) => Effect.tryPromise({
+  ({ text, verbose }) => Effect.tryPromise({
     try: () => listExecutorIntegrations(),
     catch: (error) => cliError(`Could not list integrations: ${String(error)}`)
   }).pipe(
-    Effect.flatMap((integrations) => writeStdoutLine(
-      text
-        ? integrations.map((integration) =>
-            `${integration.slug}\t${integration.kind}\t${integration.name}\t${integration.authMethods.map((method) => method.kind).join(",")}`
-          ).join("\n") || "No integrations discovered."
-        : JSON.stringify({ integrations }, null, 2)
-    ))
+    Effect.flatMap((integrations) => {
+      const visible = visibleItems(integrations, verbose)
+      const hint = moreHint(visible.length, integrations.length)
+      return writeStdoutLine(text
+        ? visible.map((integration) => verbose
+            ? `${integration.slug}\t${integration.kind}\t${integration.name}\t${integration.authMethods.map((method) => method.kind).join(",")}`
+            : `${integration.slug}\t${integration.kind}\t${integration.name}`
+          ).concat(hint === undefined ? [] : [hint]).join("\n") || "No integrations discovered."
+        : jsonOutput({
+            integrations: visible.map((integration) => verbose ? integration : ({
+              slug: integration.slug,
+              kind: integration.kind,
+              name: integration.name,
+              description: inline(integration.description, listingDescriptionLimit)
+            })),
+            ...(hint === undefined ? {} : { showing: visible.length, total: integrations.length, next: "Rerun with --verbose for all." })
+          }, verbose))
+    })
   )
 ).pipe(Command.withDescription("List Executor's persisted integration catalog"))
 
@@ -389,9 +595,10 @@ const makeTools = () => Command.make(
     ),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ integration, integrationFlag, search, connection, text }) => Effect.gen(function*() {
+  ({ integration, integrationFlag, search, connection, text, verbose }) => Effect.gen(function*() {
     const positional = Option.getOrUndefined(integration)
     const flagged = Option.getOrUndefined(integrationFlag)
     if (positional !== undefined && flagged !== undefined) {
@@ -417,19 +624,23 @@ const makeTools = () => Command.make(
       : tools.filter((tool) =>
         tool.name.toLowerCase().includes(term) || tool.description.toLowerCase().includes(term)
       )
-    const groups = groupTools(matching)
+    const visible = visibleItems(matching, verbose)
+    const groups = groupTools(visible)
     yield* writeStdoutLine(
       text
         ? groups.length === 0
           ? term === undefined ? "No tools available." : `No tools match "${term}".`
-          : formatToolGroups(groups)
-        : JSON.stringify({
+          : formatToolGroups(groups, matching.length, verbose)
+        : jsonOutput({
           integrations: groups.map((group) => ({
             integration: group.integration,
             connection: group.connection,
-            tools: group.tools.map(summaryForJson)
-          }))
-        }, null, 2)
+            tools: verbose ? group.tools : group.tools.map(summaryForJson)
+          })),
+          ...(visible.length < matching.length
+            ? { showing: visible.length, total: matching.length, next: "Rerun with --verbose for all." }
+            : {})
+        }, verbose)
     )
   })
 ).pipe(Command.withDescription("List tool names and descriptions per integration"))
@@ -450,9 +661,10 @@ const makeSchema = () => Command.make(
     ),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ target, tool, connection, text }) => Effect.gen(function*() {
+  ({ target, tool, connection, text, verbose }) => Effect.gen(function*() {
     const address = yield* Effect.tryPromise({
       try: () => resolveToolAddress(target, Option.getOrUndefined(tool), connection),
       catch: (error) => cliError(error instanceof Error ? errorMessage(error) : String(error))
@@ -464,7 +676,7 @@ const makeSchema = () => Command.make(
       )
     })
     yield* writeStdoutLine(
-      text ? formatToolDetail(detail) : JSON.stringify(detail, null, 2)
+      text ? formatToolDetail(detail, verbose) : jsonOutput(toolDetailResult(detail, verbose), verbose)
     )
   })
 ).pipe(Command.withDescription("Show one tool's description and input/output schemas"))
@@ -486,7 +698,8 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
     timeout: Flag.integer("timeout").pipe(Flag.withDefault(300)),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
   ({
     target,
@@ -498,7 +711,8 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
     clientSecretEnv,
     noOpen,
     timeout,
-    text
+    text,
+    verbose
   }) => Effect.tryPromise({
     try: async () => {
       const integration = await resolveIntegration(target)
@@ -532,7 +746,7 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
           integration: integration.slug,
           connection: connected.name
         })
-        return connectedResult(connected, tools)
+        return connectedResult(connected, tools, verbose)
       }
       const envName = Option.getOrUndefined(credentialEnv)
       if (envName === undefined) {
@@ -550,15 +764,17 @@ const makeConnect = (options: IntegrationsCliOptions) => Command.make(
         integration: integration.slug,
         connection: connected.name
       })
-      return connectedResult(connected, tools)
+      return connectedResult(connected, tools, verbose)
     },
     catch: (error) => cliError(
       `Connection failed: ${error instanceof Error ? errorMessage(error) : String(error)}`
     )
   }).pipe(Effect.flatMap((result) => writeStdoutLine(
     text
-      ? connectedSummary(result.connection, result.tools.length)
-      : JSON.stringify(result, null, 2)
+      ? "tools" in result
+        ? `${connectedSummary(result.connection, result.tools.length, result.connection.name)}\n${formatToolGroups(groupTools(result.tools), result.tools.length, true)}`
+        : connectedSummary(result.connection, result.toolCount, result.connection.name)
+      : jsonOutput(result, verbose)
   )))
 ).pipe(Command.withDescription("Authorize an Executor integration"))
 
@@ -567,19 +783,29 @@ const makeConnections = () => Command.make(
   {
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ text }) => Effect.tryPromise({
+  ({ text, verbose }) => Effect.tryPromise({
     try: () => listExecutorConnections(),
     catch: (error) => cliError(`Could not list connections: ${String(error)}`)
   }).pipe(
-    Effect.flatMap((connections) => writeStdoutLine(
-      text
-        ? connections.map((connection) =>
-            `${connection.integration}\t${connection.name}\t${connection.template}\t${connection.address}`
-          ).join("\n") || "No connected integrations."
-        : JSON.stringify({ connections }, null, 2)
-    ))
+    Effect.flatMap((connections) => {
+      const visible = visibleItems(connections, verbose)
+      const hint = moreHint(visible.length, connections.length)
+      return writeStdoutLine(text
+        ? visible.map((connection) => verbose
+            ? `${connection.integration}\t${connection.name}\t${connection.template}\t${connection.address}`
+            : `${connection.integration}\t${connection.name}`
+          ).concat(hint === undefined ? [] : [hint]).join("\n") || "No connected integrations."
+        : jsonOutput({
+            connections: visible.map((connection) => verbose ? connection : ({
+              integration: connection.integration,
+              name: connection.name
+            })),
+            ...(hint === undefined ? {} : { showing: visible.length, total: connections.length, next: "Rerun with --verbose for all." })
+          }, verbose))
+    })
   )
 ).pipe(Command.withDescription("List Executor connections without exposing credentials"))
 
@@ -610,9 +836,10 @@ const makeInvoke = () => Command.make(
     file: Flag.string("file").pipe(
       Flag.optional,
       Flag.withDescription("Read the JSON input from a file")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ address, input, file }) => Effect.gen(function*() {
+  ({ address, input, file, verbose }) => Effect.gen(function*() {
     const inlineInput = Option.getOrUndefined(input)
     const filePath = Option.getOrUndefined(file)
     if (inlineInput !== undefined && filePath !== undefined) {
@@ -632,7 +859,7 @@ const makeInvoke = () => Command.make(
       },
       catch: (error) => cliError(`Invocation failed: ${String(error)}`)
     })
-    yield* writeStdoutLine(JSON.stringify(result, null, 2))
+    yield* writeStdoutLine(jsonOutput(boundedJsonResult(result, verbose), verbose))
   })
 ).pipe(Command.withDescription("Invoke an Executor tool with JSON input"))
 
@@ -644,9 +871,10 @@ const makeValidate = () => Command.make(
     live: Flag.boolean("live"),
     text: Flag.boolean("text").pipe(
       Flag.withDescription("Print a human-readable result")
-    )
+    ),
+    verbose: verboseFlag()
   },
-  ({ config, file, live, text }) => Effect.gen(function*() {
+  ({ config, file, live, text, verbose }) => Effect.gen(function*() {
     const configText = Option.getOrUndefined(config)
     const filePath = Option.getOrUndefined(file)
     if ((configText === undefined) === (filePath === undefined)) {
@@ -670,12 +898,23 @@ const makeValidate = () => Command.make(
       try: () => validateIntegrationNode(node, { live: live || directAddress }),
       catch: (error) => cliError(`Integration validation failed: ${String(error)}`)
     })
+    const findings = visibleItems(report.findings, verbose).map((entry) => verbose ? entry : ({
+      ...entry,
+      message: inline(entry.message, listingDescriptionLimit)
+    }))
+    const hint = moreHint(findings.length, report.findings.length)
     yield* writeStdoutLine(
       text
-        ? report.findings.map((entry) =>
+        ? findings.map((entry) =>
             `${entry.severity}\t${entry.check}\t${entry.message}`
-          ).join("\n")
-        : JSON.stringify(report, null, 2)
+          ).concat(hint === undefined ? [] : [hint]).join("\n")
+        : jsonOutput(verbose ? report : {
+            ok: report.ok,
+            findings,
+            ...(hint === undefined
+              ? {}
+              : { showing: findings.length, total: report.findings.length, next: "Rerun with --verbose for all." })
+          }, verbose)
     )
     if (!report.ok) return yield* cliError("Integration validation failed")
   })

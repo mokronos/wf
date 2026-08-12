@@ -63,7 +63,7 @@ export const ValidateDemoWorkflow = defineWorkflow({
 `
 
 describe("wf validate", () => {
-  test("validates a registered workflow and prints its traced flow", () => {
+  test("summarizes validation and reveals the traced flow with --verbose", () => {
     const cwd = makeTempDir()
     const create = runCli(cwd, ["create", "validate-demo", "--source", validWorkflowSource])
     expect(create.exitCode, create.stderr).toBe(0)
@@ -72,9 +72,14 @@ describe("wf validate", () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain("Valid validate-demo")
     expect(result.stdout).toContain("ValidateDemoWorkflow")
-    expect(result.stdout).toContain("input:")
-    expect(result.stdout).toContain("flow:")
-    expect(result.stdout).toContain("PrintMessage")
+    expect(result.stdout).toContain("1 orchestration call")
+    expect(result.stdout).not.toContain("input:")
+    expect(result.stdout).not.toContain("PrintMessage")
+
+    const verbose = runCli(cwd, ["validate", "validate-demo", "--verbose"])
+    expect(verbose.stdout).toContain("input:")
+    expect(verbose.stdout).toContain("flow:")
+    expect(verbose.stdout).toContain("PrintMessage")
   })
 
   test("validates an unregistered workflow file", () => {
@@ -133,7 +138,7 @@ describe("wf validate", () => {
 
     // A workflow without typed errors serialises as JSON Schema never
     // ({"not":{}}); printing that reads like a defect in the success block.
-    const result = runCli(cwd, ["validate", "validate-demo"])
+    const result = runCli(cwd, ["validate", "validate-demo", "--verbose"])
     expect(result.stdout).not.toContain("errors:")
     expect(result.stdout).not.toContain(`{"not":{}}`)
   })
@@ -159,11 +164,11 @@ export const BranchingWorkflow = defineWorkflow({
 `
     )
 
-    const waiting = runCli(cwd, ["validate", "--file", file, "--input", '{"wait":true}'])
+    const waiting = runCli(cwd, ["validate", "--file", file, "--input", '{"wait":true}', "--verbose"])
     expect(waiting.exitCode).toBe(0)
     expect(waiting.stdout).toContain("cooldown")
 
-    const skipped = runCli(cwd, ["validate", "--file", file, "--input", '{"wait":false}'])
+    const skipped = runCli(cwd, ["validate", "--file", file, "--input", '{"wait":false}', "--verbose"])
     expect(skipped.exitCode).toBe(0)
     expect(skipped.stdout).not.toContain("cooldown")
     expect(skipped.stdout).toContain("(no orchestration calls)")

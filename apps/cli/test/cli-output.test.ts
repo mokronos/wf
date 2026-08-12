@@ -60,7 +60,6 @@ export const LargeOutput = defineWorkflow({
   ], environment)
   expect(created.exitCode).toBe(0)
 
-  const sentinel = "output-complete"
   const input = JSON.stringify({ size: 750_000 })
   const subprocess = Bun.spawn({
     cmd: [process.execPath, "run", cliPath, "run", "large-output", input],
@@ -84,7 +83,15 @@ export const LargeOutput = defineWorkflow({
   const stdout = new TextDecoder().decode(Buffer.concat(chunks))
 
   expect(exitCode).toBe(0)
-  expect(stdout.includes(sentinel)).toBe(true)
-  expect(stderr).toContain("… (+")
+  const output = Schema.decodeUnknownSync(Schema.Struct({
+    truncated: Schema.Literal(true),
+    characters: Schema.Number,
+    preview: Schema.String,
+    next: Schema.String
+  }))(JSON.parse(stdout))
+  expect(output.characters).toBeGreaterThan(750_000)
+  expect(output.preview.length).toBeLessThanOrEqual(800)
+  expect(output.next).toContain("--verbose")
+  expect(stderr).toContain("[run] completed")
   expect(stderr.length).toBeLessThan(1_500)
 }, 20_000)

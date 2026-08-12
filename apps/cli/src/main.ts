@@ -204,9 +204,14 @@ const serviceTask = <A>(task: () => Promise<A>): Effect.Effect<A, ServiceCliErro
 const makeRootCommand = (runtime: CliRuntimeOptions) => {
   const installCommand = Command.make(
     "install",
-    {},
-    () => serviceTask(async () => {
-      await installService(serviceProgram())
+    {
+      verbose: Flag.boolean("verbose").pipe(
+        Flag.withAlias("v"),
+        Flag.withDescription("Show service-manager output")
+      )
+    },
+    ({ verbose }) => serviceTask(async () => {
+      await installService(serviceProgram(), verbose)
       console.log("wf service installed and started")
     })
   ).pipe(Command.withDescription("Register and start the per-user local dashboard service"))
