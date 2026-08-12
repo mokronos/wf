@@ -81,7 +81,7 @@ human will read it.
    service's official docs, then let Executor detect and register it:
 
    ```sh
-   wf i discover '<mcp-endpoint-or-openapi-url>' --text
+   wf i discover '<mcp-endpoint-or-openapi-url>' --text --verbose
    ```
 
    `discover` mutates the local catalog. A no-auth integration is connected
@@ -89,12 +89,15 @@ human will read it.
    integration.
 
 4. If discovery says authentication is required, stop for the human handoff.
-   Explain the account, permissions, and next action, then use the method
-   reported by discovery:
+   Inspect the selected method's complete auth metadata from verbose discovery
+   (or `wf i list --verbose`). For OAuth, identify the minimum scopes required
+   by the selected tools from that metadata and the provider's official docs.
+   Explain the account, exact scopes, purpose, and next action, then use the
+   method reported by discovery:
 
    ```sh
-   # OAuth; add --scopes only after selecting the minimum required set.
-   wf i connect <integration-slug> --text
+   # OAuth; always pass the reviewed minimum set (use '' when none is needed).
+   wf i connect <integration-slug> --scopes '<minimum-scopes>' --text
 
    # API key, bearer, or header; the human sets the value outside chat first.
    wf i connect <integration-slug> --credential-env SERVICE_TOKEN --text
@@ -110,11 +113,12 @@ human will read it.
    ```sh
    wf i tools <integration-slug> --text
    wf i tools <integration-slug> --search '<operation>' --text
-   wf i schema <integration-slug> <tool-name>
+   wf i schema <integration-slug> <tool-name> --verbose
    ```
 
-   `wf i schema` returns the canonical `tools.<...>` address and complete input and
-   output schemas. A bare tool name works only when unique.
+   Only `wf i schema --verbose` returns the complete input and output schemas;
+   the default output is truncated. It also returns the canonical `tools.<...>`
+   address. A bare tool name works only when unique.
 
 6. Before authoring, live-validate each selected address. For a read-only tool,
    also use a minimal safe invocation when useful:
@@ -179,9 +183,12 @@ workflow:
 
 1. Acquire it with the agent's normal file/web tools. Preserve provenance (URL
    and revision when available). Do not execute a remote shell installer.
-2. Inspect the complete source before passing it to `wf`. Reject or ask about
-   unexpected module-scope IO, credential reads, non-`@mokronos/wfkit` imports,
-   or external side effects in `run`/`ctx.code`.
+2. Inspect the complete source before passing it to `wf`, including module scope,
+   workflow `run` generators, every `defineStep.execute` and `compensate`
+   callback, and every `ctx.code` callback. Reject or ask about unexpected IO,
+   credential reads, non-`@mokronos/wfkit` imports, or external side effects in
+   any of those locations. Validation does not execute step or compensation
+   callbacks, but a real run can.
 3. Keep an editable project copy. Validate it outside the catalog first:
 
    ```sh

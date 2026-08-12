@@ -89,6 +89,7 @@ export const validateExecutorToolAddresses = async (
   addresses: ReadonlyArray<string>,
   tools: Pick<ExecutorTools, "summaries"> = { summaries: listExecutorToolSummaries }
 ): Promise<ReadonlyArray<{ readonly address: string; readonly report: IntegrationValidationReport }>> => {
+  if (addresses.length === 0) return []
   let summaries: Awaited<ReturnType<ExecutorTools["summaries"]>>
   try {
     summaries = await tools.summaries()

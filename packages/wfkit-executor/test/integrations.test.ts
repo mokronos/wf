@@ -18,6 +18,7 @@ import {
   discoverIntegration,
   listIntegrationOverviews,
   searchIntegrations,
+  validateExecutorToolAddresses,
   validateIntegrationNode
 } from "../src/index.ts"
 
@@ -369,5 +370,19 @@ describe("Executor discovery SDK", () => {
       check: "catalog",
       message: "get is available"
     })
+  })
+
+  test("does not inspect Executor tools when there are no addresses", async () => {
+    let calls = 0
+
+    const reports = await validateExecutorToolAddresses([], {
+      summaries: async () => {
+        calls++
+        return []
+      }
+    })
+
+    expect(reports).toEqual([])
+    expect(calls).toBe(0)
   })
 })

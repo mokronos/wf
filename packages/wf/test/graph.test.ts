@@ -3,6 +3,7 @@ import {
   defineStep,
   defineWorkflow,
   integration,
+  sampleValueForSchema,
   t,
   workflowGraphIntegrationAddresses,
   workflowToGraph
@@ -87,6 +88,13 @@ const ParallelWorkflow = defineWorkflow({
 })
 
 describe("workflowToGraph", () => {
+  test("creates a valid Date sample for t.date", () => {
+    const sample = sampleValueForSchema(t.date)
+
+    expect(sample).toBeInstanceOf(Date)
+    expect(sample).toEqual(new Date(0))
+  })
+
   test("does not run real void steps when the tracer returns undefined", async () => {
     let executions = 0
     const sideEffect = defineStep({

@@ -404,21 +404,31 @@ const checkGraphIntegrations = async (
 ): Promise<ReadonlyArray<IntegrationReadiness>> =>
   await validateExecutorToolAddresses(workflowGraphIntegrationAddresses(graph))
 
-const printIntegrationReadiness = (entries: ReadonlyArray<IntegrationReadiness>) => {
+const printIntegrationReadiness = (
+  entries: ReadonlyArray<IntegrationReadiness>,
+  verbose: boolean
+) => {
   if (entries.length === 0) return
   console.log(bold("integrations:"))
-  for (const entry of entries) {
+  const visible = verbose ? entries : entries.slice(0, defaultDiagnosticLimit)
+  for (const entry of visible) {
     const catalog = entry.report.findings.find((finding) => finding.check === "catalog")
     const status = entry.report.ok
       ? green("ready")
       : catalog?.message.startsWith("Could not inspect") === true
         ? red("error")
         : red("missing")
+    const detail = catalog === undefined
+      ? ""
+      : verbose || catalog.message.length <= defaultDiagnosticDetailLimit
+        ? catalog.message
+        : `${catalog.message.slice(0, defaultDiagnosticDetailLimit)}… (+${catalog.message.length - defaultDiagnosticDetailLimit} chars)`
     console.log(
       `  ${status}\t${entry.address}` +
-      (catalog === undefined ? "" : ` ${dim(catalog.message)}`)
+      (detail.length === 0 ? "" : ` ${dim(detail)}`)
     )
   }
+  printMoreHint(visible.length, entries.length)
 }
 
 const validationError = (
@@ -903,11 +913,11 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
       return
     }
     if (invalid) {
-      printIntegrationReadiness(integrations)
+      printIntegrationReadiness(integrations, verbose)
       throw validationError(result, verbose)
     }
     printValidationResult(result, verbose)
-    printIntegrationReadiness(integrations)
+    printIntegrationReadiness(integrations, verbose)
     if (missingIntegrations.length > 0) {
       throw new Error(
         `${artifact.id} needs ${missingIntegrations.length} integration tool${missingIntegrations.length === 1 ? "" : "s"} connected before it can run`

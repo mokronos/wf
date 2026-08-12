@@ -103,6 +103,24 @@ export const PartiallyInvalidIntegrationWorkflow = defineWorkflow({
 })
 `
 
+const manyIntegrationsWorkflowSource = `import { defineWorkflow, integration, t } from "@mokronos/wfkit"
+
+const tools = Array.from({ length: 7 }, (_, index) => integration({
+  source: { kind: "executor", address: \`tools.missing.org.default.lookup-\${index + 1}\` },
+  input: t.void,
+  output: t.void
+}))
+
+export const ManyIntegrationsWorkflow = defineWorkflow({
+  name: "ManyIntegrationsWorkflow",
+  input: t.void,
+  output: t.void,
+  run: function* (_input, ctx) {
+    for (const tool of tools) yield* ctx.run(tool, undefined)
+  }
+})
+`
+
 describe("wf validate", () => {
   test("summarizes validation and reveals the traced flow with --verbose", () => {
     const cwd = makeTempDir()
@@ -265,5 +283,23 @@ export const BranchingWorkflow = defineWorkflow({
     expect(result.stdout).toContain("integrations:")
     expect(result.stdout).toContain("tools.missing.org.default.lookup")
     expect(result.stderr).toContain("trace exploded")
+  })
+
+  test("bounds integration readiness unless --verbose is used", () => {
+    const cwd = makeTempDir()
+    const file = path.join(cwd, "many-integrations.ts")
+    writeFileSync(file, manyIntegrationsWorkflowSource)
+
+    const result = runCli(cwd, ["validate", "--file", file])
+
+    expect(result.exitCode).toBe(1)
+    expect(result.stdout).toContain("tools.missing.org.default.lookup-5")
+    expect(result.stdout).not.toContain("tools.missing.org.default.lookup-6")
+    expect(result.stdout).toContain("Showing 5 of 7. Rerun with --verbose for all.")
+
+    const verbose = runCli(cwd, ["validate", "--file", file, "--verbose"])
+    expect(verbose.exitCode).toBe(1)
+    expect(verbose.stdout).toContain("tools.missing.org.default.lookup-7")
+    expect(verbose.stdout).not.toContain("Showing 5 of 7")
   })
 })

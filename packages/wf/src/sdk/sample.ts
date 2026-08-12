@@ -4,6 +4,9 @@ import type { JsonSchema } from "../schemas.ts"
 const schemaAst = (schema: unknown): SchemaAST.AST | undefined =>
   Schema.isSchema(schema) ? schema.ast : undefined
 
+const DateTypeConstructor = Schema.TaggedStruct("Date", {})
+const isDateTypeConstructor = Schema.is(DateTypeConstructor)
+
 export const sampleValueForSchema = (schema: unknown): unknown =>
   sampleValueFromAst(schemaAst(schema), new Set())
 
@@ -86,6 +89,8 @@ const sampleValueFromAstUnguarded = (
         property.name,
         sampleValueFromAst(property.type, seen)
       ]) ?? [])
+    case "Declaration":
+      return isDateTypeConstructor(ast.annotations?.["typeConstructor"]) ? new Date(0) : {}
     case "Unknown":
     case "Any":
       return {}
