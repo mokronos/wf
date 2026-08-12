@@ -263,8 +263,8 @@ describe("workflowToGraph", () => {
       "tools.docs.org.default.lookup",
       "tools.catalog.org.default.list"
     ])
-    expect(graph.nodes.find((node) => node.label.includes("tools.docs"))?.metadata.integration).toEqual({
-      address: "tools.docs.org.default.lookup"
-    })
+    expect(String(
+      graph.nodes.find((node) => node.label.includes("tools.docs"))?.metadata.integration?.address
+    )).toBe("tools.docs.org.default.lookup")
   })
 })

@@ -62,24 +62,30 @@ export const jsonSchemaOf = (schema: Schema.Top): JsonSchema | undefined => {
 }
 
 const simplifyJsonSchema = (schema: JsonSchema): JsonSchema => {
-  const anyOf = schema.anyOf?.map(simplifyJsonSchema)
-  if (anyOf !== undefined) {
-    const distinct = [...new Map(anyOf.map((item) => [JSON.stringify(item), item])).values()]
-    if (distinct.length === 1 && Object.keys(schema).length === 1) return distinct[0]!
-    return { ...schema, anyOf: distinct }
-  }
-  const oneOf = schema.oneOf?.map(simplifyJsonSchema)
-  if (oneOf !== undefined) return { ...schema, oneOf }
-  if (schema.items !== undefined) return { ...schema, items: simplifyJsonSchema(schema.items) }
-  if (schema.properties !== undefined) {
-    return {
-      ...schema,
-      properties: Object.fromEntries(
+  const simplifiedAnyOf = schema.anyOf === undefined
+    ? undefined
+    : [...new Map(
+        schema.anyOf.map(simplifyJsonSchema).map((item) => [JSON.stringify(item), item])
+      ).values()]
+  const simplifiedOneOf = schema.oneOf?.map(simplifyJsonSchema)
+  const simplifiedItems = schema.items === undefined ? undefined : simplifyJsonSchema(schema.items)
+  const simplifiedProperties = schema.properties === undefined
+    ? undefined
+    : Object.fromEntries(
         Object.entries(schema.properties).map(([key, value]) => [key, simplifyJsonSchema(value)])
       )
-    }
+  const simplified: JsonSchema = {
+    ...schema,
+    ...(simplifiedAnyOf === undefined ? {} : { anyOf: simplifiedAnyOf }),
+    ...(simplifiedOneOf === undefined ? {} : { oneOf: simplifiedOneOf }),
+    ...(simplifiedItems === undefined ? {} : { items: simplifiedItems }),
+    ...(simplifiedProperties === undefined ? {} : { properties: simplifiedProperties })
   }
-  return schema
+  if (
+    simplifiedAnyOf?.length === 1 &&
+    Object.keys(simplified).every((key) => key === "anyOf")
+  ) return simplifiedAnyOf[0]!
+  return simplified
 }
 
 const WorkflowStartedEvent = Schema.Struct({

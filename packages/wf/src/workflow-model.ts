@@ -51,7 +51,8 @@ export type StepRetryPolicy = typeof StepRetryPolicy.Type
 export type StepConcurrency<I> = StepConcurrencyPolicy<I>
 
 export const IntegrationToolAddress = Schema.String.pipe(
-  Schema.refine((value): value is string => /^tools\.[^.]+\.(org|user)\.[^.]+\..+$/.test(value))
+  Schema.refine((value): value is string => /^tools\.[^.]+\.(org|user)\.[^.]+\..+$/.test(value)),
+  Schema.brand("IntegrationToolAddress")
 )
 export type IntegrationToolAddress = typeof IntegrationToolAddress.Type
 

@@ -11,4 +11,21 @@ describe("persisted JSON Schema validation", () => {
     expect(decodePersistedJsonSchema(persisted, { approved: true })).toEqual({ approved: true })
     expect(() => decodePersistedJsonSchema(persisted, { approved: "yes" })).toThrow()
   })
+
+  test("simplifies nested alternatives while preserving sibling fields", () => {
+    const date = Schema.Union([Schema.DateFromString, Schema.Date]).annotate({
+      description: "A date"
+    })
+
+    expect(jsonSchemaOf(Schema.Struct({ dates: Schema.Array(date) }))).toMatchObject({
+      properties: {
+        dates: {
+          items: {
+            anyOf: [{ type: "string" }],
+            description: "A date"
+          }
+        }
+      }
+    })
+  })
 })

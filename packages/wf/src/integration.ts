@@ -19,7 +19,7 @@ const Json = Schema.Json
 
 export const integration = <I, O>(config: {
   readonly name?: string
-  readonly source: IntegrationSource
+  readonly source: typeof IntegrationSource.Encoded
   readonly input: Schema.Codec<I>
   readonly output: Schema.Codec<O>
   readonly retry?: StepRetryPolicy

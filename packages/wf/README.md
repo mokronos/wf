@@ -1,4 +1,4 @@
-> **[Install the wf agent skill →](https://github.com/mokronos/wf/tree/main/packages/wf/skills/wf)** with `npx skills add mokronos/wf --skill wf`. It teaches compatible agents to discover and connect integrations, author workflows, and repair imported workflows.
+> **[Install the wf agent skill →](https://github.com/mokronos/wf/tree/main/packages/wf/skills/wf)** with `npx skills add https://codeload.github.com/mokronos/wf/tar.gz/f2fc266fc58be4881b86df67da42f88c856f24ea --skill wf`. It teaches compatible agents to discover and connect integrations, author workflows, and repair imported workflows.
 
 # @mokronos/wfkit
 
@@ -72,19 +72,20 @@ Start with one URL. The discovery command runs detection, auth discovery,
 registration, and tool-schema discovery:
 
 ```sh
+wf i search <service-or-capability>
 wf i discover https://mcp.example.com/mcp
 wf i connect <integration-slug>
 wf i tools <integration-slug> --search release
-wf i schema <tool-name>
+wf i schema <tool-name> --verbose
 wf i invoke <tool-address> '{"query":"status"}'
 wf i connections
 ```
 
 The default connection is `default`. Integration commands return JSON by default;
 use `--text` for human-readable output. `tools` lists names and descriptions
-grouped by integration, narrowed by `--search`; `schema` returns one tool's
-address and full input and output schemas, from a bare tool name, an integration
-slug plus a tool name, or a tool address.
+grouped by integration, narrowed by `--search`; `schema --verbose` returns one
+tool's address and full input and output schemas, from a bare tool name, an
+integration slug plus a tool name, or a tool address.
 
 For API keys or bearer tokens, pass the name of an environment variable with
 `--credential-env`; the value is never printed. OAuth uses Executor's discovery,
@@ -117,10 +118,12 @@ wf
 ├── signal
 ├── integrations (alias: i)
 │   ├── discover
+│   ├── search
 │   ├── list
 │   ├── connect
 │   ├── connections
 │   ├── tools
+│   ├── schema
 │   ├── disconnect
 │   ├── invoke
 │   └── validate
