@@ -207,6 +207,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
     payload: I,
     opts: { readonly id?: string; readonly determinism?: InMemoryDeterminismState; readonly actor?: string } = {}
   ): ExecutionRecord => {
+    Schema.decodeUnknownSync(workflow.input)(payload)
     let resolveResult!: (result: WorkflowResult) => void
     const resultPromise = new Promise<WorkflowResult>((resolve) => {
       resolveResult = resolve

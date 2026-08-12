@@ -134,6 +134,7 @@ export const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowC
 
   return {
     async start(workflow, payload, opts = {}) {
+      Schema.decodeUnknownSync(workflow.input)(payload)
       const selectedWorkflow = workflowForStart(workflow)
       if (opts.idempotencyKey !== undefined) {
         const existing = store.findIdempotent(selectedWorkflow.name, opts.idempotencyKey)

@@ -27,6 +27,19 @@ const waitForStatus = async (
 }
 
 describe("Phase 4 workflow client", () => {
+  test("invalid input is rejected before a memory execution is created", async () => {
+    const workflow = defineWorkflow({
+      name: "validatedMemoryInput",
+      input: Schema.String.check(Schema.isMinLength(1)),
+      output: Schema.Void,
+      run: function* () {}
+    })
+    const client = createWorkflowClient()
+
+    await expect(client.start(workflow, "")).rejects.toThrow()
+    expect(await client.executions()).toEqual([])
+  })
+
   test("a disposed memory client rejects new executions", async () => {
     const workflow = defineWorkflow({
       name: "disposedMemoryClient",

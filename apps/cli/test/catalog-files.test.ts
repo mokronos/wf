@@ -107,6 +107,21 @@ describe("file-backed workflow catalog", () => {
     expect(second.stdout).toContain("second:hello")
   }, 20_000)
 
+  test("rejects missing workflow input without creating a run", () => {
+    const home = makeTempDir()
+    expect(runCli(home, ["create", "file-demo", "--source", workflowSource("first")]).exitCode).toBe(0)
+
+    const invalid = runCli(home, ["run", "file-demo"])
+    expect(invalid.exitCode).not.toBe(0)
+    expect(invalid.stderr).toContain("Missing key")
+    expect(invalid.stderr).not.toContain("[run] id")
+    expect(invalid.stderr).not.toContain("[workflow] started")
+
+    const runs = runCli(home, ["runs"])
+    expect(runs.exitCode, runs.stderr).toBe(0)
+    expect(runs.stdout).toContain("No workflow runs found.")
+  }, 20_000)
+
   test("a workflow file with no workflow export is rejected without replacing the file", async () => {
     const home = makeTempDir()
     expect(runCli(home, ["create", "file-demo", "--source", workflowSource("first")]).exitCode).toBe(0)
