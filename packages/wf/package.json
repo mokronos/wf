@@ -29,7 +29,8 @@
     "src",
     "dist",
     "README.md",
-    "GUIDE.md"
+    "GUIDE.md",
+    "skills"
   ],
   "exports": {
     ".": {

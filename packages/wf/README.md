@@ -1,4 +1,4 @@
-> **[Use with your agent →](https://github.com/mokronos/wf/blob/main/packages/wf/GUIDE.md)** Copy the guide into your chat so your agent can install wfkit and run a real workflow for you.
+> **[Install the wf agent skill →](https://github.com/mokronos/wf/tree/main/packages/wf/skills/wf)** with `npx skills add mokronos/wf --skill wf`. It teaches compatible agents to discover and connect integrations, author workflows, and repair imported workflows.
 
 # @mokronos/wfkit
 
