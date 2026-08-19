@@ -4,7 +4,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { BrowserRouter } from "react-router"
 
 import App from "@/App"
-import { Toaster } from "@/components/ui/sonner"
 import { TooltipProvider } from "@/components/ui/tooltip"
 
 import "@/index.css"
@@ -30,7 +29,6 @@ createRoot(container).render(
       <BrowserRouter>
         <TooltipProvider>
           <App />
-          <Toaster position="bottom-right" />
         </TooltipProvider>
       </BrowserRouter>
     </QueryClientProvider>

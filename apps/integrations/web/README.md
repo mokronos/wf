@@ -6,8 +6,7 @@ approvals, executions, drift.
 
 ## Running it
 
-In normal use there is nothing to run. The gateway serves this at the root of
-its own port:
+In normal use the installed gateway serves this at the root of its own port:
 
 ```bash
 integrations serve -d
@@ -16,6 +15,17 @@ integrations dashboard      # opens http://127.0.0.1:4788
 
 A `vite build` is enough to refresh it in a working tree — the gateway resolves
 `apps/integrations/web/dist` from disk, so there is no binary to recompile.
+For a source checkout, start a gateway pinned to the working tree once:
+
+```bash
+bun run serve:control-plane -- --detach
+```
+
+Then refresh and open it with:
+
+```bash
+bun run refresh:control-plane
+```
 
 For iteration:
 
@@ -50,7 +60,5 @@ bunx --bun shadcn@latest add <component>
 ```
 
 `src/components/ui` is vendored and regenerable, so prefer adding a component
-over hand-rolling one. Two edits to that directory are deliberate and will be
-lost on re-add: `sonner.tsx` had its `next-themes` lookup removed (this app has
-no theme switcher, and the hook's `string | undefined` needed a cast to satisfy
-the prop).
+over hand-rolling one. `sonner.tsx` deliberately has no `next-themes`
+dependency; the application supplies the active theme directly.

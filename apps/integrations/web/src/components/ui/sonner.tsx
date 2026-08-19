@@ -1,13 +1,9 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-// Vendored from shadcn, with its `next-themes` lookup removed: this app has no
-// theme switcher, so the provider it reads would never exist and the hook's
-// `string | undefined` had to be cast to satisfy the prop.
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme="dark"
       className="toaster group"
       icons={{
         success: (

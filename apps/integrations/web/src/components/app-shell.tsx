@@ -1,7 +1,8 @@
 import { NavLink, Outlet } from "react-router"
-import { Activity, KeyRound, Plug, ShieldCheck, Wrench } from "lucide-react"
+import { Activity, KeyRound, Moon, Plug, ShieldCheck, Sun, Wrench } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Switch } from "@/components/ui/switch"
 import { useApprovals } from "@/lib/queries"
 import { cn } from "@/lib/utils"
 
@@ -22,7 +23,13 @@ function PendingBadge() {
   return <Badge variant="destructive" className="ml-auto">{count}</Badge>
 }
 
-export function AppShell() {
+export function AppShell({
+  dark,
+  onDarkChange
+}: {
+  readonly dark: boolean
+  readonly onDarkChange: (dark: boolean) => void
+}) {
   return (
     <div className="bg-background flex min-h-svh">
       <aside className="bg-sidebar text-sidebar-foreground flex w-60 shrink-0 flex-col gap-1 border-r p-3">
@@ -49,10 +56,22 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <p className="text-sidebar-foreground/50 mt-auto px-2 text-xs leading-relaxed">
-          Served by the gateway on loopback. Every action here is performed with
-          the local client's key.
-        </p>
+        <div className="mt-auto space-y-3 px-2">
+          <label htmlFor="appearance" className="flex cursor-pointer items-center gap-2 text-sm">
+            {dark ? <Moon className="size-4" /> : <Sun className="size-4" />}
+            <span>Dark mode</span>
+            <Switch
+              id="appearance"
+              className="ml-auto"
+              checked={dark}
+              onCheckedChange={onDarkChange}
+            />
+          </label>
+          <p className="text-sidebar-foreground/50 text-xs leading-relaxed">
+            Served by the gateway on loopback. Every action here is performed with
+            the local client's key.
+          </p>
+        </div>
       </aside>
       <main className="flex min-w-0 flex-1 flex-col">
         <Outlet />
