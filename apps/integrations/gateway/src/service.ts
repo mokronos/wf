@@ -33,6 +33,8 @@ export interface GatewayService {
 export interface GatewayServiceOptions {
   readonly home?: string
   readonly retentionDays?: number
+  /** Overrides integrations.sh for a private or test registry. */
+  readonly registryUrl?: string
 }
 
 export const createGatewayService = async (
@@ -47,7 +49,8 @@ export const createGatewayService = async (
     store,
     executor: gateway.executor,
     retentionDays: options.retentionDays ?? defaultArgumentRetentionDays,
-    oauth
+    oauth,
+    registryUrl: options.registryUrl
   })
   return {
     home,
@@ -91,6 +94,8 @@ export interface ServeOptions {
   readonly port?: number
   readonly hostname?: string
   readonly home?: string
+  /** Overrides integrations.sh for a private or test registry. */
+  readonly registryUrl?: string
   /** Serve the control plane at `/`. On by default; a headless gateway can turn
    *  it off so the only thing on the port is the API. */
   readonly web?: boolean
@@ -110,9 +115,10 @@ export interface RunningGateway {
  * credential that unlocks every connection a client holds, so exposing it
  * externally has to be a deliberate act rather than a default. */
 export const serveGateway = async (options: ServeOptions = {}): Promise<RunningGateway> => {
-  const service = await createGatewayService(
-    options.home === undefined ? {} : { home: options.home }
-  )
+  const service = await createGatewayService({
+    home: options.home,
+    registryUrl: options.registryUrl
+  })
   const hostname = options.hostname ?? "127.0.0.1"
   const boundToLoopback = isLoopbackAddress(hostname)
   const web = options.web === false ? undefined : await createWebAssets()

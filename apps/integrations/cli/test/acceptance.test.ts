@@ -107,11 +107,33 @@ const startVendor = () => {
     port: 0,
     async fetch(request): Promise<Response> {
       const url = new URL(request.url)
+      const baseUrl = `http://127.0.0.1:${server.port}`
+      if (url.pathname === "/api/search") {
+        return Response.json({
+          results: [{
+            domain: "acceptance.test",
+            name: "Acceptance Tickets",
+            description: "Creates tickets for the acceptance journey",
+            kinds: ["openapi"],
+            url: baseUrl
+          }]
+        })
+      }
+      if (url.pathname === "/api/acceptance.test/surface") {
+        return Response.json({
+          surfaces: [{
+            type: "openapi",
+            slug: "acceptance-tickets",
+            name: "Acceptance Tickets",
+            spec: `${baseUrl}/openapi.json`
+          }]
+        })
+      }
       if (url.pathname === "/openapi.json") {
         return Response.json({
           openapi: "3.1.0",
           info: { title: "Acceptance", version: "1.0.0", description: "Creates tickets" },
-          servers: [{ url: `http://127.0.0.1:${server.port}` }],
+          servers: [{ url: baseUrl }],
           security: [{ apiKey: [] }],
           paths: {
             "/tickets": {
@@ -163,15 +185,20 @@ const startVendor = () => {
   servers.push(server)
   return {
     specUrl: `http://127.0.0.1:${server.port}/openapi.json`,
+    registryUrl: `http://127.0.0.1:${server.port}`,
     invocations: () => invocations,
     seenKeys: () => seenKeys
   }
 }
 
-const startGateway = async () => {
+const startGateway = async (registryUrl?: string) => {
   const home = await mkdtemp(path.join(os.tmpdir(), "wf-acceptance-"))
   directories.push(home)
-  const gateway = await serveGateway({ home, port: 0 })
+  const gateway = await serveGateway({
+    home,
+    port: 0,
+    registryUrl
+  })
   gateways.push(gateway)
   const config = await readFile(path.join(home, "gateway.json"), "utf8")
   const { apiKey } = parseOutput(ApiKeyConfig, config)
@@ -193,14 +220,30 @@ const startGateway = async () => {
 
 describe("integrations CLI acceptance", () => {
   test(
-    "an agent discovers, connects, inspects, delegates, and invokes — all through the gateway",
+    "an agent searches, discovers, connects, inspects, and invokes a connection — all through the gateway",
     async () => {
       const vendor = startVendor()
-      const gateway = await startGateway()
+      const gateway = await startGateway(vendor.registryUrl)
       const integrations = (args: ReadonlyArray<string>) =>
         run(integrationsCli, args, gateway.environment)
 
-      const discovered = await integrations(["discover", vendor.specUrl])
+      const searched = await integrations(["search", "acceptance tickets"])
+      expect(searched.exitCode, searched.stderr).toBe(0)
+      const SearchBody = Schema.Struct({
+        query: Schema.String,
+        results: Schema.Array(Schema.Struct({
+          name: Schema.String,
+          surfaces: Schema.Array(Schema.Struct({ discoveryUrl: Schema.optional(Schema.String) }))
+        }))
+      })
+      const searchBody = Schema.decodeUnknownSync(SearchBody)(JSON.parse(searched.stdout))
+      expect(searchBody.query).toBe("acceptance tickets")
+      expect(searchBody.results).toHaveLength(1)
+      expect(searchBody.results[0]?.name).toBe("Acceptance Tickets")
+      const discoveryUrl = searchBody.results[0]?.surfaces[0]?.discoveryUrl
+      expect(discoveryUrl).toBe(vendor.specUrl)
+
+      const discovered = await integrations(["discover", discoveryUrl ?? ""])
       expect(discovered.exitCode, discovered.stderr).toBe(0)
       const DiscoverBody = Schema.Struct({
         integration: Schema.Struct({ slug: Schema.String }),

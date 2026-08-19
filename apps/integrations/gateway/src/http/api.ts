@@ -34,6 +34,8 @@ export interface ApiDependencies {
   readonly executor: ExecutorServices
   readonly retentionDays: number
   readonly oauth: OAuthSessions
+  /** Overrides the public registry for an isolated deployment or acceptance test. */
+  readonly registryUrl?: string
 }
 
 // --- wire schemas -----------------------------------------------------------
@@ -355,15 +357,18 @@ export const gatewayRoutes = (dependencies: ApiDependencies): ReadonlyArray<Rout
         const query = request.query.get("q")
         if (query === null) return badRequest("search requires a q query parameter")
         const kind = request.query.get("kind")
-        return ok(await searchIntegrations({
-          q: query,
-          limit: positiveInt(request.query.get("limit"), 5),
-          ...whenPresentMap(
-            "kind",
-            kind,
-            Schema.decodeUnknownSync(Schema.Literals(["mcp", "openapi", "graphql", "cli"]))
-          )
-        }))
+        return ok(await searchIntegrations(
+          {
+            q: query,
+            limit: positiveInt(request.query.get("limit"), 5),
+            ...whenPresentMap(
+              "kind",
+              kind,
+              Schema.decodeUnknownSync(Schema.Literals(["mcp", "openapi", "graphql", "cli"]))
+            )
+          },
+          { registryUrl: dependencies.registryUrl }
+        ))
       }
     },
     {
