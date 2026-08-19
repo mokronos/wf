@@ -1,3 +1,5 @@
+import { whenPresent } from "./optional.ts"
+import type { WorkflowPayload } from "./schemas.ts"
 import { NodeRuntime } from "@effect/platform-node"
 import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
@@ -8,8 +10,8 @@ import {
 } from "./events.ts"
 import type { WorkflowEventSink } from "./events.ts"
 import {
-  ExecutionResourceRegistry,
-  makeExecutionResourceRegistry
+  createExecutionResourceRegistry,
+  ExecutionResourceRegistry
 } from "./execution-resources.ts"
 import type { IntegrationInvoker } from "./integration-contract.ts"
 import { createConcurrencyLimiter } from "./concurrency.ts"
@@ -17,9 +19,9 @@ import type { ConcurrencyLimiter } from "./concurrency.ts"
 import { createSignalTransport } from "./signal.ts"
 import type { SignalTransport } from "./signal.ts"
 import { ExecutionId } from "./schemas.ts"
-import { makeEngineLayer } from "./engine-layer.ts"
+import { engineLayer } from "./engine-layer.ts"
 
-export { makeEngineLayer } from "./engine-layer.ts"
+export { engineLayer } from "./engine-layer.ts"
 
 type DynamicService = Schema.Schema.Type<Schema.Top>
 
@@ -55,15 +57,18 @@ export interface WorkflowRuntime {
   listWorkflows(name?: string): ReadonlyArray<DefinedWorkflow>
   execute(options: {
     readonly workflow: DefinedWorkflow
-    readonly payload: unknown
+    readonly payload: WorkflowPayload
     readonly executionId: string
     readonly onEvent?: WorkflowEventSink
+  // A decoded schema value is whatever that schema declares, up to a class
+  // instance, and the step's own types are erased by the time it reaches here.
+  // oxlint-disable-next-line anti-slop/no-unknown-returns
   }): Promise<unknown>
   deliverSignal(options: {
     readonly workflow: DefinedWorkflow
     readonly executionId: string
     readonly deferredName: string
-    readonly payload: unknown
+    readonly payload: WorkflowPayload
     readonly onEvent?: WorkflowEventSink
   }): Promise<void>
   interrupt(options: {
@@ -95,9 +100,9 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
   const signals = createSignalTransport()
   const registeredExecutionIds = new Set<string>()
   const databasePath = options.databasePath
-  const resourceRegistry = makeExecutionResourceRegistry({
-    ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-    ...(options.integrations === undefined ? {} : { integrations: options.integrations }),
+  const resourceRegistry = createExecutionResourceRegistry({
+    ...whenPresent("secrets", options.secrets),
+    ...whenPresent("integrations", options.integrations),
     concurrency,
     signals
   })
@@ -107,9 +112,9 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     onEvent?: WorkflowEventSink
   ): void => {
     resourceRegistry.register(executionId, {
-      ...(onEvent === undefined ? {} : { events: onEvent }),
-      ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-      ...(options.integrations === undefined ? {} : { integrations: options.integrations }),
+      ...whenPresent("events", onEvent),
+      ...whenPresent("secrets", options.secrets),
+      ...whenPresent("integrations", options.integrations),
       concurrency,
       signals
     })
@@ -125,15 +130,15 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     const workflowLayers = Array.from(workflows.values()).map((workflow) => workflow.layer)
     const base =
       options.backend === "sqlite"
-        ? makeEngineLayer({
-            ...(databasePath === undefined ? {} : { databasePath }),
-            ...(options.sqliteBusyTimeoutMs === undefined ? {} : { sqliteBusyTimeoutMs: options.sqliteBusyTimeoutMs }),
-            ...(options.timerPollIntervalMs === undefined ? {} : { timerPollIntervalMs: options.timerPollIntervalMs })
+        ? engineLayer({
+            ...whenPresent("databasePath", databasePath),
+            ...whenPresent("sqliteBusyTimeoutMs", options.sqliteBusyTimeoutMs),
+            ...whenPresent("timerPollIntervalMs", options.timerPollIntervalMs)
           })
         : WorkflowEngine.layerMemory
     const runtimeDependencies = Layer.merge(
       base,
-      Layer.succeed(ExecutionResourceRegistry, resourceRegistry)
+      ExecutionResourceRegistry.layerOf(resourceRegistry)
     )
     return workflowLayers.reduce(
       (layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer),
@@ -181,9 +186,9 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
 
   return {
     backend: options.backend,
-    ...(databasePath === undefined ? {} : { databasePath }),
-    ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-    ...(options.integrations === undefined ? {} : { integrations: options.integrations }),
+    ...whenPresent("databasePath", databasePath),
+    ...whenPresent("secrets", options.secrets),
+    ...whenPresent("integrations", options.integrations),
     concurrency,
     signals,
 
@@ -220,10 +225,10 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
           executionId,
           payload
         ).pipe(
-          Effect.tap((result: unknown) =>
+          Effect.tap((result) =>
             emitWorkflowEvent({ type: "workflow.completed", executionId: ExecutionId.make(executionId), workflowName, result })
           ),
-          Effect.tapError((error: unknown) =>
+          Effect.tapError((error) =>
             emitWorkflowEvent({ type: "workflow.failed", executionId: ExecutionId.make(executionId), workflowName, error })
           )
         )
@@ -299,27 +304,26 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
 
 export const makeWorkflowEffect = (
   wf: DefinedWorkflow,
-  payload: unknown,
+  payload: WorkflowPayload,
   options: ExecuteWorkflowOptions = {}
 ) => {
-  const resources = makeExecutionResourceRegistry(
-    options.onEvent === undefined ? {} : { events: options.onEvent }
-  )
   const env = wf.layer.pipe(
-    Layer.provideMerge(makeEngineLayer(
+    Layer.provideMerge(engineLayer(
       options.engineDatabasePath === undefined ? {} : { databasePath: options.engineDatabasePath }
     )),
-    Layer.provideMerge(Layer.succeed(ExecutionResourceRegistry, resources))
+    Layer.provideMerge(ExecutionResourceRegistry.layer(
+      options.onEvent === undefined ? {} : { events: options.onEvent }
+    ))
   )
   const workflowName = String(wf.workflow.name ?? wf.name ?? "Workflow")
   const execution = Effect.gen(function* () {
     Schema.decodeUnknownSync(wf.input)(payload)
     yield* emitWorkflowEvent({ type: "workflow.started", workflowName, payload })
     const result = yield* wf.workflow.executeStandalone({ value: payload }).pipe(
-      Effect.tap((result: unknown) =>
+      Effect.tap((result) =>
         emitWorkflowEvent({ type: "workflow.completed", workflowName, result })
       ),
-      Effect.tapError((error: unknown) =>
+      Effect.tapError((error) =>
         emitWorkflowEvent({ type: "workflow.failed", workflowName, error })
       )
     )
@@ -333,12 +337,12 @@ export const makeWorkflowEffect = (
 
 export const executeWorkflow = (
   wf: DefinedWorkflow,
-  payload: unknown,
+  payload: WorkflowPayload,
   options: ExecuteWorkflowOptions = {}
 ) => Effect.runPromise(makeWorkflowEffect(wf, payload, options))
 
 // Execute a workflow to completion as a standalone program.
-export const run = (wf: DefinedWorkflow, payload: unknown) => {
+export const run = (wf: DefinedWorkflow, payload: WorkflowPayload) => {
   return makeWorkflowEffect(wf, payload).pipe(
     NodeRuntime.runMain
   )

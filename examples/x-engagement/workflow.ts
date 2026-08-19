@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { defineStep, defineWorkflow, secret, t } from "@mokronos/wfkit"
 import {
   draftReply as draftReplyAdapter,
@@ -112,7 +113,7 @@ export const postReply = defineStep({
     try {
       return await postReplyAdapter(input)
     } catch (error) {
-      if (typeof error === "object" && error !== null && "duplicateReply" in error) {
+      if (Predicate.isObjectOrArray(error) && "duplicateReply" in error) {
         return step.fail({ _tag: "DuplicateReplyRejected", postId: input.postId })
       }
       throw error

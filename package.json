@@ -40,7 +40,7 @@
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --build --noEmit && tsc -p apps/wf/web && tsc -p apps/integrations/web",
     "test": "bun test",
-    "verify": "bun run typecheck && bun test && bun run example:order-saga && bun run example:approval && bun run build && bun run build:control-plane && bun run build:site && bun run build:cli",
+    "verify": "bun run lint && bun run typecheck && bun test && bun run example:order-saga && bun run example:approval && bun run build && bun run build:control-plane && bun run build:site && bun run build:cli",
     "wf": "bun run apps/cli/src/main.ts"
   },
   "devDependencies": {

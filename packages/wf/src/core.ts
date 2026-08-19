@@ -1,14 +1,14 @@
+import { whenPresent } from "./optional.ts"
 import { createHash } from "node:crypto"
 import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } from "effect/unstable/workflow"
-import { Cause, Effect, Exit, Layer, Option, Schema } from "effect"
+import { Cause, Effect, Exit, Layer, Option, Predicate, Schema } from "effect"
 import type * as Duration from "effect/Duration"
 import { emitWorkflowEvent } from "./events.ts"
 import type { IntegrationInvoker } from "./integration-contract.ts"
 import {
-  ExecutionResourceRegistry,
-  makeExecutionResourceRegistry
+  ExecutionResourceRegistry
 } from "./execution-resources.ts"
-import type { WorkflowEvent } from "./schemas.ts"
+import type { SerializableValue, WorkflowEvent } from "./schemas.ts"
 import { ExecutionId, jsonSchemaOf } from "./schemas.ts"
 import {
   defaultSignalTransport,
@@ -210,7 +210,7 @@ export interface InMemoryExecutionOptions {
     readonly executionId: string
     readonly name: string
     readonly schema: SynchronousSchema<DynamicService>
-  }) => unknown | Promise<unknown>
+  }) => SerializableValue | Promise<SerializableValue>
   /** Execution-scoped signal adapter. Defaults to the legacy singleton. */
   readonly signalTransport?: SignalTransport
   readonly secrets?: SecretResolver
@@ -239,7 +239,11 @@ interface CompensationEntry {
   readonly invocation: number
   readonly result: unknown
   readonly input: unknown
-  readonly compensate: (result: unknown, input: unknown, reason: unknown) => unknown | Promise<unknown>
+  /** Pre-bound at registration, where the step's own input and output types are
+   *  still in scope. The registry holds compensations for many differently
+   *  typed steps, so binding here is what lets it avoid naming or widening
+   *  them at all. */
+  readonly compensate: (reason: Cause.Cause<unknown>) => void | Promise<void>
 }
 
 type ActivityFailure =
@@ -250,6 +254,9 @@ class AsyncFailure extends Error {
   readonly _tag = "AsyncFailure"
   readonly error: unknown
 
+  // A caught value. TypeScript types every catch binding as unknown because
+  // JavaScript lets any value be thrown, so there is nothing narrower to accept.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   constructor(error: unknown) {
     super(error instanceof Error ? error.message : "Async operation failed")
     this.name = "AsyncFailure"
@@ -257,15 +264,23 @@ class AsyncFailure extends Error {
   }
 }
 
+// A type guard's input has to be wider than the type it proves, so unknown is
+// the correct parameter type for one.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const isActivityFailure = (value: unknown): value is ActivityFailure =>
-  typeof value === "object" &&
-  value !== null &&
+  Predicate.isObjectOrArray(value) &&
   "_wfFailureType" in value &&
-  (value._wfFailureType === "terminal" || value._wfFailureType === "transient")
+  (value["_wfFailureType"] === "terminal" || value["_wfFailureType"] === "transient")
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters anti-slop/no-unknown-returns
 const unwrapActivityFailure = (error: unknown): unknown =>
   isActivityFailure(error) ? error.error : error
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters anti-slop/no-unknown-returns
 const typedStepFailure = (stepName: string, error: unknown): unknown =>
   isActivityFailure(error) && error._wfFailureType === "terminal"
     ? error.error
@@ -274,9 +289,15 @@ const typedStepFailure = (stepName: string, error: unknown): unknown =>
         cause: isActivityFailure(error) ? error.error : error
       })
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters anti-slop/no-unknown-returns
 const unwrapAsyncFailure = (error: unknown): unknown =>
   error instanceof AsyncFailure ? error.error : error
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const preserveNonDeterminismError = (error: unknown): NonDeterminismError => {
   if (error instanceof NonDeterminismError) return error
   throw error
@@ -327,6 +348,9 @@ const nextInvocation = (counters: Map<string, number>, name: string): number => 
 
 const decodeSync = <S extends SynchronousSchema<DynamicService>>(
   schema: S,
+  // A decoded schema value is whatever that schema declares, up to a class
+  // instance, and the step's own types are erased by the time it reaches here.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown
 ): S["Type"] =>
   Schema.decodeUnknownSync(schema)(value)
@@ -334,6 +358,9 @@ const decodeSync = <S extends SynchronousSchema<DynamicService>>(
 const encodeSync = <S extends SynchronousSchema<DynamicService>>(
   schema: S,
   value: S["Type"]
+// A decoded schema value is whatever that schema declares, up to a class
+// instance, and the step's own types are erased by the time it reaches here.
+// oxlint-disable-next-line anti-slop/no-unknown-returns
 ): unknown =>
   Schema.encodeSync(schema)(value)
 
@@ -423,7 +450,7 @@ const makeCtx = <WErrors>(
         type: "cancellation.received",
         executionId,
         compensate: outcome.compensate,
-        ...(outcome.actor === undefined ? {} : { actor: outcome.actor })
+        ...whenPresent("actor", outcome.actor)
       })
       // A plain failure exit: withCompensation finalizers run for compensate:
       // true. compensate: false never reaches here (the client interrupts the
@@ -477,7 +504,7 @@ const makeCtx = <WErrors>(
                  step,
                  input: executeInput,
                  context: makeStepContext(executionId, attempt, resolver),
-                 ...(integrations === undefined ? {} : { integrations })
+                 ...whenPresent("integrations", integrations)
                })
               if (isTerminalFailure(value)) {
                 throw value
@@ -532,6 +559,9 @@ const makeCtx = <WErrors>(
       activity = activity.pipe(
         Activity.retry({
           times: transientAttempts(step.retry) - 1,
+          // A caught value. TypeScript types every catch binding as unknown because
+          // JavaScript lets any value be thrown, so there is nothing narrower to accept.
+          // oxlint-disable-next-line anti-slop/no-unknown-parameters
           while: (error: unknown) =>
             isActivityFailure(error) && error._wfFailureType === "transient"
         }),
@@ -541,6 +571,9 @@ const makeCtx = <WErrors>(
       if (step.compensate !== undefined) {
         const compensate = step.compensate
         activity = activity.pipe(
+          // A decoded schema value is whatever that schema declares, up to a class
+          // instance, and the step's own types are erased by the time it reaches here.
+          // oxlint-disable-next-line anti-slop/no-unknown-parameters
           wf.withCompensation((value: unknown, cause: Cause.Cause<unknown>) =>
             Effect.gen(function* () {
               yield* emitWorkflowEvent({
@@ -582,6 +615,11 @@ const makeCtx = <WErrors>(
         )
       }
 
+      // SAFETY: the activity yielded here was built from this step's own input,
+      // output and errors schemas, so its failures are exactly Errors["Type"] plus
+      // the two engine failures named below. recordCall is the only other yield
+      // and cannot fail. The generator loses that because WorkflowValue's
+      // requirement channel is the DynamicService wildcard.
       return Effect.gen(function* () {
         yield* recordCall(call)
         return yield* activity
@@ -600,6 +638,9 @@ const makeCtx = <WErrors>(
       const activityName = `${name}#${invocation}`
       const branches = effects.length
       const call: OrchestrationCall = { kind: "all", name, counter: invocation, branches }
+      // SAFETY: WorkflowAllSuccess/WorkflowAllError are computed from the same
+      // Effects tuple that produced these branches, so the re-declared channels
+      // are derived from the inputs rather than asserted about them.
       return Effect.gen(function* () {
         yield* recordCall(call)
         yield* emitWorkflowEvent({
@@ -613,6 +654,8 @@ const makeCtx = <WErrors>(
         yield* Effect.sync(() => {
           parallelDepth++
         })
+        // SAFETY: as above — Effect.all over the branch effects, whose success and
+        // error types the two helpers read straight off the Effects tuple.
         const combined = Effect.all(effects, {
           concurrency: options?.concurrency ?? "unbounded"
         }) as WorkflowValue<WorkflowAllSuccess<Effects>, WorkflowAllError<Effects>>
@@ -649,6 +692,9 @@ const makeCtx = <WErrors>(
       const invocation = nextInvocation(counters, baseName)
       const sleepName = `${baseName}#${invocation}`
       const call: OrchestrationCall = { kind: "sleep", name: baseName, counter: invocation }
+      // SAFETY: this resolves through raceDurable to either slept or cancelled.
+      // Nothing in the block fails except replay non-determinism and Cancelled,
+      // which is what the annotation names.
       return Effect.gen(function* () {
         yield* recordCall(call)
         yield* emitWorkflowEvent({
@@ -659,6 +705,8 @@ const makeCtx = <WErrors>(
           activityName: sleepName,
           duration
         })
+        // SAFETY: raceDurable's branches are the sleep and the cancellation signal,
+        // so the outcome is one of the two literal tags matched below.
         const outcome = (yield* raceDurable(`race:${sleepName}`, [
           // Sleeps under the engine's in-memory threshold (60s) run inside
           // an activity that holds the entity mailbox, so a cancellation
@@ -694,6 +742,9 @@ const makeCtx = <WErrors>(
       const call: OrchestrationCall = { kind: "signal", name, counter: invocation }
       const payloadSchema = jsonSchemaOf(schema)
 
+      // SAFETY: the wait resolves to a delivered signal or a timeout; the only
+      // failures are replay non-determinism, Cancelled, and the payload's own
+      // decode failure, all named in the annotation.
       return Effect.gen(function* () {
         yield* recordCall(call)
         // Delivery-side validation needs the schema of the wait the run is
@@ -709,7 +760,7 @@ const makeCtx = <WErrors>(
           invocation,
           activityName: waitName,
           timeout: opts?.timeout,
-          ...(payloadSchema === undefined ? {} : { payloadSchema })
+          ...whenPresent("payloadSchema", payloadSchema)
         })
 
         const deferredName = `signal:${waitName}`
@@ -733,6 +784,8 @@ const makeCtx = <WErrors>(
               }).pipe(Effect.map(() => ({ type: "timeout" as const })))
             ]
 
+        // SAFETY: raceDurable's branches here are the signal and the timer, so the
+        // outcome carries one of those two literal tags.
         const outcome = (yield* raceDurable(`race:${waitName}`, [
           signalBranch,
           ...timeoutBranch,
@@ -819,7 +872,7 @@ const makeCtx = <WErrors>(
           name,
           invocation,
           activityName,
-          ...(options.reason === undefined ? {} : { reason: options.reason })
+          ...whenPresent("reason", options.reason)
         })
         const result = decodeSync(options.output, yield* Effect.tryPromise({
           try: async () => options.run(),
@@ -831,7 +884,7 @@ const makeCtx = <WErrors>(
           name,
           invocation,
           activityName,
-          ...(options.reason === undefined ? {} : { reason: options.reason }),
+          ...whenPresent("reason", options.reason),
           result
         })
         return result
@@ -843,7 +896,7 @@ const makeCtx = <WErrors>(
             name,
             invocation,
             activityName,
-            ...(options.reason === undefined ? {} : { reason: options.reason }),
+            ...whenPresent("reason", options.reason),
             error: unwrapAsyncFailure(error)
           })
         )
@@ -856,6 +909,9 @@ const makeCtx = <WErrors>(
       }).pipe(Effect.mapError((error) =>
         new CodeExecutionError({ name, cause: unwrapAsyncFailure(error) })
       ))
+      // SAFETY: the activity declares Schema.Unknown for its errors and mapError
+      // rewraps every failure as CodeExecutionError, so that plus
+      // NonDeterminismError is the whole channel regardless of what ran.
       return Effect.gen(function* () {
         yield* recordCall(call)
         return yield* activity
@@ -911,6 +967,9 @@ const makeInMemoryCtx = <WErrors>(
       const invocation = nextInvocation(counters, step.name)
       const activityName = `${step.name}#${invocation}`
       const input = decodeSync(step.input, rawInput)
+      // SAFETY: the durable step path — mapError below funnels every activity
+      // failure into the step's declared errors, and the engine's requirement is
+      // provided by the workflow's layer at the composition root.
       return Effect.tryPromise({
         try: async () => {
           await recordCall({ kind: "step", name: step.name, counter: invocation })
@@ -956,9 +1015,7 @@ const makeInMemoryCtx = <WErrors>(
                       step,
                       input: executeInput,
                       context: stepContext,
-                      ...(options.integrations === undefined
-                        ? {}
-                        : { integrations: options.integrations })
+                      ...whenPresent("integrations", options.integrations)
                     })
                 if (isTerminalFailure(value)) {
                   throw {
@@ -986,9 +1043,9 @@ const makeInMemoryCtx = <WErrors>(
                     invocation,
                     result,
                     input,
-                    compensate: (result, compensationInput, reason) => compensate(
+                    compensate: (reason) => compensate(
                       decodeSync(step.output, result),
-                      decodeSync(step.input, compensationInput),
+                      decodeSync(step.input, input),
                       reason
                     )
                   })
@@ -1059,6 +1116,9 @@ const makeInMemoryCtx = <WErrors>(
       const invocation = nextInvocation(counters, name)
       const activityName = `${name}#${invocation}`
       const payloadSchema = jsonSchemaOf(schema)
+      // SAFETY: the durable signal path. Every branch below returns one of the
+      // literal-tagged outcomes, and decode failures surface as the step's
+      // declared errors.
       return Effect.tryPromise({
         try: async () => {
           await recordCall({ kind: "signal", name, counter: invocation })
@@ -1070,7 +1130,7 @@ const makeInMemoryCtx = <WErrors>(
             invocation,
             activityName,
             timeout: opts?.timeout,
-            ...(payloadSchema === undefined ? {} : { payloadSchema })
+            ...whenPresent("payloadSchema", payloadSchema)
           })
 
           const buffered = signals.takeBuffered(executionId, name, schema)
@@ -1181,7 +1241,7 @@ const makeInMemoryCtx = <WErrors>(
         await recordCall(call)
         const key = orchestrationValueKey(call)
         const existing = determinism.values.get(key)
-        if (typeof existing === "number") {
+        if (Predicate.isNumber(existing)) {
           return existing
         }
         const value = Math.random()
@@ -1198,6 +1258,9 @@ const makeInMemoryCtx = <WErrors>(
       const invocation = nextInvocation(counters, name)
       const activityName = `${name}#${invocation}`
       const call: OrchestrationCall = { kind: "code", name, counter: invocation }
+      // SAFETY: the in-memory counterpart of the code path above: every failure
+      // is rewrapped as CodeExecutionError, leaving only that and
+      // NonDeterminismError.
       return Effect.tryPromise({
         try: async () => {
           await recordCall(call)
@@ -1207,7 +1270,7 @@ const makeInMemoryCtx = <WErrors>(
             name,
             invocation,
             activityName,
-            ...(options.reason === undefined ? {} : { reason: options.reason })
+            ...whenPresent("reason", options.reason)
           })
 
           const key = orchestrationValueKey(call)
@@ -1219,7 +1282,7 @@ const makeInMemoryCtx = <WErrors>(
               name,
               invocation,
               activityName,
-              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              ...whenPresent("reason", options.reason),
               result
             })
             return result
@@ -1234,7 +1297,7 @@ const makeInMemoryCtx = <WErrors>(
               name,
               invocation,
               activityName,
-              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              ...whenPresent("reason", options.reason),
               result
             })
             return result
@@ -1245,7 +1308,7 @@ const makeInMemoryCtx = <WErrors>(
               name,
               invocation,
               activityName,
-              ...(options.reason === undefined ? {} : { reason: options.reason }),
+              ...whenPresent("reason", options.reason),
               error
             })
             throw error
@@ -1275,6 +1338,8 @@ const makeInMemoryCtx = <WErrors>(
             determinism.blocks.push({ call, branches: branchCalls })
           }
         })
+      // SAFETY: the in-memory `all`. Its channels are read off the same branch
+      // effects, as in the durable path.
       return Effect.gen(function* () {
         yield* record
         yield* emitEvent({
@@ -1431,15 +1496,15 @@ export const defineWorkflow = <
       determinism,
       emit,
       {
-        ...(options.stepExecutor === undefined ? {} : { stepExecutor: options.stepExecutor }),
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
-        ...(options.signalTimeout === undefined ? {} : { signalTimeout: options.signalTimeout }),
-        ...(options.signalValue === undefined ? {} : { signalValue: options.signalValue }),
-        ...(options.signalTransport === undefined ? {} : { signalTransport: options.signalTransport }),
-        ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-        ...(options.integrations === undefined ? {} : { integrations: options.integrations }),
-        ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency })
+        ...whenPresent("stepExecutor", options.stepExecutor),
+        ...whenPresent("signal", options.signal),
+        ...whenPresent("sleep", options.sleep),
+        ...whenPresent("signalTimeout", options.signalTimeout),
+        ...whenPresent("signalValue", options.signalValue),
+        ...whenPresent("signalTransport", options.signalTransport),
+        ...whenPresent("secrets", options.secrets),
+        ...whenPresent("integrations", options.integrations),
+        ...whenPresent("concurrency", options.concurrency)
       }
     )
 
@@ -1465,7 +1530,7 @@ export const defineWorkflow = <
             })
             yield* Effect.promise(() =>
               Promise.resolve(
-                compensation.compensate(compensation.result, compensation.input, error)
+                compensation.compensate(Cause.fail(error))
               )
             ).pipe(
               Effect.tapError((compensationError) =>
@@ -1493,18 +1558,21 @@ export const defineWorkflow = <
       )
     )
 
-    const resources = makeExecutionResourceRegistry({
-      ...(options.onEvent === undefined ? {} : { events: options.onEvent }),
-      ...(options.secrets === undefined ? {} : { secrets: options.secrets }),
-      ...(options.integrations === undefined ? {} : { integrations: options.integrations }),
-      ...(options.concurrency === undefined ? {} : { concurrency: options.concurrency }),
-      ...(options.signalTransport === undefined ? {} : { signals: options.signalTransport })
+    const resources = ExecutionResourceRegistry.layer({
+      ...whenPresent("events", options.onEvent),
+      ...whenPresent("secrets", options.secrets),
+      ...whenPresent("integrations", options.integrations),
+      ...whenPresent("concurrency", options.concurrency),
+      ...whenPresent("signals", options.signalTransport)
     })
 
     const exit = await Effect.runPromiseExit(
+      // SAFETY: the registry layer is provided on the line above, which closes
+      // the requirement channel — hence `never`. What remains is the workflow's
+      // own declared errors, which is what the Exit below is inspected for.
       effect.pipe(
-        Effect.provideService(ExecutionResourceRegistry, resources)
-      ) as Effect.Effect<Output["Type"], unknown, never>,
+        Effect.provide(resources)
+      ) as Effect.Effect<Output["Type"], Errors["Type"], never>,
       options.signal === undefined ? {} : { signal: options.signal }
     )
     if (Exit.isSuccess(exit)) {
@@ -1522,15 +1590,21 @@ export const defineWorkflow = <
     output: config.output,
     errors,
     workflow: workflowHandle,
+    // SAFETY: the workflow's layer provides no services of its own; it requires
+    // the engine and the resource registry, which the runtime supplies at the
+    // composition root.
     layer: layer as Layer.Layer<
       never,
       never,
       WorkflowEngine.WorkflowEngine | ExecutionResourceRegistry
     >,
     execute: (payload) => {
+      // SAFETY: executeStandalone runs this very workflow handle, so it fails
+      // only with the workflow's declared errors. The engine requirement is left
+      // open deliberately: the caller chooses which engine to provide.
       return workflowHandle.executeStandalone(payload) as Effect.Effect<
         Output["Type"],
-        Errors["Type"] | unknown,
+        Errors["Type"],
         WorkflowEngine.WorkflowEngine
       >
     },

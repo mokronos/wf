@@ -1,8 +1,9 @@
+import { Predicate, Schema } from "effect"
 import { describe, expect, test } from "bun:test"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 
-type Json = null | boolean | number | string | Json[] | { readonly [key: string]: Json }
+type Json = typeof Schema.Json.Type
 
 interface FixtureObject {
   readonly [key: string]: Json
@@ -84,9 +85,33 @@ const fixturesPath = path.join(
   "examples/spec/mock/fixtures/fully-specified-workflows.json"
 )
 
-const fixtures = JSON.parse(readFileSync(fixturesPath, "utf8")) as WorkflowFixtures
+/** The fixture file is the input to every case below, so it is worth decoding
+ *  rather than asserting: a malformed fixture then fails here, by name, instead
+ *  of somewhere in the middle of a run. */
+const WorkflowFixturesSchema = Schema.Struct({
+  workflows: Schema.Array(Schema.Struct({
+    slug: Schema.String,
+    cases: Schema.Array(Schema.Struct({
+      caseId: Schema.String,
+      expectedOutput: Schema.Json,
+      nodes: Schema.Array(Schema.Struct({
+        id: Schema.String,
+        operation: Schema.String,
+        cacheKey: Schema.String,
+        cacheable: Schema.Boolean,
+        input: Schema.Json,
+        expectedOutput: Schema.Json
+      }))
+    }))
+  }))
+})
 
-const deepClone = <T extends Json>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+const fixtures: WorkflowFixtures = Schema.decodeUnknownSync(WorkflowFixturesSchema)(
+  JSON.parse(readFileSync(fixturesPath, "utf8"))
+)
+
+const deepClone = <T extends Json>(value: T): Json =>
+  Schema.decodeUnknownSync(Schema.Json)(JSON.parse(JSON.stringify(value)))
 
 const executeCase = (
   workflowCase: WorkflowCase,
@@ -161,29 +186,29 @@ const runOperation = (operation: string, input: Json): Json => {
   }
 }
 
-const asRecord = (value: unknown): FixtureObject => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+const asRecord = (value: Json | undefined): FixtureObject => {
+  if (!Predicate.isObject(value)) {
     throw new Error("Expected object")
   }
-  return value as FixtureObject
+  return Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(value)
 }
 
-const asArray = (value: unknown): unknown[] => {
+const asArray = (value: Json | undefined): Json[] => {
   if (!Array.isArray(value)) {
     throw new Error("Expected array")
   }
   return value
 }
 
-const asString = (value: unknown): string => {
-  if (typeof value !== "string") {
+const asString = (value: Json | undefined): string => {
+  if (!Predicate.isString(value)) {
     throw new Error("Expected string")
   }
   return value
 }
 
-const asNumber = (value: unknown): number => {
-  if (typeof value !== "number") {
+const asNumber = (value: Json | undefined): number => {
+  if (!Predicate.isNumber(value)) {
     throw new Error("Expected number")
   }
   return value
@@ -234,7 +259,7 @@ const mathCheckTolerance = (input: Json): Json => {
   const needsReview: string[] = []
   for (const problem of problems) {
     const id = asString(problem.id)
-    const tolerance = typeof problem.tolerance === "number" ? problem.tolerance : 0
+    const tolerance = Predicate.isNumber(problem.tolerance) ? problem.tolerance : 0
     const answer = answers.get(id)
     const expected = asNumber(problem.expected)
     if (answer !== undefined && Math.abs(answer - expected) <= tolerance) {
@@ -296,7 +321,7 @@ const mathGenerateReport = (input: Json): Json => {
     if (penalizedProblems.includes(id)) {
       continue
     }
-    const tolerance = typeof problem.tolerance === "number" ? problem.tolerance : 0
+    const tolerance = Predicate.isNumber(problem.tolerance) ? problem.tolerance : 0
     const answer = answers.get(id)
     if (answer !== undefined && Math.abs(answer - asNumber(problem.expected)) <= tolerance) {
       score += 1
@@ -389,7 +414,7 @@ const fileSummarize = (input: Json): Json => {
     runId,
     status: "completed",
     processed: asArray(data.processed).map(asString),
-    quarantined: asArray(data.invalid).map((item) => deepClone(item as Json)),
+    quarantined: asArray(data.invalid).map((item) => deepClone(item)),
     manifest: `memory://manifests/${runId}.json`
   }
 }
@@ -436,7 +461,7 @@ const buildExecuteTasks = (input: Json): Json => {
     }
     const hash = asString(task.hash)
     if (cache[hash] !== undefined) {
-      artifacts[taskId] = cache[hash] as Json
+      artifacts[taskId] = cache[hash]
       taskResults.push({ id: taskId, source: "cache" })
       continue
     }

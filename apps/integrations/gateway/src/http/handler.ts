@@ -1,10 +1,12 @@
+import { Schema } from "effect"
 import { authenticateClient, authorizeMutation } from "../authorize.ts"
 import type { MutationAuthorization } from "../authorize.ts"
 import type { GatewayStore } from "../store.ts"
 import { matchRoute, pathExists, RequestBodyError } from "./router.ts"
+import type { JsonEncodable } from "./router.ts"
 import type { Route } from "./router.ts"
 
-const json = (status: number, body: unknown): Response =>
+const json = (status: number, body: JsonEncodable): Response =>
   new Response(`${JSON.stringify(body)}\n`, {
     status,
     headers: { "content-type": "application/json; charset=utf-8" }
@@ -22,8 +24,8 @@ const presentedSecret = (request: Request): string | undefined => {
   return apiKey === null || apiKey.length === 0 ? undefined : apiKey
 }
 
-const readBody = async (request: Request): Promise<unknown> => {
-  if (request.method === "GET" || request.method === "DELETE") return undefined
+const readBody = async (request: Request): Promise<Schema.Json> => {
+  if (request.method === "GET" || request.method === "DELETE") return {}
   const text = await request.text()
   if (text.trim().length === 0) return {}
   try {

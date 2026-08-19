@@ -1,3 +1,4 @@
+import { Schema } from "effect"
 import { describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -126,11 +127,18 @@ describe("generated effect modules are real modules", () => {
     try {
       // The point of the effect target is removing hand-transcription, so the
       // output has to actually load and behave like a hand-written step.
-      const loaded = await import(pathToFileURL(file).href) as Record<string, unknown>
-      const step = loaded["ticketsTicketsCreate"] as {
-        kind: string
-        source: { kind: string; alias: string; tool: string }
-      }
+      // An ES module namespace from a dynamic import holds arbitrary exports; this is
+      // what TypeScript itself infers for `await import()`.
+      // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type
+      const loaded: Record<string, unknown> = await import(pathToFileURL(file).href)
+      const step = Schema.decodeUnknownSync(Schema.Struct({
+        kind: Schema.String,
+        source: Schema.Struct({
+          kind: Schema.String,
+          alias: Schema.String,
+          tool: Schema.String
+        })
+      }))(loaded["ticketsTicketsCreate"])
       expect(step.kind).toBe("integration")
       expect(step.source).toEqual({
         kind: "gateway",

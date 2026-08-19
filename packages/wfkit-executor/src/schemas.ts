@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect"
+import { Function, Option, Schema } from "effect"
 
 /** Which principal a connection — and so every tool reached through it —
  *  belongs to. `org` credentials are shared by the whole tenant; `user`
@@ -204,14 +204,14 @@ export const IntegrationsResponse = Schema.Struct({
 })
 export type IntegrationsResponse = typeof IntegrationsResponse.Type
 
-export const decodeIntegrationsResponse = (value: unknown): IntegrationsResponse =>
-  Schema.decodeUnknownSync(IntegrationsResponse)(value)
+export const decodeIntegrationsResponse = Schema.decodeUnknownSync(IntegrationsResponse)
 
 const ErrorPayload = Schema.Struct({ error: Schema.String })
 
 /** A failed dashboard request carries only `{ error }`, so callers can report the
  *  server's message instead of a decoding failure. */
-export const errorPayloadMessage = (value: unknown): string | undefined =>
-  Option.getOrUndefined(
-    Option.map(Schema.decodeUnknownOption(ErrorPayload)(value), (payload) => payload.error)
-  )
+export const errorPayloadMessage = Function.flow(
+  Schema.decodeUnknownOption(ErrorPayload),
+  Option.map((payload) => payload.error),
+  Option.getOrUndefined
+)

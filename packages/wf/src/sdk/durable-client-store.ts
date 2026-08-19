@@ -22,7 +22,7 @@ const NewExecution = Schema.Struct({
   id: Schema.String,
   artifactId: Schema.optionalKey(Schema.String),
   workflowName: Schema.String,
-  payload: Schema.Unknown,
+  payload: Schema.UndefinedOr(Schema.Json),
   idempotencyKey: Schema.optionalKey(Schema.String),
   actor: Schema.optionalKey(Schema.String),
   sourceHash: Schema.optionalKey(Schema.String)

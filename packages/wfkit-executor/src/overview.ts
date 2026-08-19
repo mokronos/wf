@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { listExecutorIntegrations } from "./catalog.ts"
 import type { ExecutorCatalog } from "./catalog.ts"
 import { listExecutorConnections } from "./connections.ts"
@@ -52,13 +53,13 @@ export const createIntegrationOverview = (
       name: integration.name,
       description: integration.description,
       kind: integration.kind,
-      ...(integration.displayUrl === undefined ? {} : { displayUrl: integration.displayUrl }),
+      ...whenPresent("displayUrl", integration.displayUrl),
       requiresAuthentication: integration.authMethods.length > 0 &&
         !integration.authMethods.some((method) => method.kind === "none"),
       authMethods: integration.authMethods,
       connections: owned,
       tools,
-      ...(errors.length === 0 ? {} : { toolError: errors.join("; ") })
+      ...whenPresent("toolError", errors.length === 0 ? undefined : errors.join("; "))
     }
   }))
   return overviews.toSorted((left, right) => left.name.localeCompare(right.name))

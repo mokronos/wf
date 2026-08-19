@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { X } from "lucide-react"
 
 import { MetadataList } from "@/components/metadata-list"
@@ -88,7 +89,7 @@ export function NodeInspector({
   readonly node: WorkflowGraphNode
   readonly onClose: () => void
 }) {
-  const reason = typeof node.metadata.reason === "string"
+  const reason = Predicate.isString(node.metadata.reason)
     ? node.metadata.reason
     : node.description
 

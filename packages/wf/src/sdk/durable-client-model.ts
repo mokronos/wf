@@ -1,3 +1,5 @@
+import { whenPresent } from "../optional.ts"
+import type { WorkflowPayload } from "../schemas.ts"
 import { Schema } from "effect"
 import {
   WorkflowHistoryEvent,
@@ -12,11 +14,16 @@ const StoredValueJson = Schema.fromJsonString(
   Schema.Struct({ value: Schema.optionalKey(Schema.Unknown) })
 )
 
-export const encodeStoredValue = (value: unknown): string =>
+export const encodeStoredValue = (value: WorkflowPayload): string =>
   Schema.encodeSync(StoredValueJson)({ value })
 
-export const decodeStoredValue = (json: string): unknown =>
-  Schema.decodeUnknownSync(StoredValueJson)(json).value
+/** Two steps on purpose: the envelope says whether a value was stored at all,
+ *  then the value itself is parsed. Anything in there survived JSON.stringify,
+ *  so JSON-or-absent is the whole of what it can be. */
+export const decodeStoredValue = (json: string): WorkflowPayload =>
+  Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Json))(
+    Schema.decodeUnknownSync(StoredValueJson)(json).value
+  )
 
 export const DurableExecutionRow = Schema.Struct({
   id: Schema.String,
@@ -51,11 +58,11 @@ export const durableExecutionRecord = (
   row: DurableExecutionRow
 ): WorkflowExecutionRecord => ({
   executionId: row.id,
-  ...(row.artifact_id === null ? {} : { artifactId: row.artifact_id }),
+  ...whenPresent("artifactId", row.artifact_id),
   workflowName: row.workflow_name,
   status: row.status,
   payload: decodeStoredValue(row.payload_json),
   startedAt: row.started_at,
   ...optionalFinishedAt(row.finished_at ?? undefined),
-  ...(row.source_hash === null ? {} : { sourceHash: row.source_hash })
+  ...whenPresent("sourceHash", row.source_hash)
 })

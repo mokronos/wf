@@ -1,4 +1,5 @@
-import { Schema } from "effect"
+import { whenPresent, whenPresentMap } from "./optional.ts"
+import { Predicate, Schema } from "effect"
 
 /** The client is deliberately dumb: authenticate, send, decode. Every decision
  * about whether a call may happen, which connection serves it, and whether a
@@ -18,7 +19,7 @@ export class GatewayError extends Error {
   readonly status: number
   readonly body: unknown
 
-  constructor(status: number, body: unknown, message: string) {
+  constructor(status: number, body: Json, message: string) {
     super(message)
     this.name = "GatewayError"
     this.status = status
@@ -82,7 +83,7 @@ const isOutcome = Schema.is(InvocationOutcome)
 
 export interface GatewayClient {
   readonly url: string
-  request(method: string, path: string, body?: unknown): Promise<unknown>
+  request(method: string, path: string, body?: Json): Promise<Json>
 
   /** The tools this key can reach. Grant-scoped, so an ungranted tool is
    *  absent rather than present-and-failing.
@@ -120,15 +121,15 @@ export const createGatewayClient = (options: GatewayClientOptions): GatewayClien
   const send = async (
     method: string,
     path: string,
-    body?: unknown
-  ): Promise<{ readonly ok: boolean; readonly status: number; readonly parsed: unknown }> => {
+    body?: Json
+  ): Promise<{ readonly ok: boolean; readonly status: number; readonly parsed: Json }> => {
     const response = await doFetch(`${base}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${options.apiKey}`,
-        ...(body === undefined ? {} : { "content-type": "application/json" })
+        ...whenPresentMap("content-type", body, () => "application/json")
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) })
+      ...whenPresent("body", JSON.stringify(body))
     })
     const text = await response.text()
     return {
@@ -138,21 +139,21 @@ export const createGatewayClient = (options: GatewayClientOptions): GatewayClien
     }
   }
 
-  const failure = (method: string, path: string, status: number, parsed: unknown): GatewayError => {
+  const failure = (method: string, path: string, status: number, parsed: Json): GatewayError => {
     // The gateway states a refusal in `error`; a policy answer states it in
     // `reason`. Reading both is what keeps "alias not granted" from being
     // reported as the generic "failed with 403".
-    const message = typeof parsed === "object" && parsed !== null
+    const message = Predicate.isObjectOrArray(parsed)
       ? "error" in parsed
-        ? String((parsed as { error: unknown }).error)
+        ? String(parsed["error"])
         : "reason" in parsed
-        ? String((parsed as { reason: unknown }).reason)
+        ? String(parsed["reason"])
         : `${method} ${path} failed with ${status}`
       : `${method} ${path} failed with ${status}`
     return new GatewayError(status, parsed, message)
   }
 
-  const request = async (method: string, path: string, body?: unknown): Promise<unknown> => {
+  const request = async (method: string, path: string, body?: Json): Promise<Json> => {
     const response = await send(method, path, body)
     if (!response.ok) throw failure(method, path, response.status, response.parsed)
     return response.parsed

@@ -52,7 +52,7 @@ const run = (targets, index = 0) => {
     removeSignalHandlers()
     if (retrying) return
     if (signal) process.kill(process.pid, signal)
-    process.exit(typeof code === "number" ? code : 1)
+    process.exit(code ?? 1)
   })
 }
 

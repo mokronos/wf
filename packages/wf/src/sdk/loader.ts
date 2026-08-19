@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { createHash } from "node:crypto"
 import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core.ts"
 import * as authoring from "../authoring.ts"
@@ -26,8 +27,11 @@ export type ArtifactValidation =
   | { readonly valid: true; readonly loaded: LoadedWorkflow; readonly diagnostics: ReadonlyArray<string> }
   | { readonly valid: false; readonly diagnostics: ReadonlyArray<string> }
 
+// A type guard's input has to be wider than the type it proves, so unknown is
+// the correct parameter type for one.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const isDefinedWorkflow = (value: unknown): value is DefinedWorkflow => {
-  if ((typeof value !== "object" && typeof value !== "function") || value === null) {
+  if (!Predicate.isObjectOrArray(value) && !Predicate.isFunction(value)) {
     return false
   }
   return DefinedWorkflowTypeId in value
@@ -35,6 +39,9 @@ export const isDefinedWorkflow = (value: unknown): value is DefinedWorkflow => {
 
 interface WorkflowModule {
   readonly default?: unknown
+  // An ES module namespace from a dynamic import holds arbitrary exports; this is
+  // what TypeScript itself infers for `await import()`.
+  // oxlint-disable-next-line anti-slop/no-unsafe-dictionary-type
   readonly [exportName: string]: unknown
 }
 
@@ -50,7 +57,7 @@ const compileWorkflowSource = async (artifact: WorkflowArtifact): Promise<string
   installAuthoringModule()
   const source = rewriteWfImports(artifact.source)
 
-  if (typeof Bun !== "undefined" && Bun.Transpiler !== undefined) {
+  if (Predicate.isNotUndefined(globalThis.Bun) && Bun.Transpiler !== undefined) {
     const transpiler = new Bun.Transpiler({
       loader: "ts",
       target: "bun"

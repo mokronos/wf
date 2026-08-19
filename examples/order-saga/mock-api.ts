@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 // A self-contained mock of the three services the order saga talks to:
 // inventory, payments, and shipping. Runs on a random localhost port via
 // Bun.serve, keeps all state in memory, and exposes a snapshot for the
@@ -66,19 +67,19 @@ export const startMockApi = (options: {
 
   const readBody = async (request: Request): Promise<Record<string, string | number>> => {
     const parsed = await request.json()
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    if (!Predicate.isObject(parsed)) {
       throw new Error("Mock API expects a JSON object body")
     }
     const entries = Object.entries(parsed).filter(
       (entry): entry is [string, string | number] =>
-        typeof entry[1] === "string" || typeof entry[1] === "number"
+        Predicate.isString(entry[1]) || Predicate.isNumber(entry[1])
     )
     return Object.fromEntries(entries)
   }
 
   const requireString = (body: Record<string, string | number>, key: string): string => {
     const value = body[key]
-    if (typeof value !== "string") {
+    if (!Predicate.isString(value)) {
       throw new Error(`Mock API expected string field "${key}"`)
     }
     return value
@@ -86,7 +87,7 @@ export const startMockApi = (options: {
 
   const requireNumber = (body: Record<string, string | number>, key: string): number => {
     const value = body[key]
-    if (typeof value !== "number") {
+    if (!Predicate.isNumber(value)) {
       throw new Error(`Mock API expected number field "${key}"`)
     }
     return value

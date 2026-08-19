@@ -1,10 +1,11 @@
+import { whenPresent, whenPresentMap } from "@mokronos/wfkit"
 import {
   ConnectionName,
   IntegrationSlug,
   parseToolAddress,
   ToolAddress
 } from "@executor-js/sdk/core"
-import { Option, Schema } from "effect"
+import { Option, Predicate, Schema } from "effect"
 import { runExecutor } from "./default-host.ts"
 import type { ExecutorRunner } from "./host.ts"
 import {
@@ -113,9 +114,9 @@ export interface ExecutorTools {
 export const createExecutorTools = (runner: ExecutorRunner): ExecutorTools => {
   const summaries = async (filter: ExecutorToolFilter = {}) => {
     const tools = await runner.run((executor) => executor.tools.list({
-      ...(filter.integration === undefined ? {} : { integration: IntegrationSlug.make(filter.integration) }),
-      ...(filter.owner === undefined ? {} : { owner: filter.owner }),
-      ...(filter.connection === undefined ? {} : { connection: ConnectionName.make(filter.connection) })
+      ...whenPresentMap("integration", filter.integration, IntegrationSlug.make),
+      ...whenPresent("owner", filter.owner),
+      ...whenPresentMap("connection", filter.connection, ConnectionName.make)
     }))
     const callableTools = tools.filter((tool) => String(tool.address).startsWith("tools."))
     return Schema.decodeUnknownSync(Schema.Array(ExecutorToolSummary))(
@@ -149,18 +150,16 @@ export const createExecutorTools = (runner: ExecutorRunner): ExecutorTools => {
     const hasMcpEnvelopeOutput = normalizedOutputSchema === compactMcpOutputSchema
     return Schema.decodeUnknownSync(ExecutorTool)({
       ...summary,
-      ...(inputSchema === undefined ? {} : { inputSchema }),
-      ...(normalizedOutputSchema === undefined ? {} : { outputSchema: normalizedOutputSchema }),
-      ...(schemaDefinitions === undefined ? {} : { schemaDefinitions }),
-      ...(schema?.inputTypeScript === undefined ? {} : { inputTypeScript: schema.inputTypeScript }),
+      ...whenPresent("inputSchema", inputSchema),
+      ...whenPresent("outputSchema", normalizedOutputSchema),
+      ...whenPresent("schemaDefinitions", schemaDefinitions),
+      ...whenPresent("inputTypeScript", schema?.inputTypeScript),
       ...(hasMcpEnvelopeOutput
         ? { outputTypeScript: "Json" }
         : schema?.outputTypeScript === undefined
           ? {}
           : { outputTypeScript: schema.outputTypeScript }),
-      ...(schema?.typeScriptDefinitions === undefined
-        ? {}
-        : { typeScriptDefinitions: schema.typeScriptDefinitions })
+      ...whenPresent("typeScriptDefinitions", schema?.typeScriptDefinitions)
     })
   }
 
@@ -183,7 +182,7 @@ export const createExecutorTools = (runner: ExecutorRunner): ExecutorTools => {
     list: async (filter: ExecutorToolFilter = {}) =>
       await Promise.all((await summaries(filter)).map(describeSummary)),
     describe: async (target) => {
-      const isAddress = typeof target === "string"
+      const isAddress = Predicate.isString(target)
       const candidates = await summaries(
         isAddress
           ? addressFilter(target)

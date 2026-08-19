@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
+import { Cause, Option, Predicate, Schema } from "effect"
 import { defineStep, defineWorkflow } from "../src/core"
 import { deliverSignal, SignalDeliveryError } from "../src/signal"
 
@@ -18,7 +18,7 @@ describe("Phase 3 signals", () => {
       output: Schema.Struct({ paymentId: Schema.String }),
       execute: async (input) => ({ paymentId: `pay_${input.orderId}` }),
       compensate: async (result, input, reason) => {
-        compensations.push({ result, input, reason })
+        compensations.push({ result, input, reason: Cause.findErrorOption(reason) })
       }
     })
 
@@ -54,7 +54,7 @@ describe("Phase 3 signals", () => {
       {
         result: { paymentId: "pay_2" },
         input: { orderId: "2" },
-        reason: { _tag: "Rejected", reason: "no approval" }
+        reason: Option.some({ _tag: "Rejected", reason: "no approval" })
       }
     ])
   })
@@ -120,9 +120,7 @@ describe("Phase 3 signals", () => {
 
     const completed = events.filter(
       (event): event is { readonly type: "step.completed"; readonly activityName: string } =>
-        typeof event === "object" &&
-        event !== null &&
-        (event as { readonly type?: unknown }).type === "step.completed"
+        Predicate.isObject(event) && event["type"] === "step.completed"
     )
     expect(completed.map((event) => event.activityName)).toEqual([
       "sendReminder#1",

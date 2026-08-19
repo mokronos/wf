@@ -1,3 +1,4 @@
+import { whenPresent, whenPresentMap } from "@mokronos/wfkit"
 import { Schema } from "effect"
 import type { ExecutorServices } from "@mokronos/wfkit-executor"
 import { searchIntegrations } from "@mokronos/wfkit-executor"
@@ -252,7 +253,7 @@ const selectAuthMethod = (
   return single
 }
 
-export const makeRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> => {
+export const gatewayRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> => {
   const { store, executor, retentionDays, oauth } = dependencies
 
   return [
@@ -341,7 +342,7 @@ export const makeRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> 
         const tool = await executor.tools.describe({
           integration: request.params["slug"] ?? "",
           name: request.params["tool"] ?? "",
-          ...(connection === null ? {} : { connection })
+          ...whenPresent("connection", connection)
         })
         return ok(tool)
       }
@@ -357,13 +358,11 @@ export const makeRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> 
         return ok(await searchIntegrations({
           q: query,
           limit: positiveInt(request.query.get("limit"), 5),
-          ...(kind === null
-            ? {}
-            : {
-              kind: Schema.decodeUnknownSync(
-                Schema.Literals(["mcp", "openapi", "graphql", "cli"])
-              )(kind)
-            })
+          ...whenPresentMap(
+            "kind",
+            kind,
+            Schema.decodeUnknownSync(Schema.Literals(["mcp", "openapi", "graphql", "cli"]))
+          )
         }))
       }
     },
@@ -464,11 +463,9 @@ export const makeRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> 
           integration: integration.slug,
           connection: body.connection ?? "default",
           authMethod: method,
-          ...(body.clientId === undefined ? {} : { clientId: body.clientId }),
-          ...(body.clientSecret === undefined ? {} : { clientSecret: body.clientSecret }),
-          ...(body.timeoutSeconds === undefined
-            ? {}
-            : { timeoutMs: Math.max(1, body.timeoutSeconds) * 1000 })
+          ...whenPresent("clientId", body.clientId),
+          ...whenPresent("clientSecret", body.clientSecret),
+          ...whenPresentMap("timeoutMs", body.timeoutSeconds, (seconds) => Math.max(1, seconds) * 1000)
         })
         return created(session)
       }
@@ -811,15 +808,15 @@ export const makeRoutes = (dependencies: ApiDependencies): ReadonlyArray<Route> 
         const alias = request.query.get("alias")
         const tool = request.query.get("tool")
         const filter = {
-          ...(clientId === null ? {} : { clientId: ClientId.make(clientId) }),
-          ...(alias === null ? {} : { alias: Alias.make(alias) }),
-          ...(tool === null ? {} : { tool: ToolName.make(tool) }),
-          ...(outcome === null ? {} : {
-            outcome: Schema.decodeUnknownSync(
-              Schema.Literals(["succeeded", "failed", "denied", "pending"])
-            )(outcome)
-          }),
-          ...(sinceDate === undefined ? {} : { since: sinceDate })
+          ...whenPresentMap("clientId", clientId, ClientId.make),
+          ...whenPresentMap("alias", alias, Alias.make),
+          ...whenPresentMap("tool", tool, ToolName.make),
+          ...whenPresentMap(
+            "outcome",
+            outcome,
+            Schema.decodeUnknownSync(Schema.Literals(["succeeded", "failed", "denied", "pending"]))
+          ),
+          ...whenPresent("since", sinceDate)
         }
         const limit = positiveInt(request.query.get("limit"), 50)
         const offset = nonNegativeInt(request.query.get("offset"), 0)

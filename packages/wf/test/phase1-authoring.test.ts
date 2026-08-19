@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
+import { Cause, Option, Predicate, Schema } from "effect"
 import { defineStep, defineWorkflow, StepExecutionError } from "../src/core"
 
 const Rejected = Schema.TaggedStruct("Rejected", {
@@ -112,9 +112,7 @@ describe("Phase 1 authoring model", () => {
 
     const completed = events.filter(
       (event): event is { readonly type: "step.completed"; readonly activityName: string } =>
-        typeof event === "object" &&
-        event !== null &&
-        (event as { readonly type?: unknown }).type === "step.completed"
+        Predicate.isObject(event) && event["type"] === "step.completed"
     )
     expect(completed.map((event) => event.activityName)).toEqual([
       "echo#1",
@@ -147,9 +145,7 @@ describe("Phase 1 authoring model", () => {
 
     const started = events.filter(
       (event): event is { readonly type: "sleep.started"; readonly activityName: string } =>
-        typeof event === "object" &&
-        event !== null &&
-        (event as { readonly type?: unknown }).type === "sleep.started"
+        Predicate.isObject(event) && event["type"] === "sleep.started"
     )
     expect(started.map((event) => event.activityName)).toEqual([
       "sleep:1 second#1",
@@ -224,7 +220,7 @@ describe("Phase 1 authoring model", () => {
       output: Schema.Struct({ result: Schema.String }),
       execute: async (input) => ({ result: `first:${input.value}` }),
       compensate: async (result, input, reason) => {
-        calls.push({ step: "first", result, input, reason })
+        calls.push({ step: "first", result, input, reason: Cause.findErrorOption(reason) })
       }
     })
 
@@ -234,7 +230,7 @@ describe("Phase 1 authoring model", () => {
       output: Schema.Struct({ result: Schema.String }),
       execute: async (input) => ({ result: `second:${input.value}` }),
       compensate: async (result, input, reason) => {
-        calls.push({ step: "second", result, input, reason })
+        calls.push({ step: "second", result, input, reason: Cause.findErrorOption(reason) })
       }
     })
 
@@ -268,13 +264,13 @@ describe("Phase 1 authoring model", () => {
         step: "second",
         result: { result: "second:b" },
         input: { value: "b" },
-        reason: { _tag: "Rejected", reason: "stop" }
+        reason: Option.some({ _tag: "Rejected", reason: "stop" })
       },
       {
         step: "first",
         result: { result: "first:a" },
         input: { value: "a" },
-        reason: { _tag: "Rejected", reason: "stop" }
+        reason: Option.some({ _tag: "Rejected", reason: "stop" })
       }
     ])
   })

@@ -4,6 +4,9 @@ import { ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
+// Renders whatever an event or result carried. The gateway's event schema
+// leaves those fields unknown, so this cannot name its input either.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const render = (value: unknown): string => {
   try {
     return JSON.stringify(value, null, 2) ?? "null"

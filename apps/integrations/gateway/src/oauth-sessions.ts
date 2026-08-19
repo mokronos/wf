@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { randomUUID } from "node:crypto"
 import type { ExecutorAuthMethod, ExecutorConnection, ExecutorServices } from "@mokronos/wfkit-executor"
 import { authorizeExecutorInBrowser } from "./oauth.ts"
@@ -7,7 +8,7 @@ export type OAuthSessionState =
   | { readonly status: "connected"; readonly connection: ExecutorConnection }
   | { readonly status: "failed"; readonly message: string }
 
-export interface OAuthSession {
+export type OAuthSession = {
   readonly id: string
   readonly integration: string
   readonly connection: string
@@ -55,9 +56,9 @@ export const createOAuthSessions = (
         integration: input.integration,
         connection: input.connection,
         authMethod: input.authMethod,
-        ...(input.clientId === undefined ? {} : { clientId: input.clientId }),
-        ...(input.clientSecret === undefined ? {} : { clientSecret: input.clientSecret }),
-        ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+        ...whenPresent("clientId", input.clientId),
+        ...whenPresent("clientSecret", input.clientSecret),
+        ...whenPresent("timeoutMs", input.timeoutMs),
         onAuthorizationUrl: (url) => announced.resolve(url)
       }, executor.auth)
 
@@ -70,7 +71,7 @@ export const createOAuthSessions = (
           // announces a URL, so unblock the caller either way.
           announced.resolve("")
         },
-        (error: unknown) => {
+        (error) => {
           const message = error instanceof Error ? error.message : "OAuth authorization failed"
           const existing = sessions.get(id)
           if (existing !== undefined) {

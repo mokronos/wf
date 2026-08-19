@@ -1,6 +1,6 @@
 import type { GatewayStore } from "./store.ts"
 
-export interface MaintenanceResult {
+export type MaintenanceResult = {
   readonly expiredApprovals: number
   readonly expiredAuditArguments: number
 }
@@ -30,11 +30,14 @@ export const startMaintenanceLoop = (
   store: GatewayStore,
   options: {
     readonly intervalMs?: number
+    // A caught value. TypeScript types every catch binding as unknown because
+    // JavaScript lets any value be thrown, so there is nothing narrower to accept.
+    // oxlint-disable-next-line anti-slop/no-unknown-parameters
     readonly onError?: (error: unknown) => void
   } = {}
 ): MaintenanceLoop => {
   const interval = setInterval(() => {
-    void runMaintenance(store).catch((error: unknown) => options.onError?.(error))
+    void runMaintenance(store).catch((error) => options.onError?.(error))
   }, options.intervalMs ?? 60_000)
   // Never hold the process open on our account.
   interval.unref?.()

@@ -1,4 +1,4 @@
-import { defineStep, defineWorkflow, t } from "@mokronos/wfkit"
+import { defineStep, defineWorkflow, t, whenPresent } from "@mokronos/wfkit"
 
 // The payload a human reviewer sends to resume the workflow.
 export const ApprovalDecision = t.struct({
@@ -105,7 +105,7 @@ export const ExpenseApprovalWorkflow = defineWorkflow({
         _tag: "ApprovalRejectedError",
         requestId: input.requestId,
         approver: decision.value.approver,
-        ...(decision.value.comment === undefined ? {} : { comment: decision.value.comment })
+        ...whenPresent("comment", decision.value.comment)
       })
     }
 

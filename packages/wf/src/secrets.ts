@@ -1,9 +1,9 @@
-import { Schema } from "effect"
+import { Predicate, Schema } from "effect"
 
 const SecretRefPrefix = "secret:"
 
 export const SecretRef = Schema.declare<string>(
-  (value): value is string => typeof value === "string" && value.startsWith(SecretRefPrefix)
+  (value): value is string => Predicate.isString(value) && value.startsWith(SecretRefPrefix)
 ).pipe(Schema.brand("SecretRef"))
 export type SecretRef = typeof SecretRef.Type
 
@@ -34,16 +34,21 @@ export const envSecretResolver = (options: {
   }
 })
 
-export const isSecretRef = (value: unknown): value is SecretRef =>
-  Schema.is(SecretRef)(value)
+export const isSecretRef = Schema.is(SecretRef)
 
 export const secretRefName = (value: SecretRef): string =>
   value.slice(SecretRefPrefix.length)
 
 /** Resolve branded secret placeholders recursively at the execution boundary. */
 export const resolveSecretReferences = async (
+  // Walks arbitrary decoded step input for secret references and returns the same
+  // shape with them replaced.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   value: unknown,
   resolver: SecretResolver | undefined
+// Walks arbitrary decoded step input for secret references and returns the same
+// shape with them replaced.
+// oxlint-disable-next-line anti-slop/no-unknown-returns
 ): Promise<unknown> => {
   if (isSecretRef(value)) {
     if (resolver === undefined) {
@@ -56,7 +61,7 @@ export const resolveSecretReferences = async (
     return Promise.all(value.map((item) => resolveSecretReferences(item, resolver)))
   }
 
-  if (value instanceof Date || typeof value !== "object" || value === null) {
+  if (value instanceof Date || !Predicate.isObjectOrArray(value)) {
     return value
   }
 

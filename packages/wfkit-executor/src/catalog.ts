@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { IntegrationSlug } from "@executor-js/sdk/core"
 import { Option, Schema } from "effect"
 import { runExecutor } from "./default-host.ts"
@@ -92,9 +93,9 @@ export const createExecutorCatalog = (runner: ExecutorRunner): ExecutorCatalog =
       await runner.run((executor) => executor.openapi.addSpec({
         spec: { kind: "url", url: options.spec },
         slug: options.slug,
-        ...(options.name === undefined ? {} : { name: options.name }),
-        ...(options.description === undefined ? {} : { description: options.description }),
-        ...(options.baseUrl === undefined ? {} : { baseUrl: options.baseUrl })
+        ...whenPresent("name", options.name),
+        ...whenPresent("description", options.description),
+        ...whenPresent("baseUrl", options.baseUrl)
       })).then((result) => String(result.slug)),
     list,
     find: async (slug) => {

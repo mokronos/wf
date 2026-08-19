@@ -1,3 +1,5 @@
+import { whenPresent } from "../optional.ts"
+import type { WorkflowPayload } from "../schemas.ts"
 import * as Duration from "effect/Duration"
 import { Schema } from "effect"
 import type {
@@ -58,7 +60,7 @@ export interface TestRuntime {
     workflow: DefinedWorkflow<I, O, E>,
     payload: I
   ): Promise<WorkflowExecutionHandle>
-  sendSignal(executionId: string, name: string, payload: unknown): Promise<void>
+  sendSignal(executionId: string, name: string, payload: WorkflowPayload): Promise<void>
   result(executionId: string): Promise<WorkflowResult>
   status(executionId: string): Promise<WorkflowExecutionStatus>
   history(executionId: string): Promise<ReadonlyArray<WorkflowHistoryRecord>>
@@ -88,6 +90,9 @@ interface VirtualTimer {
 }
 
 interface RegisteredStepMock {
+  // A decoded schema value is whatever that schema declares, up to a class
+  // instance, and the step's own types are erased by the time it reaches here.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters anti-slop/no-unknown-returns
   readonly execute: (input: unknown, context: StepExecutionContext) => Promise<unknown>
 }
 
@@ -229,7 +234,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
       executionId: ExecutionId.make(id),
       workflowName: workflow.name,
       payload,
-      ...(opts.actor === undefined ? {} : { actor: opts.actor })
+      ...whenPresent("actor", opts.actor)
     })
     launch(workflow, payload, record)
     return record
@@ -310,7 +315,7 @@ export const createTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime
         type: "execution.cancelled",
         executionId: ExecutionId.make(executionId),
         compensate,
-        ...(opts.actor === undefined ? {} : { actor: opts.actor })
+        ...whenPresent("actor", opts.actor)
       })
       if (compensate) {
         record.status = "compensating"

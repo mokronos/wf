@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { chmod, cp, mkdir, readdir, rm, writeFile } from "node:fs/promises"
 import path from "node:path"
 import packageMetadata from "./package.json" with { type: "json" }
@@ -118,7 +119,7 @@ const writePlatformPackage = async (target: BuildTarget): Promise<void> => {
     repository: packageMetadata.repository,
     os: [target.npmOs],
     cpu: [target.cpu],
-    ...(target.libc === undefined ? {} : { libc: [target.libc] }),
+    ...whenPresent("libc", [target.libc]),
     files: ["bin"],
     publishConfig: packageMetadata.publishConfig
   }, null, 2) + "\n")

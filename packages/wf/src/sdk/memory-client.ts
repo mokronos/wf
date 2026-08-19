@@ -1,9 +1,11 @@
+import { whenPresent } from "../optional.ts"
 import { Schema } from "effect"
 import { Cancelled, createInMemoryDeterminismState } from "../core.ts"
 import { isCancellableRunStatus, isTerminalRunStatus, statusAfterEvent } from "../run-lifecycle.ts"
 import { ExecutionId } from "../schemas.ts"
-import type { WorkflowHistoryEvent, WorkflowHistoryRecord } from "../schemas.ts"
+import type { WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowPayload } from "../schemas.ts"
 import type { WorkflowRuntime } from "../runtime.ts"
+import { decodeStoredValue } from "./durable-client-model.ts"
 import { createSignalTransport } from "../signal.ts"
 import {
   createSignalDeliveryClaims,
@@ -27,7 +29,7 @@ interface ExecutionRecord {
   readonly artifactId?: string
   readonly sourceHash?: string
   readonly workflowName: string
-  readonly payload: unknown
+  readonly payload: WorkflowPayload
   status: WorkflowExecutionStatus
   result?: WorkflowResult
   readonly startedAt: string
@@ -41,13 +43,13 @@ interface ExecutionRecord {
 
 const memoryExecutionRecord = (execution: ExecutionRecord): WorkflowExecutionRecord => ({
   executionId: execution.executionId,
-  ...(execution.artifactId === undefined ? {} : { artifactId: execution.artifactId }),
+  ...whenPresent("artifactId", execution.artifactId),
   workflowName: execution.workflowName,
   status: execution.status,
   payload: execution.payload,
   startedAt: execution.startedAt,
   ...optionalFinishedAt(execution.finishedAt),
-  ...(execution.sourceHash === undefined ? {} : { sourceHash: execution.sourceHash })
+  ...whenPresent("sourceHash", execution.sourceHash)
 })
 
 export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowClient => {
@@ -82,6 +84,10 @@ export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowC
     async start(workflow, payload, opts = {}) {
       ensureActive()
       Schema.decodeUnknownSync(workflow.input)(payload)
+      // Record what a durable run would record: the payload after a JSON round
+      // trip. Two clients reporting different payloads for the same input would
+      // be a worse outcome than dropping a value JSON cannot carry anyway.
+      const storedPayload = decodeStoredValue(JSON.stringify({ value: payload }))
       const workflowKey = workflow.name
       if (opts.idempotencyKey !== undefined) {
         const existingId = idempotencyKeys.get(`${workflowKey}:${opts.idempotencyKey}`)
@@ -95,10 +101,10 @@ export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowC
       })
       const execution: ExecutionRecord = {
         executionId: id,
-        ...(opts.artifactId === undefined ? {} : { artifactId: opts.artifactId }),
-        ...(opts.sourceHash === undefined ? {} : { sourceHash: opts.sourceHash }),
+        ...whenPresent("artifactId", opts.artifactId),
+        ...whenPresent("sourceHash", opts.sourceHash),
         workflowName: workflow.name,
-        payload,
+        payload: storedPayload,
         status: "running",
         startedAt: nowIso(),
         history: [],
@@ -124,9 +130,9 @@ export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowC
         signal: execution.abort.signal,
         determinism: createInMemoryDeterminismState(),
         signalTransport: signals,
-        ...(runtime?.secrets === undefined ? {} : { secrets: runtime.secrets }),
-        ...(runtime?.integrations === undefined ? {} : { integrations: runtime.integrations }),
-        ...(runtime?.concurrency === undefined ? {} : { concurrency: runtime.concurrency }),
+        ...whenPresent("secrets", runtime?.secrets),
+        ...whenPresent("integrations", runtime?.integrations),
+        ...whenPresent("concurrency", runtime?.concurrency),
         onEvent: async (event) => {
           appendHistory(execution, event)
           const nextStatus = statusAfterEvent(event)

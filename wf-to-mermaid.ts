@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { whenPresent } from "@mokronos/wfkit"
 import ts from "typescript"
 import { readFileSync, writeFileSync } from "fs"
 
@@ -159,7 +160,7 @@ function extractSteps(code: string): ExtractedWorkflow {
           steps.push({
             kind: "signal_fork",
             signal: signalLabel(args[0]),
-            ...(after === undefined ? {} : { after })
+            ...whenPresent("after", after)
           })
         } else if (method === "waitForSignal") {
           steps.push({ kind: "signal_await", signal: signalLabel(args[0]) })
@@ -197,7 +198,7 @@ function buildGraph(steps: Step[], wfName: string, payloadStr: string): Workflow
   let pendingLabel: string | undefined
 
   function advance(to: string) {
-    edges.push({ from: lastId, to, ...(pendingLabel === undefined ? {} : { label: pendingLabel }) })
+    edges.push({ from: lastId, to, ...whenPresent("label", pendingLabel) })
     pendingLabel = undefined
     lastId = to
   }

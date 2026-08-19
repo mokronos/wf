@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Predicate, Schema } from "effect"
 
 /** Typed bindings for the tools a key can reach.
  *
@@ -21,11 +21,10 @@ export interface GeneratableTool {
 
 export type CodegenTarget = "ts" | "effect"
 
-const isObject = (value: unknown): value is Record<string, Json> =>
-  typeof value === "object" && value !== null && !Array.isArray(value)
+const isObject = Schema.is(Schema.Record(Schema.String, Schema.Json))
 
-const stringArray = (value: unknown): ReadonlyArray<string> | undefined =>
-  Array.isArray(value) && value.every((entry) => typeof entry === "string")
+const stringArray = (value: Json): ReadonlyArray<string> | undefined =>
+  Array.isArray(value) && value.every(Predicate.isString)
     ? value
     : undefined
 
@@ -85,7 +84,7 @@ const toTypeScript = (schema: Json | undefined, indent = ""): string => {
     case undefined: {
       const properties = schema["properties"]
       if (!isObject(properties)) return single === "object" ? "Record<string, unknown>" : "unknown"
-      const required = new Set(stringArray(schema["required"]) ?? [])
+      const required = new Set(stringArray(schema["required"] ?? null) ?? [])
       const inner = `${indent}  `
       const fields = Object.entries(properties).map(([key, value]) =>
         `${inner}readonly ${JSON.stringify(key)}${required.has(key) ? "" : "?"}: ${
@@ -112,7 +111,7 @@ const toEffectSchema = (schema: Json | undefined, indent = ""): string => {
 
   const enumValues = schema["enum"]
   if (Array.isArray(enumValues) && enumValues.length > 0) {
-    return enumValues.every((value) => typeof value === "string")
+    return enumValues.every(Predicate.isString)
       ? `t.literals([${enumValues.map((value) => quote(String(value))).join(", ")}])`
       : "t.unknown"
   }
@@ -142,7 +141,7 @@ const toEffectSchema = (schema: Json | undefined, indent = ""): string => {
     case undefined: {
       const properties = schema["properties"]
       if (!isObject(properties)) return "t.unknown"
-      const required = new Set(stringArray(schema["required"]) ?? [])
+      const required = new Set(stringArray(schema["required"] ?? null) ?? [])
       const inner = `${indent}  `
       const fields = Object.entries(properties).map(([key, value]) => {
         const rendered = toEffectSchema(value, inner)

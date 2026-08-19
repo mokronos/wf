@@ -30,5 +30,9 @@ export const durationBetween = (startedAt: string, finishedAt: string | undefine
   return `${hours}h ${minutes % 60}m`
 }
 
+// Reads a WorkflowEvent field. The event schema declares these
+// Schema.Unknown deliberately: `duration` carries a Duration.Input, which is
+// not JSON, so narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const prettyJson = (value: unknown): string =>
   JSON.stringify(value, null, 2)

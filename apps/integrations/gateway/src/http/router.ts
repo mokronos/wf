@@ -18,16 +18,31 @@ export type RouteAccess = "delegated" | "privileged"
 export interface RouteRequest {
   readonly params: Readonly<Record<string, string>>
   readonly query: URLSearchParams
-  readonly body: unknown
+  /** Already parsed from the request's JSON text by the handler, so a route
+   *  never sees a raw string. */
+  readonly body: Schema.Json
   /** The authenticated caller. Present for every route: there are no
    *  unauthenticated endpoints. */
   readonly client: Client
   readonly secret: string
 }
 
+/** A value on its way out through JSON.stringify.
+ *
+ *  Wider than Schema.Json on purpose: the handlers return decoded domain
+ *  records, and those carry Dates (which stringify turns into ISO strings) and
+ *  optional properties typed `| undefined` (which stringify drops). Naming that
+ *  is the difference between a response contract and `unknown`. */
+export type JsonEncodable =
+  | Schema.Json
+  | undefined
+  | Date
+  | ReadonlyArray<JsonEncodable>
+  | { readonly [key: string]: JsonEncodable }
+
 export interface RouteResult {
   readonly status: number
-  readonly body: unknown
+  readonly body: JsonEncodable
 }
 
 export interface Route {
@@ -38,8 +53,8 @@ export interface Route {
   readonly handle: (request: RouteRequest) => Promise<RouteResult>
 }
 
-export const ok = (body: unknown): RouteResult => ({ status: 200, body })
-export const created = (body: unknown): RouteResult => ({ status: 201, body })
+export const ok = (body: JsonEncodable): RouteResult => ({ status: 200, body })
+export const created = (body: JsonEncodable): RouteResult => ({ status: 201, body })
 export const badRequest = (message: string): RouteResult => ({
   status: 400,
   body: { error: message }
@@ -101,7 +116,7 @@ export class RequestBodyError extends Error {}
 
 /** Decodes a request body at the boundary. Handlers receive parsed values and
  *  never inspect `unknown`. */
-export const decodeBody = <A>(schema: Schema.Codec<A>, body: unknown): A => {
+export const decodeBody = <A>(schema: Schema.Codec<A>, body: Schema.Json): A => {
   try {
     return Schema.decodeUnknownSync(schema)(body)
   } catch (error) {

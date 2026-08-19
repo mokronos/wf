@@ -1,3 +1,4 @@
+import { whenPresent } from "../optional.ts"
 import { Cancelled } from "../core.ts"
 import { ExecutionId } from "../schemas.ts"
 import { createWorkflowRuntime } from "../runtime.ts"
@@ -24,7 +25,7 @@ export const lifecycleRunRecords = async (
       status: execution.status,
       input: execution.payload,
       startedAt: execution.startedAt,
-      ...(execution.finishedAt === undefined ? {} : { finishedAt: execution.finishedAt })
+      ...whenPresent("finishedAt", execution.finishedAt)
     }
   })
 

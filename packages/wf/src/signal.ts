@@ -1,3 +1,4 @@
+import type { WorkflowPayload } from "./schemas.ts"
 import { Schema } from "effect"
 
 type SynchronousSchema<A = Schema.Schema.Type<Schema.Top>> = Schema.Codec<
@@ -16,8 +17,13 @@ export class SignalDeliveryError extends Schema.TaggedErrorClass<SignalDeliveryE
 ) {}
 
 interface SignalWaiter {
-  readonly deliver: (value: unknown) => void
-  readonly reject: (error: unknown) => void
+  /** The payload as it arrived, before this waiter's schema has seen it.
+   *  Signals cross a process boundary and are persisted, so JSON is the widest
+   *  a payload can honestly be. */
+  readonly deliver: (payload: WorkflowPayload) => void
+  /** Rejections settle a Promise, so they are Errors rather than arbitrary
+   *  values: a Promise rejected with a non-Error loses its stack. */
+  readonly reject: (error: Error) => void
 }
 
 export type BufferedSignal<T> =
@@ -27,7 +33,7 @@ export type BufferedSignal<T> =
 export interface SignalTransport {
   getSchema(executionId: string, name: string): SynchronousSchema | undefined
   registerSchema<T>(executionId: string, name: string, schema: SynchronousSchema<T>): void
-  deliver(executionId: string, name: string, payload: unknown): Promise<void>
+  deliver(executionId: string, name: string, payload: WorkflowPayload): Promise<void>
   takeBuffered<T>(executionId: string, name: string, schema: SynchronousSchema<T>): BufferedSignal<T>
   await<T>(
     executionId: string,
@@ -35,13 +41,13 @@ export interface SignalTransport {
     schema: SynchronousSchema<T>,
     options?: { readonly signal?: AbortSignal }
   ): Promise<T>
-  cancel(executionId: string, error: unknown): void
-  cleanup(executionId: string, error?: unknown): void
+  cancel(executionId: string, error: Error): void
+  cleanup(executionId: string, error?: Error): void
 }
 
 const keyOf = (executionId: string, name: string): string => `${executionId}\0${name}`
 
-export const decodeSignal = <T>(schema: SynchronousSchema<T>, value: unknown): T => {
+export const decodeSignal = <T>(schema: SynchronousSchema<T>, value: WorkflowPayload): T => {
   try {
     return Schema.decodeUnknownSync(schema)(value)
   } catch (cause) {
@@ -54,7 +60,7 @@ export const decodeSignal = <T>(schema: SynchronousSchema<T>, value: unknown): T
 
 export const createSignalTransport = (): SignalTransport => {
   const schemas = new Map<string, SynchronousSchema>()
-  const buffers = new Map<string, unknown[]>()
+  const buffers = new Map<string, WorkflowPayload[]>()
   const waiters = new Map<string, SignalWaiter[]>()
 
   const removeWaiter = (key: string, waiter: SignalWaiter) => {
@@ -69,13 +75,14 @@ export const createSignalTransport = (): SignalTransport => {
     schemas.set(keyOf(executionId, name), schema)
     const key = keyOf(executionId, name)
     const queue = buffers.get(key)
-    if (queue === undefined || queue.length === 0) return { present: false }
+    if (queue === undefined) return { present: false }
     const value = queue.shift()
+    if (value === undefined) return { present: false }
     if (queue.length === 0) buffers.delete(key)
     return { present: true, value: decodeSignal(schema, value) }
   }
 
-  const cancel = (executionId: string, error: unknown) => {
+  const cancel = (executionId: string, error: Error) => {
     for (const [key, queued] of waiters) {
       if (!key.startsWith(`${executionId}\0`)) continue
       waiters.delete(key)
@@ -102,9 +109,12 @@ export const createSignalTransport = (): SignalTransport => {
       }
 
       const schema = schemas.get(key)
-      const value = schema === undefined ? payload : decodeSignal(schema, payload)
+      // Validate eagerly so a bad payload is refused at delivery rather than
+      // surfacing later, but buffer the payload as it arrived: takeBuffered
+      // decodes it against the waiter's own schema.
+      if (schema !== undefined) decodeSignal(schema, payload)
       const queue = buffers.get(key) ?? []
-      queue.push(value)
+      queue.push(payload)
       buffers.set(key, queue)
     },
 
@@ -131,7 +141,11 @@ export const createSignalTransport = (): SignalTransport => {
         }
         function abort() {
           removeWaiter(key, waiter)
-          waiter.reject(options.signal?.reason ?? new Error("Signal wait cancelled"))
+          waiter.reject(
+            options.signal?.reason instanceof Error
+              ? options.signal.reason
+              : new Error("Signal wait cancelled")
+          )
         }
         if (options.signal?.aborted === true) {
           abort()
@@ -168,7 +182,7 @@ export const getSignalSchema = (executionId: string, name: string): SynchronousS
   defaultSignalTransport.getSchema(executionId, name)
 export const registerSignalSchema = <T>(executionId: string, name: string, schema: SynchronousSchema<T>) =>
   defaultSignalTransport.registerSchema(executionId, name, schema)
-export const deliverSignal = (executionId: string, name: string, payload: unknown): Promise<void> =>
+export const deliverSignal = (executionId: string, name: string, payload: WorkflowPayload): Promise<void> =>
   defaultSignalTransport.deliver(executionId, name, payload)
 export const takeBufferedSignal = <T>(executionId: string, name: string, schema: SynchronousSchema<T>): BufferedSignal<T> =>
   defaultSignalTransport.takeBuffered(executionId, name, schema)
@@ -178,7 +192,7 @@ export const awaitSignal = <T>(
   schema: SynchronousSchema<T>,
   options?: { readonly signal?: AbortSignal }
 ): Promise<T> => defaultSignalTransport.await(executionId, name, schema, options)
-export const cancelSignalWaits = (executionId: string, error: unknown) =>
+export const cancelSignalWaits = (executionId: string, error: Error) =>
   defaultSignalTransport.cancel(executionId, error)
-export const cleanupSignals = (executionId: string, error?: unknown) =>
+export const cleanupSignals = (executionId: string, error?: Error) =>
   defaultSignalTransport.cleanup(executionId, error)

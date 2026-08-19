@@ -10,7 +10,7 @@ const defaultEngineDatabasePath = (): string =>
 
 /** Builds the durable workflow-engine infrastructure. Filesystem and database
  * setup stay lazy inside the layer so importing the workflow runtime is pure. */
-export const makeEngineLayer = (options: {
+export const engineLayer = (options: {
   readonly databasePath?: string
   readonly sqliteBusyTimeoutMs?: number
   readonly timerPollIntervalMs?: number

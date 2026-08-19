@@ -22,6 +22,9 @@ import packageMetadata from "../package.json" with { type: "json" }
  * the integrations product — `wf` depends on it, not the other way round. */
 class ServeError extends Data.TaggedError("ServeError")<{ readonly message: string }> {}
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const serveError = (error: unknown): ServeError =>
   new ServeError({ message: error instanceof Error ? error.message : String(error) })
 

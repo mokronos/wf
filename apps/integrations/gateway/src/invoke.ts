@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { Schema } from "effect"
 import type { ExecutorServices } from "@mokronos/wfkit-executor"
 import { ExecutorToolAddress } from "@mokronos/wfkit-executor/schemas"
@@ -212,7 +213,7 @@ export const executeAuthorized = async (
   }
 }
 
-export interface GrantedTool {
+export type GrantedTool = {
   readonly alias: Alias
   readonly tool: ToolName
   readonly integration: string
@@ -255,8 +256,8 @@ export const listGrantedTools = async (
       )
       return {
         ...entry,
-        ...(described.inputSchema === undefined ? {} : { inputSchema: described.inputSchema }),
-        ...(described.outputSchema === undefined ? {} : { outputSchema: described.outputSchema })
+        ...whenPresent("inputSchema", described.inputSchema),
+        ...whenPresent("outputSchema", described.outputSchema)
       }
     } catch {
       // A tool that has since disappeared should not fail the whole listing —

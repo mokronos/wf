@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { decodeJsonSchema, type JsonSchema } from "@mokronos/wfkit/schemas"
@@ -27,7 +28,7 @@ const typeLabel = (schema: JsonSchema | undefined): string => {
     return "unknown"
   }
   const value = simplifySchema(schema)
-  if (typeof value.const === "string" || typeof value.const === "number" || typeof value.const === "boolean") {
+  if (Predicate.isString(value.const) || Predicate.isNumber(value.const) || Predicate.isBoolean(value.const)) {
     return JSON.stringify(value.const)
   }
   if (Array.isArray(value.enum)) {
@@ -45,7 +46,7 @@ const typeLabel = (schema: JsonSchema | undefined): string => {
   if (Array.isArray(value.type)) {
     return value.type.join(" | ")
   }
-  if (typeof value.type === "string") {
+  if (Predicate.isString(value.type)) {
     return value.type
   }
   return "unknown"
@@ -65,7 +66,7 @@ function SchemaNode({
   const value = simplifySchema(schema)
 
   const properties = value.properties
-  const requiredKeys = new Set(Array.isArray(value.required) ? value.required.filter((item) => typeof item === "string") : [])
+  const requiredKeys = new Set(Array.isArray(value.required) ? value.required.filter(Predicate.isString) : [])
   const union = Array.isArray(value.anyOf) ? value.anyOf : Array.isArray(value.oneOf) ? value.oneOf : undefined
 
   if (properties !== undefined || value.type === "object") {
@@ -124,7 +125,7 @@ function SchemaNode({
   }
 
   if (
-    typeof value.type === "string" ||
+    Predicate.isString(value.type) ||
     Array.isArray(value.type) ||
     value.const !== undefined ||
     Array.isArray(value.enum)

@@ -214,9 +214,13 @@ export type PendingApproval = typeof PendingApproval.Type
 export const canonicalArguments = (value: Schema.Json): string =>
   JSON.stringify(canonicalise(value))
 
+/** Derived from the schema so the guard narrows to a JSON object rather than to
+ *  a bag of `unknown`, which would lose the value contract on the way in. */
+const isJsonObject = Schema.is(Schema.Record(Schema.String, Schema.Json))
+
 const canonicalise = (value: Schema.Json): Schema.Json => {
   if (Array.isArray(value)) return value.map(canonicalise)
-  if (typeof value === "object" && value !== null) {
+  if (isJsonObject(value)) {
     return Object.fromEntries(
       Object.entries(value)
         // Codepoint order rather than locale order: this string is compared

@@ -18,6 +18,9 @@ export type WorkflowSourceHash = typeof WorkflowSourceHash.Type
 
 const decodeHash = Schema.decodeUnknownSync(WorkflowSourceHash)
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const isFileSystemError = (error: unknown, code: string): boolean =>
   error instanceof Error && "code" in error && error.code === code
 

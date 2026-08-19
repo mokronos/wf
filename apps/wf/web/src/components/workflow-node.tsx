@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import {
   AlertTriangle,
   Braces,
@@ -50,7 +51,7 @@ export const kindClass = {
 export const nodeTypes = {
   workflowNode: ({ data }: NodeProps<FlowNodeData>) => {
     const Icon = kindIcon[data.graphNode.kind]
-    const reason = typeof data.graphNode.metadata.reason === "string"
+    const reason = Predicate.isString(data.graphNode.metadata.reason)
       ? data.graphNode.metadata.reason
       : data.graphNode.description
 

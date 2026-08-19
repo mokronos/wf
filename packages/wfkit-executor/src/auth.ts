@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import {
   AuthTemplateSlug,
   ConnectionName,
@@ -45,11 +46,12 @@ export const registerExecutorOAuthClient = async (options: {
     authorizationUrl: options.authorizationUrl,
     tokenUrl: options.tokenUrl,
     scopes: options.scopes,
-    ...(options.issuer === undefined ? {} : { issuer: options.issuer }),
-    ...(options.resource === undefined ? {} : { resource: options.resource }),
-    ...(options.tokenEndpointAuthMethodsSupported === undefined
-      ? {}
-      : { tokenEndpointAuthMethodsSupported: options.tokenEndpointAuthMethodsSupported })
+    ...whenPresent("issuer", options.issuer),
+    ...whenPresent("resource", options.resource),
+    ...whenPresent(
+      "tokenEndpointAuthMethodsSupported",
+      options.tokenEndpointAuthMethodsSupported
+    )
   })).then(String)
 
 export const createExecutorOAuthClient = async (options: {
@@ -73,7 +75,7 @@ export const createExecutorOAuthClient = async (options: {
     tokenUrl: options.tokenUrl,
     clientId: options.clientId,
     clientSecret: options.clientSecret ?? "",
-    ...(options.resource === undefined ? {} : { resource: options.resource })
+    ...whenPresent("resource", options.resource)
   })).then(String)
 
 export const startExecutorOAuth = async (options: {
@@ -101,7 +103,7 @@ export const completeExecutorOAuth = async (options: {
   await runner.run((executor) => executor.oauth.complete({
     state: OAuthState.make(options.state),
     code: options.code,
-    ...(options.callbackDomain === undefined ? {} : { callbackDomain: options.callbackDomain })
+    ...whenPresent("callbackDomain", options.callbackDomain)
   })).then(Schema.decodeUnknownSync(ExecutorConnection))
 
 /** OAuth operations bound to an explicit host/runner. */

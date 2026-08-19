@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { AlertTriangle, Braces, CircleDot, Clock3, GitCommitVertical, Radio, RotateCcw, Workflow } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -33,8 +34,12 @@ const eventFamily = (type: string): EventFamily => {
   return "other"
 }
 
+// Reads a WorkflowEvent field. The event schema declares these
+// Schema.Unknown deliberately: `duration` carries a Duration.Input, which is
+// not JSON, so narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const scalar = (value: unknown): string | undefined =>
-  typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+  Predicate.isString(value) || Predicate.isNumber(value) || Predicate.isBoolean(value)
     ? String(value)
     : undefined
 

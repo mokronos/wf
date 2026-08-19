@@ -35,6 +35,10 @@ const layoutNodes = (
   dagre.layout(layout)
 
   return graph.nodes.map((node) => {
+    // SAFETY: dagre's graphlib typings declare node() as returning `any`.
+    // After dagre.layout() every node set above carries numeric x/y; the
+    // `| undefined` keeps the lookup honest for an id that was never added,
+    // which is why the caller still has to handle a missing point.
     const point = layout.node(node.id) as { readonly x: number; readonly y: number } | undefined
     return {
       id: node.id,

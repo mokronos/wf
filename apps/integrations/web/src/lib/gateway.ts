@@ -1,3 +1,7 @@
+import { Schema } from "effect"
+import { whenPresentFields } from "./optional.ts"
+import type { JsonEncodable } from "./optional.ts"
+import { Predicate } from "effect"
 import {
   decodeApprovalDecided,
   decodeApprovals,
@@ -59,30 +63,34 @@ export class GatewayError extends Error {
   }
 }
 
-const messageFrom = (payload: unknown, fallback: string): string => {
-  if (typeof payload === "object" && payload !== null && "error" in payload) {
-    const { error } = payload as { readonly error: unknown }
-    if (typeof error === "string" && error.length > 0) return error
+const messageFrom = (payload: Schema.Json, fallback: string): string => {
+  if (Predicate.isObject(payload) && "error" in payload) {
+    const error = payload["error"]
+    if (Predicate.isString(error) && error.length > 0) return error
   }
   return fallback
 }
 
+/** The response body is unparsed text off the wire, so it is decoded rather
+ *  than trusted before any caller sees it. */
+const decodeJson = Schema.decodeUnknownSync(Schema.Json)
+
 const request = async (
   method: "GET" | "POST" | "DELETE",
   path: string,
-  body?: unknown
-): Promise<unknown> => {
+  body?: JsonEncodable
+): Promise<Schema.Json> => {
   const response = await fetch(path, {
     method,
     // Same-origin only. Anything else would not be authenticated anyway.
     credentials: "same-origin",
-    ...(body === undefined ? {} : {
+    ...whenPresentFields(body, (present) => ({
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(body)
-    })
+      body: JSON.stringify(present)
+    }))
   })
   const text = await response.text()
-  const payload: unknown = text.trim().length === 0 ? {} : JSON.parse(text)
+  const payload = decodeJson(text.trim().length === 0 ? {} : JSON.parse(text))
   if (!response.ok) {
     throw new GatewayError(
       response.status,
@@ -160,7 +168,7 @@ export const removeConnection = async (input: {
 
 export const invokeTool = async (input: {
   readonly address: string
-  readonly arguments: unknown
+  readonly arguments: JsonEncodable
 }) => decodeInvocation(await request("POST", "/v1/tools/invoke", input))
 
 // --- clients, keys, grants --------------------------------------------------

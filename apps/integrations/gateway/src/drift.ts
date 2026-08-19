@@ -67,7 +67,7 @@ export interface ToolCatalogReader {
   readonly tools: Pick<ExecutorServices["tools"], "list">
 }
 
-export interface DriftReport {
+export type DriftReport = {
   readonly integration: string
   readonly entries: ReadonlyArray<DriftEntry>
   readonly checkedAt: Date

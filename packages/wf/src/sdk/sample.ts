@@ -1,17 +1,31 @@
 import { Schema, SchemaAST } from "effect"
 import type { JsonSchema } from "../schemas.ts"
 
-const schemaAst = (schema: unknown): SchemaAST.AST | undefined =>
-  Schema.isSchema(schema) ? schema.ast : undefined
-
 const DateTypeConstructor = Schema.TaggedStruct("Date", {})
 const isDateTypeConstructor = Schema.is(DateTypeConstructor)
 
-export const sampleValueForSchema = (schema: unknown): unknown =>
-  sampleValueFromAst(schemaAst(schema), new Set())
+/** A stand-in value shaped like something the schema would accept.
+ *
+ *  Deliberately not `Schema.Json`: a schema describing a Date samples to a
+ *  Date, Void samples to `undefined`, and a literal can be a bigint. Callers
+ *  feed these straight back into a decoder, so the type has to admit the
+ *  non-JSON values a decoder does. */
+export type SampleValue =
+  | string
+  | number
+  | boolean
+  | bigint
+  | null
+  | undefined
+  | Date
+  | ReadonlyArray<SampleValue>
+  | { readonly [key: string]: SampleValue }
+
+export const sampleValueForSchema = (schema: Schema.Top): SampleValue =>
+  sampleValueFromAst(schema.ast, new Set())
 
 /** Sample value for a JSON Schema document, mirroring Effect schema samples. */
-export const sampleValueForJsonSchema = (schema: JsonSchema, depth = 0): unknown => {
+export const sampleValueForJsonSchema = (schema: JsonSchema, depth = 0): SampleValue => {
   if (depth > 8) return {}
   if (schema.const !== undefined) return schema.const
   if (schema.enum !== undefined && schema.enum.length > 0) return schema.enum[0]
@@ -48,7 +62,7 @@ export const sampleValueForJsonSchema = (schema: JsonSchema, depth = 0): unknown
 const sampleValueFromAst = (
   ast: SchemaAST.AST | undefined,
   seen: Set<SchemaAST.AST>
-): unknown => {
+): SampleValue => {
   if (ast === undefined || seen.has(ast)) return {}
   seen.add(ast)
   try {
@@ -61,7 +75,7 @@ const sampleValueFromAst = (
 const sampleValueFromAstUnguarded = (
   ast: SchemaAST.AST,
   seen: Set<SchemaAST.AST>
-): unknown => {
+): SampleValue => {
   switch (ast._tag) {
     case "String":
       return "sample"

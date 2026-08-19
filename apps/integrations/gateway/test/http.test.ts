@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { afterEach, describe, expect, test } from "bun:test"
 import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -17,7 +18,7 @@ import {
   createGatewayStore,
   generateApiKey,
   IntegrationSlug,
-  makeRoutes,
+  gatewayRoutes,
   newClientId,
   newGrantId,
   SubjectId,
@@ -166,13 +167,13 @@ const setup = async (options: {
   })
 
   const stub = stubExecutor({
-    ...(options.fail === undefined ? {} : { fail: options.fail }),
-    ...(options.connections === undefined ? {} : { connections: options.connections }),
-    ...(options.tools === undefined ? {} : { tools: options.tools })
+    ...whenPresent("fail", options.fail),
+    ...whenPresent("connections", options.connections),
+    ...whenPresent("tools", options.tools)
   })
   const handle = createGatewayHandler({
     store,
-    routes: makeRoutes({
+    routes: gatewayRoutes({
       store,
       executor: stub.executor,
       retentionDays: 30,
@@ -197,7 +198,7 @@ const setup = async (options: {
     const response = await handle(new Request(`http://gateway.test${pathname}`, {
       method,
       headers,
-      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) })
+      ...whenPresent("body", JSON.stringify(init.body))
     }))
     return {
       status: response.status,
@@ -537,8 +538,9 @@ describe("provisioning surface", () => {
 
     expect(report.status).toBe(200)
     expect(report.body["ok"]).toBe(true)
-    const checks = (report.body["findings"] as ReadonlyArray<{ check: string }>)
-      .map((finding) => finding.check)
+    const checks = Schema.decodeUnknownSync(
+      Schema.Array(Schema.Struct({ check: Schema.String }))
+    )(report.body["findings"]).map((finding) => finding.check)
     expect(checks).toEqual(["structural", "grant", "catalog"])
   })
 
@@ -636,11 +638,11 @@ describe("provisioning surface", () => {
 
     const denied = await call("GET", "/v1/audit?outcome=denied")
     expect(denied.body["total"]).toBe(1)
-    expect((denied.body["records"] as ReadonlyArray<unknown>)).toHaveLength(1)
+    expect(Schema.decodeUnknownSync(Schema.Array(Schema.Json))(denied.body["records"])).toHaveLength(1)
 
     const windowed = await call("GET", "/v1/audit?limit=1&offset=1")
     expect(windowed.body["total"]).toBe(2)
     expect(windowed.body["offset"]).toBe(1)
-    expect((windowed.body["records"] as ReadonlyArray<unknown>)).toHaveLength(1)
+    expect(Schema.decodeUnknownSync(Schema.Array(Schema.Json))(windowed.body["records"])).toHaveLength(1)
   })
 })

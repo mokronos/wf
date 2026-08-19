@@ -1,10 +1,5 @@
 import type { DefinedWorkflow } from "../core.ts"
-import type {
-  JsonSchema,
-  WorkflowHistoryEvent,
-  WorkflowHistoryRecord,
-  WorkflowRunStatus
-} from "../schemas.ts"
+import type { JsonSchema, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowPayload, WorkflowRunStatus } from "../schemas.ts"
 
 export type WorkflowExecutionStatus = WorkflowRunStatus
 
@@ -27,7 +22,7 @@ export interface WorkflowExecutionRecord {
   readonly artifactId?: string
   readonly workflowName: string
   readonly status: WorkflowExecutionStatus
-  readonly payload: unknown
+  readonly payload: WorkflowPayload
   readonly startedAt: string
   readonly finishedAt?: string
   /** Snapshot of the workflow source this execution started against. */
@@ -68,7 +63,7 @@ export interface WorkflowClient {
   signal(
     executionId: string,
     name: string,
-    payload: unknown,
+    payload: WorkflowPayload,
     opts?: { readonly actor?: string }
   ): Promise<void>
   result(executionId: string): Promise<WorkflowResult>

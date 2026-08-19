@@ -1,3 +1,4 @@
+import { Predicate } from "effect"
 import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { AppSidebar, type AppView } from "@/components/app-sidebar"
@@ -17,7 +18,7 @@ export default function App() {
   const [query, setQuery] = useState("")
   const [selectedWorkflowKey, setSelectedWorkflowKey] = useState<string | undefined>()
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window === "undefined") {
+    if (Predicate.isUndefined(globalThis.window)) {
       return false
     }
     return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true"

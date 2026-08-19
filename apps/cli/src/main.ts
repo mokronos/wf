@@ -12,7 +12,7 @@ import {
   workflowArtifactToGraph
 } from "@mokronos/wfkit"
 import type { WorkflowCatalog } from "@mokronos/wfkit"
-import { makeWorkflowCommands, type CliRuntimeOptions } from "./cli/main.ts"
+import { workflowCommands, type CliRuntimeOptions } from "./cli/main.ts"
 import assets from "./embedded-web-assets.gen.ts"
 import { enginePath, wfHome, workflowsPath } from "./paths.ts"
 import { defaultPort, installService, serviceIsRegistered } from "./service.ts"
@@ -280,7 +280,7 @@ const makeRootCommand = (runtime: CliRuntimeOptions) => {
   return Command.make("wf").pipe(
     Command.withDescription("Durable workflows and a local dashboard"),
     Command.withSubcommands([
-      ...makeWorkflowCommands(runtime),
+      ...workflowCommands(runtime),
       installCommand,
       upgradeCommand,
       webCommand,

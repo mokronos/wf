@@ -1,3 +1,4 @@
+import { whenPresent } from "./optional.ts"
 import { stat } from "node:fs/promises"
 import path from "node:path"
 import { Schema } from "effect"
@@ -144,7 +145,7 @@ export const latestPublishedVersion = async (
   const response = await fetch(url, {
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(10_000)
-  }).catch((error: unknown) => {
+  }).catch((error) => {
     throw new Error(
       `Could not reach ${url}: ${error instanceof Error ? error.message : String(error)}`
     )
@@ -167,7 +168,7 @@ const runInherited = async (command: ReadonlyArray<string>, cwd?: string): Promi
   const [program, ...arguments_] = command
   if (program === undefined) throw new Error("Empty command")
   const child = Bun.spawn([program, ...arguments_], {
-    ...(cwd === undefined ? {} : { cwd }),
+    ...whenPresent("cwd", cwd),
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit"

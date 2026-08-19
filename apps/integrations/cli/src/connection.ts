@@ -1,4 +1,4 @@
-import { Data } from "effect"
+import { Data, Predicate } from "effect"
 import { createGatewayClient, GatewayError, resolveClientConnection } from "@mokronos/integrations-client"
 import type { GatewayClient } from "@mokronos/integrations-client"
 
@@ -15,11 +15,13 @@ export const cliError = (message: string): IntegrationsCliError =>
  *  about an ordinary denial sends the reader after the wrong thing. */
 const isCapabilityRefusal = (error: GatewayError): boolean =>
   error.status === 403 &&
-  typeof error.body === "object" &&
-  error.body !== null &&
+  Predicate.isObjectOrArray(error.body) &&
   "code" in error.body &&
-  error.body.code === "not-permitted"
+  error.body["code"] === "not-permitted"
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const describeError = (error: unknown): string => {
   if (error instanceof IntegrationsCliError) return error.message
   if (error instanceof GatewayError) {

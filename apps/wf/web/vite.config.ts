@@ -13,6 +13,9 @@ const wfHome = process.env["WF_HOME"] ?? path.join(homedir(), ".wf")
 // anything about runs is proxied to `wf daemon --foreground`.
 const daemonTarget = process.env["WF_DAEMON_URL"] ?? "http://127.0.0.1:4787"
 
+// Writes whatever a dev-server route produced. Those are decoded records whose
+// interfaces carry no index signature, so Json cannot name them here.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const json = (response: { statusCode: number; setHeader: (name: string, value: string) => void; end: (body: string) => void }, statusCode: number, body: unknown) => {
   response.statusCode = statusCode
   response.setHeader("Content-Type", "application/json")

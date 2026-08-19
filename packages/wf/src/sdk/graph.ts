@@ -1,3 +1,5 @@
+import { whenPresent, whenPresentFields } from "../optional.ts"
+import { Predicate } from "effect"
 import type {
   DefinedWorkflow,
   InMemoryDeterminismState,
@@ -67,9 +69,9 @@ const workflowSchemas = (workflow: DefinedWorkflow): WorkflowGraphSchemas | unde
   const output = jsonSchemaFor(workflow.output)
   const errors = jsonSchemaFor(workflow.errors)
   return objectWithOptionalSchemas({
-    ...(input === undefined ? {} : { input }),
-    ...(output === undefined ? {} : { output }),
-    ...(errors === undefined ? {} : { errors })
+    ...whenPresent("input", input),
+    ...whenPresent("output", output),
+    ...whenPresent("errors", errors)
   })
 }
 
@@ -78,25 +80,18 @@ const stepSchemas = (step: InspectableStep): WorkflowGraphNodeSchemas | undefine
   const output = jsonSchemaFor(step.output)
   const errors = jsonSchemaFor(step.errors)
   return objectWithOptionalSchemas({
-    ...(input === undefined ? {} : { input }),
-    ...(output === undefined ? {} : { output }),
-    ...(errors === undefined ? {} : { errors })
+    ...whenPresent("input", input),
+    ...whenPresent("output", output),
+    ...whenPresent("errors", errors)
   })
 }
 
 const describeStep = (step: InspectableStep): WorkflowGraphNodeMetadata => ({
-  ...(step.kind !== "integration" || step.source === undefined
-    ? {}
-    : { integration: step.source }),
-  ...(step.retry === undefined ? {} : { retry: step.retry }),
-  ...(step.concurrency === undefined
-    ? {}
-    : {
-        concurrency: {
-          limit: step.concurrency.limit,
-          keyed: step.concurrency.key !== undefined
-        }
-      }),
+  ...whenPresent("integration", step.kind === "integration" ? step.source : undefined),
+  ...whenPresent("retry", step.retry),
+  ...whenPresentFields(step.concurrency, (concurrency) => ({
+    concurrency: { limit: concurrency.limit, keyed: concurrency.key !== undefined }
+  })),
   compensates: step.compensate !== undefined
 })
 
@@ -126,7 +121,7 @@ const metadataFromEvents = (events: ReadonlyArray<WorkflowEvent>) => {
       case "code.started":
         metadata.set(nodeId("code", event.name, event.invocation), {
           activityName: event.activityName,
-          ...(event.reason === undefined ? {} : { reason: event.reason })
+          ...whenPresent("reason", event.reason)
         })
         break
       case "all.started":
@@ -155,9 +150,9 @@ const graphNodeForCall = (
   const metadata: WorkflowGraphNodeMetadata = {
     ...options.eventMetadata.get(id),
     ...options.steps.get(id),
-    ...(call.branches === undefined ? {} : { branches: call.branches })
+    ...whenPresent("branches", call.branches)
   }
-  const description = typeof metadata.reason === "string"
+  const description = Predicate.isString(metadata.reason)
     ? metadata.reason
     : call.counter > 1
       ? `Invocation ${call.counter}`
@@ -168,8 +163,8 @@ const graphNodeForCall = (
     label: call.name,
     invocation: call.counter,
     repeated: (options.nameCounts.get(`${call.kind}:${call.name}`) ?? 0) > 1,
-    ...(description === undefined ? {} : { description }),
-    ...(schemas === undefined ? {} : { schemas }),
+    ...whenPresent("description", description),
+    ...whenPresent("schemas", schemas),
     metadata
   }
 }
@@ -286,7 +281,7 @@ const graphFromTrace = (options: {
   return {
     workflowName: options.workflow.name,
     sourceHash: options.workflow.sourceHash,
-    ...(schemas === undefined ? {} : { schemas }),
+    ...whenPresent("schemas", schemas),
     nodes,
     edges,
     calls,

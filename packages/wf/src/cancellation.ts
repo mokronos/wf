@@ -16,5 +16,8 @@ export class Cancelled extends Schema.TaggedErrorClass<Cancelled>()("Cancelled",
   }
 }
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const skipsCompensation = (error: unknown): boolean =>
   error instanceof Cancelled && !error.compensate

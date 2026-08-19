@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { Data, Effect, Option } from "effect"
+import { Data, Effect, Option, Predicate, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import {
   createDirectoryWorkflowCatalog,
@@ -22,39 +22,27 @@ import { createGatewayIntegrationInvoker } from "../gateway-invoker.ts"
 import { createGatewayClient, resolveClientConnection } from "@mokronos/integrations-client"
 import { migrateLegacyCatalog } from "../migrate-catalog.ts"
 import { sourcesPath, workflowsPath } from "../paths.ts"
-import type {
-  IntegrationSource,
-  JsonSchema,
-  PendingSignal,
-  WorkflowArtifact,
-  WorkflowCatalog,
-  WorkflowClient,
-  WorkflowEvent,
-  WorkflowHistoryEvent,
-  WorkflowHistoryRecord,
-  WorkflowId,
-  WorkflowRunRecord,
-  WorkflowSourceStore,
-  WorkflowGraphNodeKind,
-  WorkflowGraphNodeMetadata
-} from "@mokronos/wfkit"
+import type { IntegrationSource, JsonSchema, PendingSignal, SampleValue, WorkflowArtifact, WorkflowCatalog, WorkflowClient, WorkflowEvent, WorkflowGraphNodeKind, WorkflowGraphNodeMetadata, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowId, WorkflowPayload, WorkflowRunRecord, WorkflowSourceStore } from "@mokronos/wfkit"
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const formatError = (error: unknown): string => {
   if (error instanceof Error) {
     return error.message
   }
   // Typed workflow errors are plain objects; String() would print
   // "[object Object]".
-  return typeof error === "object" && error !== null ? toJsonText(error) : String(error)
+  return Predicate.isObjectOrArray(error) ? toJsonText(error) : String(error)
 }
 
-const parseJsonInput = (input: string | undefined): unknown => {
+const parseJsonInput = (input: string | undefined): WorkflowPayload => {
   if (input === undefined) {
     return {}
   }
 
   try {
-    return JSON.parse(input)
+    return Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Json))(JSON.parse(input))
   } catch (error) {
     throw new Error(`Invalid JSON input: ${formatError(error)}`)
   }
@@ -202,6 +190,10 @@ const writeStdoutLine = (text: string): Promise<void> =>
 
 const resultDisplayLimit = 800
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const printRunResult = async (result: unknown, verbose: boolean): Promise<void> => {
   if (result === undefined) {
     await writeStdoutLine("Workflow completed.")
@@ -225,7 +217,7 @@ const printRunResult = async (result: unknown, verbose: boolean): Promise<void> 
   }))
 }
 
-const samplePayloadFor = (signal: PendingSignal): unknown =>
+const samplePayloadFor = (signal: PendingSignal): SampleValue =>
   signal.payloadSchema === undefined ? {} : sampleValueForJsonSchema(signal.payloadSchema)
 
 const describePendingSignal = (runId: string, signal: PendingSignal, verbose: boolean): string => {
@@ -289,12 +281,16 @@ const isPrintableWorkflowEvent = (event: WorkflowHistoryEvent): event is Workflo
   }
 }
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const stringifyEventValue = (value: unknown): string => {
   if (value === undefined) {
     return "undefined"
   }
 
-  if (typeof value === "string") {
+  if (Predicate.isString(value)) {
     return JSON.stringify(value)
   }
 
@@ -307,12 +303,20 @@ const stringifyEventValue = (value: unknown): string => {
 
 const eventDetailLimit = 320
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const summarizeValue = (value: unknown, limit: number): string => {
   const serialized = stringifyEventValue(value)
   if (serialized.length <= limit) return serialized
   return `${serialized.slice(0, limit)}… (+${serialized.length - limit} chars)`
 }
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const summarizeEventValue = (value: unknown): string => summarizeValue(value, eventDetailLimit)
 
 // Derived from the graph schema rather than restated, so widening a metadata
@@ -601,6 +605,9 @@ const printEventLine = (
   console.error(`${eventTag(category)} ${paintVerb(verb)} ${bold(subject)}${detailText}`)
 }
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const errorDetail = (error: unknown, verbose: boolean): EventDetail => [
   "error",
   red(verbose ? stringifyEventValue(error) : summarizeEventValue(error))
@@ -610,6 +617,10 @@ const reasonDetails = (reason: string | undefined, verbose: boolean): ReadonlyAr
   reason === undefined ? [] : [["reason", verbose ? stringifyEventValue(reason) : summarizeEventValue(reason)]]
 
 const printWorkflowEvent = (event: WorkflowEvent, verbose: boolean) => {
+  // Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+  // deliberately: `duration` carries a Duration.Input, which is not JSON, so
+  // narrowing the schema would break history persistence.
+  // oxlint-disable-next-line anti-slop/no-unknown-parameters
   const detail = (value: unknown): string =>
     verbose ? stringifyEventValue(value) : summarizeEventValue(value)
   switch (event.type) {
@@ -774,6 +785,9 @@ class WorkflowCliError extends Data.TaggedError("WorkflowCliError")<{
   readonly message: string
 }> {}
 
+// A caught value. TypeScript types every catch binding as unknown because
+// JavaScript lets any value be thrown, so there is nothing narrower to accept.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const cliError = (error: unknown): WorkflowCliError =>
   new WorkflowCliError({ message: formatError(error) })
 
@@ -1113,7 +1127,7 @@ const signalCommand = (runtime: CliRuntimeOptions) => Command.make(
   })
 ).pipe(Command.withDescription("Resume a run waiting for a signal"))
 
-export const makeWorkflowCommands = (runtime: CliRuntimeOptions) => [
+export const workflowCommands = (runtime: CliRuntimeOptions) => [
   createCommand(runtime),
   validateCommand(runtime),
   listCommand(runtime),

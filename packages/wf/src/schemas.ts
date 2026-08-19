@@ -1,3 +1,4 @@
+import { whenPresent } from "./optional.ts"
 import { Schema } from "effect"
 export {
   formatIntegrationSource,
@@ -53,8 +54,28 @@ export const JsonSchema: Schema.Codec<JsonSchema> = Schema.StructWithRest(
   [Schema.Record(Schema.String, Schema.Json)]
 )
 
-export const decodeJsonSchema = (value: unknown): JsonSchema =>
-  Schema.decodeUnknownSync(JsonSchema)(value)
+/** A value that survives a round trip through workflow history.
+ *
+ *  Wider than WorkflowPayload because these are decoded values on their way to
+ *  or from JSON: an input schema may decode a string into a Date, and an
+ *  optional property is typed `| undefined` even though JSON drops it. */
+export type SerializableValue =
+  | Schema.Json
+  | undefined
+  | bigint
+  | Date
+  | ReadonlyArray<SerializableValue>
+  | { readonly [key: string]: SerializableValue }
+
+/** A workflow payload as it crosses a persistence or process boundary.
+ *
+ *  JSON because durable replay has to re-read it after the process that
+ *  produced it is gone, and `undefined` because a `Schema.Void` input has no
+ *  payload at all — JSON has no way to spell that, which is why the stored
+ *  envelope keeps the key optional rather than writing null. */
+export type WorkflowPayload = Schema.Json | undefined
+
+export const decodeJsonSchema = Schema.decodeUnknownSync(JsonSchema)
 
 /** Best-effort JSON Schema for an Effect schema; undefined when the schema
  *  has no JSON representation. */
@@ -85,10 +106,10 @@ const simplifyJsonSchema = (schema: JsonSchema): JsonSchema => {
     )
   const simplified: JsonSchema = {
     ...schema,
-    ...(simplifiedAnyOf === undefined ? {} : { anyOf: simplifiedAnyOf }),
-    ...(simplifiedOneOf === undefined ? {} : { oneOf: simplifiedOneOf }),
-    ...(simplifiedItems === undefined ? {} : { items: simplifiedItems }),
-    ...(simplifiedProperties === undefined ? {} : { properties: simplifiedProperties })
+    ...whenPresent("anyOf", simplifiedAnyOf),
+    ...whenPresent("oneOf", simplifiedOneOf),
+    ...whenPresent("items", simplifiedItems),
+    ...whenPresent("properties", simplifiedProperties)
   }
   if (
     simplifiedAnyOf?.length === 1 &&
@@ -508,11 +529,8 @@ export const RunEventsResponse = Schema.Struct({
 })
 export type RunEventsResponse = typeof RunEventsResponse.Type
 
-export const decodeWorkflowsResponse = (value: unknown): WorkflowsResponse =>
-  Schema.decodeUnknownSync(WorkflowsResponse)(value)
+export const decodeWorkflowsResponse = Schema.decodeUnknownSync(WorkflowsResponse)
 
-export const decodeRunsResponse = (value: unknown): RunsResponse =>
-  Schema.decodeUnknownSync(RunsResponse)(value)
+export const decodeRunsResponse = Schema.decodeUnknownSync(RunsResponse)
 
-export const decodeRunEventsResponse = (value: unknown): RunEventsResponse =>
-  Schema.decodeUnknownSync(RunEventsResponse)(value)
+export const decodeRunEventsResponse = Schema.decodeUnknownSync(RunEventsResponse)

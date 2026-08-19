@@ -1,3 +1,4 @@
+import { whenPresent } from "./optional.ts"
 import { Schema } from "effect"
 import type {
   DefinedIntegrationStep,
@@ -32,6 +33,6 @@ export const integration = <I, O>(config: {
     output: config.output,
     errors: Schema.Never,
     source,
-    ...(config.retry === undefined ? {} : { retry: config.retry })
+    ...whenPresent("retry", config.retry)
   }
 }

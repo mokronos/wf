@@ -84,7 +84,7 @@ export type { MaintenanceLoop, MaintenanceResult } from "./maintenance.ts"
 export { createOAuthSessions } from "./oauth-sessions.ts"
 export type { OAuthSession, OAuthSessions, OAuthSessionState } from "./oauth-sessions.ts"
 
-export { makeRoutes } from "./http/api.ts"
+export { gatewayRoutes } from "./http/api.ts"
 export type { ApiDependencies } from "./http/api.ts"
 export { createGatewayHandler } from "./http/handler.ts"
 export type { GatewayRequestContext } from "./http/handler.ts"

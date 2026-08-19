@@ -1,3 +1,4 @@
+import { whenPresent } from "../optional.ts"
 import { Schema } from "effect"
 import { isTerminalRunStatus } from "../run-lifecycle.ts"
 import type { WorkflowHistoryRecord } from "../schemas.ts"
@@ -75,6 +76,9 @@ export const createSignalDeliveryClaims = () => {
 const signalKey = (event: { readonly name: string; readonly invocation: number }): string =>
   `${event.name}:${event.invocation}`
 
+// Reads the timeout off a pending-signal event, which the event schema declares
+// Schema.Unknown.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const optionalTimeout = (timeout: unknown): { readonly timeout?: unknown } =>
   timeout === undefined ? {} : { timeout }
 
@@ -137,7 +141,7 @@ export const pendingSignalsFromHistory = (
       invocation: event.invocation,
       activityName: event.activityName,
       ...optionalTimeout(event.timeout),
-      ...(event.payloadSchema === undefined ? {} : { payloadSchema: event.payloadSchema })
+      ...whenPresent("payloadSchema", event.payloadSchema)
     }]
   })
 }

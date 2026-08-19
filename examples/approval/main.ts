@@ -10,6 +10,7 @@
 // start/approve run in separate processes, so together they demonstrate
 // pause -> process exit -> resume from the persisted state.
 
+import { Predicate } from "effect"
 import { mkdtempSync, rmSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
@@ -63,10 +64,14 @@ const countBy = (
   predicate: (event: WorkflowHistoryRecord["event"]) => boolean
 ) => history.filter((record) => predicate(record.event)).length
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const stringField = (value: unknown, key: string): string | undefined => {
-  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+  if (Predicate.isObject(value)) {
     const entry = Object.fromEntries(Object.entries(value))[key]
-    return typeof entry === "string" ? entry : undefined
+    return Predicate.isString(entry) ? entry : undefined
   }
   return undefined
 }

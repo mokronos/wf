@@ -1,3 +1,4 @@
+import { whenPresent } from "../optional.ts"
 import { Schema } from "effect"
 import type { DefinedWorkflow } from "../core.ts"
 import { Cancelled, cancellationDeferredName } from "../core.ts"
@@ -147,11 +148,11 @@ export const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowC
       const inserted = store.insert({
         id,
         workflowName: selectedWorkflow.name,
-        payload,
-        ...(opts.artifactId === undefined ? {} : { artifactId: opts.artifactId }),
-        ...(opts.idempotencyKey === undefined ? {} : { idempotencyKey: opts.idempotencyKey }),
-        ...(opts.actor === undefined ? {} : { actor: opts.actor }),
-        ...(opts.sourceHash === undefined ? {} : { sourceHash: opts.sourceHash })
+        payload: decodeStoredValue(JSON.stringify({ value: payload })),
+        ...whenPresent("artifactId", opts.artifactId),
+        ...whenPresent("idempotencyKey", opts.idempotencyKey),
+        ...whenPresent("actor", opts.actor),
+        ...whenPresent("sourceHash", opts.sourceHash)
       })
       if (!inserted) {
         const winner = opts.idempotencyKey === undefined
@@ -290,7 +291,7 @@ export const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowC
           workflow,
           executionId,
           deferredName: cancellationDeferredName,
-          payload: { compensate: true, ...(opts.actor === undefined ? {} : { actor: opts.actor }) },
+          payload: { compensate: true, ...whenPresent("actor", opts.actor) },
           onEvent: makeEventSink(executionId)
         })
         store.fail(executionId, cancellation)

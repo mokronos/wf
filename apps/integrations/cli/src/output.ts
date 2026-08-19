@@ -1,3 +1,4 @@
+import { whenTrue } from "./optional.ts"
 import { Effect, Schema } from "effect"
 
 /** How results are shaped for the reader.
@@ -56,10 +57,11 @@ export const pageFields = <A>(result: Page<A>, narrowing: string) => {
   const windowed = result.limit !== undefined || result.offset > 0
   return {
     count: result.count,
-    ...(windowed ? { showing: result.items.length, offset: result.offset } : {}),
-    ...(result.count > largeListing && !windowed
-      ? { hint: `${result.count} rows — ${narrowing}, or pipe this into jq` }
-      : {})
+    ...whenTrue(windowed, () => ({ showing: result.items.length, offset: result.offset })),
+    ...whenTrue(
+      result.count > largeListing && !windowed,
+      () => ({ hint: `${result.count} rows — ${narrowing}, or pipe this into jq` })
+    )
   }
 }
 
@@ -71,8 +73,18 @@ export const pageLine = <A>(result: Page<A>, narrowing: string): string | undefi
   return result.count > largeListing ? `${result.count} rows — ${narrowing}.` : undefined
 }
 
+/** A value on its way out through JSON.stringify. Wider than Schema.Json
+ *  because the rows come from decoded gateway responses, which carry Dates and
+ *  optional properties typed `| undefined`. */
+export type JsonEncodable =
+  | Schema.Json
+  | undefined
+  | Date
+  | ReadonlyArray<JsonEncodable>
+  | { readonly [key: string]: JsonEncodable }
+
 /** JSON is compact unless verbose, because an agent pays for whitespace. */
-export const jsonOutput = (value: unknown, verbose: boolean): string =>
+export const jsonOutput = (value: JsonEncodable, verbose: boolean): string =>
   JSON.stringify(value, null, verbose ? 2 : undefined)
 
 /** Shortens a string value. Only ever applied to a *value*, never to a

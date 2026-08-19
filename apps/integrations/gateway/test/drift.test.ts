@@ -38,11 +38,11 @@ const makeStore = async (): Promise<GatewayStore> => {
   return store
 }
 
-const snapshot = (tool: string, input: unknown): ToolSnapshot => ({
+const snapshot = (tool: string, input: ToolSnapshot["inputSchema"]): ToolSnapshot => ({
   integration: IntegrationSlug.make("tickets"),
   connection: ConnectionName.make("default"),
   tool: ToolName.make(tool),
-  inputSchema: input as ToolSnapshot["inputSchema"],
+  inputSchema: input,
   outputSchema: null,
   syncedAt: new Date()
 })

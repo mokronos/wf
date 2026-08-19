@@ -2,7 +2,7 @@
 // backend and validates the recorded history: event counts, compensation
 // order, retry behavior, and the mock services' final state.
 
-import { Option, Schema } from "effect"
+import { Option, Predicate, Schema } from "effect"
 import { rmSync } from "node:fs"
 import path from "node:path"
 import { createWorkflowClient, createWorkflowRuntime } from "@mokronos/wfkit"
@@ -33,17 +33,29 @@ const eventTypes = (history: ReadonlyArray<WorkflowHistoryRecord>) =>
 // at the boundary instead of casting.
 const JsonObject = Schema.Record(Schema.String, Schema.Json)
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const asRecord = (value: unknown): Record<string, typeof Schema.Json.Type> | undefined =>
   Option.getOrUndefined(Schema.decodeUnknownOption(JsonObject)(value))
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const stringField = (value: unknown, key: string): string | undefined => {
   const entry = asRecord(value)?.[key]
-  return typeof entry === "string" ? entry : undefined
+  return Predicate.isString(entry) ? entry : undefined
 }
 
+// Reads a WorkflowEvent field. The event schema declares these Schema.Unknown
+// deliberately: `duration` carries a Duration.Input, which is not JSON, so
+// narrowing the schema would break history persistence.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 const numberField = (value: unknown, key: string): number | undefined => {
   const entry = asRecord(value)?.[key]
-  return typeof entry === "number" ? entry : undefined
+  return Predicate.isNumber(entry) ? entry : undefined
 }
 
 const countBy = (history: ReadonlyArray<WorkflowHistoryRecord>, predicate: (event: WorkflowHistoryRecord["event"]) => boolean) =>

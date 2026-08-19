@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { Schema } from "effect"
 import {
   addExecutorMcp,
@@ -57,7 +58,7 @@ const installWith = async (
       spec: decoded.detection.endpoint,
       slug: decoded.detection.slug,
       name: decoded.detection.name,
-      ...(preview.description === null ? {} : { description: preview.description })
+      ...whenPresent("description", preview.description)
     })
   }
 

@@ -1,4 +1,5 @@
-import { Effect, Schema } from "effect"
+import { whenPresent } from "./optional.ts"
+import { Cause, Effect, Predicate, Schema } from "effect"
 import type * as Duration from "effect/Duration"
 import { Cancelled } from "./cancellation.ts"
 import type { StepConcurrencyPolicy } from "./concurrency.ts"
@@ -39,9 +40,11 @@ export const terminalFailure = <E>(error: E): TerminalFailure<E> => ({
   error
 })
 
+// A type guard's input has to be wider than the type it proves, so unknown is
+// the correct parameter type for one.
+// oxlint-disable-next-line anti-slop/no-unknown-parameters
 export const isTerminalFailure = <E>(value: unknown): value is TerminalFailure<E> =>
-  typeof value === "object" &&
-  value !== null &&
+  Predicate.isObjectOrArray(value) &&
   TerminalFailureTypeId in value &&
   value[TerminalFailureTypeId] === TerminalFailureTypeId
 
@@ -62,11 +65,14 @@ interface StepDefinition<
   readonly input: Input
   readonly output: Output
   readonly errors: Errors
+  /** `reason` is the failure that triggered compensation, as a Cause, so a
+   *  compensation can tell an ordinary failure from a defect or an interrupt.
+   *  The return value is discarded: compensation succeeds or it fails. */
   readonly compensate?: (
     result: Output["Type"],
     input: Input["Type"],
-    reason: unknown
-  ) => unknown | Promise<unknown>
+    reason: Cause.Cause<unknown>
+  ) => void | Promise<void>
   readonly retry?: StepRetryPolicy
   readonly concurrency?: StepConcurrency<Input["Type"]>
 }
@@ -117,11 +123,14 @@ export const defineStep = <
     input: Input["Type"],
     step: StepContext<Errors["Type"]>
   ) => Promise<Output["Type"] | TerminalFailure<Errors["Type"]>>
+  /** `reason` is the failure that triggered compensation, as a Cause, so a
+   *  compensation can tell an ordinary failure from a defect or an interrupt.
+   *  The return value is discarded: compensation succeeds or it fails. */
   readonly compensate?: (
     result: Output["Type"],
     input: Input["Type"],
-    reason: unknown
-  ) => unknown | Promise<unknown>
+    reason: Cause.Cause<unknown>
+  ) => void | Promise<void>
   readonly retry?: StepRetryPolicy
   readonly concurrency?: StepConcurrency<Input["Type"]>
 }): DefinedLocalStep<Input, Output, Errors | typeof Schema.Never> => {
@@ -132,7 +141,7 @@ export const defineStep = <
     ...config,
     kind: "local",
     errors: config.errors ?? Schema.Never,
-    ...(retry === undefined ? {} : { retry })
+    ...whenPresent("retry", retry)
   }
 }
 

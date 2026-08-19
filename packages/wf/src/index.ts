@@ -28,7 +28,10 @@ export {
   isWorkflowEvent
 } from "./schemas.ts"
 export type { JsonSchema as JsonSchemaDocument, ExecutionId as ExecutionIdValue } from "./schemas.ts"
-export { createWorkflowRuntime, executeWorkflow, makeEngineLayer, makeWorkflowEffect, run, WorkflowConflictError } from "./runtime.ts"
+export type { SerializableValue, WorkflowPayload } from "./schemas.ts"
+export { whenPresent, whenPresentFields, whenPresentMap, whenTrue } from "./optional.ts"
+export type { SampleValue } from "./sdk/sample.ts"
+export { createWorkflowRuntime, executeWorkflow, engineLayer, makeWorkflowEffect, run, WorkflowConflictError } from "./runtime.ts"
 export type { ExecuteWorkflowOptions, WorkflowRuntime, WorkflowRuntimeOptions } from "./runtime.ts"
 export type {
   LoadedWorkflow,

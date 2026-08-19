@@ -1,3 +1,4 @@
+import { whenPresent, whenPresentFields, whenPresentMap } from "@/lib/optional"
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate, useParams } from "react-router"
 import { ExternalLink, Plug, Search, Unplug } from "lucide-react"
@@ -62,7 +63,7 @@ function DiscoverDialog() {
     mutationFn: () =>
       gateway.discoverIntegration({
         url,
-        ...(connection.trim().length === 0 ? {} : { connection: connection.trim() })
+        ...whenPresentMap("connection", connection.trim() || undefined, (name) => name)
       }),
     onSuccess: (result) => {
       invalidate(keys.integrations, keys.connections)
@@ -139,8 +140,8 @@ function ConnectDialog({ integration }: { readonly integration: IntegrationOverv
       gateway.createConnection({
         integration: integration.slug,
         connection: name,
-        ...(template.length === 0 ? {} : { template }),
-        ...(token.length === 0 ? {} : { values: { token } })
+        ...whenPresent("template", template || undefined),
+        ...whenPresentFields(token || undefined, (present) => ({ values: { token: present } }))
       }),
     onSuccess: (result) => {
       invalidate(keys.integrations, keys.connections)
@@ -158,7 +159,7 @@ function ConnectDialog({ integration }: { readonly integration: IntegrationOverv
       gateway.startOAuth({
         integration: integration.slug,
         connection: name,
-        ...(template.length === 0 ? {} : { template })
+        ...whenPresent("template", template || undefined)
       }),
     onSuccess: (started) => {
       setSession(started.id)

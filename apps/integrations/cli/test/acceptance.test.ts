@@ -12,6 +12,62 @@ const wfCli = path.join(repoRoot, "apps", "cli", "src", "main.ts")
 
 const servers: Array<ReturnType<typeof Bun.serve>> = []
 const gateways: Array<RunningGateway> = []
+/** Decodes CLI output against the shape a test expects. Using a schema rather
+ *  than a cast means the test fails when the CLI's output drifts, which is the
+ *  whole point of an acceptance test. Struct ignores excess properties, so a
+ *  command is still free to report more than the test names. */
+const parseOutput = <A>(schema: Schema.Codec<A>, text: string): A =>
+  Schema.decodeUnknownSync(schema)(JSON.parse(text))
+
+const ApiKeyConfig = Schema.Struct({ apiKey: Schema.String })
+const IdOutput = Schema.Struct({ id: Schema.String })
+const SecretOutput = Schema.Struct({ secret: Schema.String })
+const KeyOutput = Schema.Struct({ id: Schema.String, secret: Schema.String })
+const CountOutput = Schema.Struct({ count: Schema.Number })
+const DiscoveredOutput = Schema.Struct({
+  integration: Schema.Struct({ slug: Schema.String })
+})
+const ConnectionsOutput = Schema.Struct({
+  connections: Schema.Array(Schema.Struct({ address: Schema.String, name: Schema.String }))
+})
+const GrantsOutput = Schema.Struct({
+  grants: Schema.Array(Schema.Struct({
+    alias: Schema.String,
+    tool: Schema.String,
+    integration: Schema.String,
+    decision: Schema.String
+  }))
+})
+const GrantCountOutput = Schema.Struct({ grants: Schema.Array(Schema.Json) })
+const FrozenOutput = Schema.Struct({ status: Schema.String, approvalId: Schema.String })
+const AuditOutput = Schema.Struct({
+  records: Schema.Array(Schema.Struct({ outcome: Schema.String }))
+})
+const ClientsOutput = Schema.Struct({
+  clients: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String }))
+})
+const DirectOutcome = Schema.Struct({
+  status: Schema.String,
+  result: Schema.Struct({ title: Schema.String })
+})
+const ToolsOutput = Schema.Struct({
+  count: Schema.Number,
+  tools: Schema.Array(Schema.Struct({ name: Schema.String })),
+  showing: Schema.optional(Schema.Number)
+})
+const WindowedToolsOutput = Schema.Struct({
+  count: Schema.Number,
+  showing: Schema.Number,
+  offset: Schema.Number,
+  tools: Schema.Array(Schema.Json)
+})
+const KeysOutput = Schema.Struct({
+  keys: Schema.Array(Schema.Struct({
+    id: Schema.String,
+    revokedAt: Schema.NullOr(Schema.String)
+  }))
+})
+
 const directories: Array<string> = []
 
 afterEach(async () => {
@@ -118,7 +174,7 @@ const startGateway = async () => {
   const gateway = await serveGateway({ home, port: 0 })
   gateways.push(gateway)
   const config = await readFile(path.join(home, "gateway.json"), "utf8")
-  const { apiKey } = JSON.parse(config) as { apiKey: string }
+  const { apiKey } = parseOutput(ApiKeyConfig, config)
   return {
     home,
     url: gateway.url,
@@ -176,9 +232,7 @@ describe("integrations CLI acceptance", () => {
       expect(schema.exitCode, schema.stderr).toBe(0)
       expect(schema.stdout).toContain("title")
 
-      const listed = JSON.parse((await integrations(["connections"])).stdout) as {
-        connections: ReadonlyArray<{ address: string; name: string }>
-      }
+      const listed = parseOutput(ConnectionsOutput, (await integrations(["connections"])).stdout)
       const address = listed.connections[0]?.address ?? ""
       expect(address).toStartWith(`tools.${slug}.org.`)
 
@@ -204,14 +258,12 @@ describe("integrations CLI acceptance", () => {
     const integrations = (args: ReadonlyArray<string>, environment = gateway.environment) =>
       run(integrationsCli, args, environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
 
-    const client = JSON.parse((await integrations(["client", "sandbox"])).stdout) as { id: string }
-    const key = JSON.parse((await integrations(["key", client.id])).stdout) as { secret: string }
+    const client = parseOutput(IdOutput, (await integrations(["client", "sandbox"])).stdout)
+    const key = parseOutput(SecretOutput, (await integrations(["key", client.id])).stdout)
     const sandbox = {
       ...gateway.environment,
       INTEGRATIONS_API_KEY: key.secret
@@ -242,14 +294,7 @@ describe("integrations CLI acceptance", () => {
       slug
     ])
 
-    const afterGrant = JSON.parse((await integrations(["grants", "--mine"], sandbox)).stdout) as {
-      grants: ReadonlyArray<{
-        alias: string
-        tool: string
-        integration: string
-        decision: string
-      }>
-    }
+    const afterGrant = parseOutput(GrantsOutput, (await integrations(["grants", "--mine"], sandbox)).stdout)
     expect(afterGrant.grants).toEqual([
       { alias: "tickets", tool: "tickets.create", integration: slug, decision: "allow" }
     ])
@@ -280,13 +325,11 @@ describe("integrations CLI acceptance", () => {
     const integrations = (args: ReadonlyArray<string>, environment = gateway.environment) =>
       run(integrationsCli, args, environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
-    const client = JSON.parse((await integrations(["client", "sales"])).stdout) as { id: string }
-    const key = JSON.parse((await integrations(["key", client.id])).stdout) as { secret: string }
+    const client = parseOutput(IdOutput, (await integrations(["client", "sales"])).stdout)
+    const key = parseOutput(SecretOutput, (await integrations(["key", client.id])).stdout)
     await integrations([
       "grant",
       client.id,
@@ -297,15 +340,12 @@ describe("integrations CLI acceptance", () => {
       "--require-approval"
     ])
 
-    const frozen = JSON.parse((await integrations([
+    const frozen = parseOutput(FrozenOutput, (await integrations([
       "execute",
       "tickets",
       "tickets.create",
       JSON.stringify({ body: { title: "Needs a human" } })
-    ], { ...gateway.environment, INTEGRATIONS_API_KEY: key.secret })).stdout) as {
-      status: string
-      approvalId: string
-    }
+    ], { ...gateway.environment, INTEGRATIONS_API_KEY: key.secret })).stdout)
 
     expect(frozen.status).toBe("pending")
     expect(vendor.invocations()).toBe(0)
@@ -315,9 +355,7 @@ describe("integrations CLI acceptance", () => {
     // The gateway performed the frozen call itself.
     expect(vendor.invocations()).toBe(1)
 
-    const audit = JSON.parse((await integrations(["audit"])).stdout) as {
-      records: ReadonlyArray<{ outcome: string }>
-    }
+    const audit = parseOutput(AuditOutput, (await integrations(["audit"])).stdout)
     expect(audit.records.map((entry) => entry.outcome)).toContain("succeeded")
   }, 30_000)
 
@@ -327,18 +365,14 @@ describe("integrations CLI acceptance", () => {
     const integrations = (args: ReadonlyArray<string>) =>
       run(integrationsCli, args, gateway.environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
 
     // The workflow names an alias, so the local client needs a grant binding
     // that alias to the connection just made. This is the deployment-time
     // binding from ADR 0003: the definition is portable, the grant is not.
-    const clients = JSON.parse((await integrations(["clients"])).stdout) as {
-      clients: ReadonlyArray<{ id: string; name: string }>
-    }
+    const clients = parseOutput(ClientsOutput, (await integrations(["clients"])).stdout)
     const local = clients.clients.find((entry) => entry.name === "local")
     expect(local).toBeDefined()
     const granted = await integrations([
@@ -406,9 +440,7 @@ export const Acceptance = defineWorkflow({
     const integrations = (args: ReadonlyArray<string>, environment = gateway.environment) =>
       run(integrationsCli, args, environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
 
@@ -422,7 +454,7 @@ export const Acceptance = defineWorkflow({
       JSON.stringify({ body: { title: "x".repeat(2000) } })
     ])
     expect(direct.exitCode, direct.stderr).toBe(0)
-    const outcome = JSON.parse(direct.stdout) as { status: string; result: { title: string } }
+    const outcome = parseOutput(DirectOutcome, direct.stdout)
     expect(outcome.status).toBe("succeeded")
     expect(outcome.result.title).toHaveLength(2000)
 
@@ -437,8 +469,8 @@ export const Acceptance = defineWorkflow({
 
     // A refusal is an answer, and it arrives as one: parseable, with a
     // non-zero exit code to say which answer it was.
-    const client = JSON.parse((await integrations(["client", "sandbox"])).stdout) as { id: string }
-    const key = JSON.parse((await integrations(["key", client.id])).stdout) as { secret: string }
+    const client = parseOutput(IdOutput, (await integrations(["client", "sandbox"])).stdout)
+    const key = parseOutput(SecretOutput, (await integrations(["key", client.id])).stdout)
     const refused = await integrations(
       ["execute", "nothing", "tickets.create", "{}"],
       { ...gateway.environment, INTEGRATIONS_API_KEY: key.secret }
@@ -453,30 +485,25 @@ export const Acceptance = defineWorkflow({
     const integrations = (args: ReadonlyArray<string>) =>
       run(integrationsCli, args, gateway.environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
 
-    const whole = JSON.parse((await integrations(["tools", slug])).stdout) as {
-      count: number
-      tools: ReadonlyArray<{ name: string }>
-      showing?: number
-    }
+    const whole = parseOutput(ToolsOutput, (await integrations(["tools", slug])).stdout)
     // Nothing is held back behind a flag the reader did not know to pass.
     expect(whole.tools).toHaveLength(whole.count)
     expect(whole.showing).toBeUndefined()
 
-    const windowed = JSON.parse(
+    const windowed = parseOutput(
+      WindowedToolsOutput,
       (await integrations(["tools", slug, "--limit", "1", "--offset", "0"])).stdout
-    ) as { count: number; showing: number; offset: number; tools: ReadonlyArray<unknown> }
+    )
     expect(windowed.tools).toHaveLength(1)
     expect(windowed.showing).toBe(1)
     expect(windowed.count).toBe(whole.count)
 
     // The old name for the catalog listing still works.
-    const catalog = JSON.parse((await integrations(["list"])).stdout) as { count: number }
+    const catalog = parseOutput(CountOutput, (await integrations(["list"])).stdout)
     expect(catalog.count).toBeGreaterThan(0)
   }, 40_000)
 
@@ -486,37 +513,28 @@ export const Acceptance = defineWorkflow({
     const integrations = (args: ReadonlyArray<string>, environment = gateway.environment) =>
       run(integrationsCli, args, environment)
 
-    const discovered = JSON.parse((await integrations(["discover", vendor.specUrl])).stdout) as {
-      integration: { slug: string }
-    }
+    const discovered = parseOutput(DiscoveredOutput, (await integrations(["discover", vendor.specUrl])).stdout)
     const slug = discovered.integration.slug
     await integrations(["connect", slug, "--credential-env", "ACCEPTANCE_TOKEN"])
-    const client = JSON.parse((await integrations(["client", "sandbox"])).stdout) as { id: string }
-    const key = JSON.parse((await integrations(["key", client.id])).stdout) as {
-      id: string
-      secret: string
-    }
+    const client = parseOutput(IdOutput, (await integrations(["client", "sandbox"])).stdout)
+    const key = parseOutput(KeyOutput, (await integrations(["key", client.id])).stdout)
     const sandbox = { ...gateway.environment, INTEGRATIONS_API_KEY: key.secret }
-    const grant = JSON.parse((await integrations([
+    const grant = parseOutput(IdOutput, (await integrations([
       "grant",
       client.id,
       "tickets",
       "tickets.create",
       "--integration",
       slug
-    ])).stdout) as { id: string }
+    ])).stdout)
 
-    const keys = JSON.parse((await integrations(["keys", client.id])).stdout) as {
-      keys: ReadonlyArray<{ id: string; revokedAt: string | null }>
-    }
+    const keys = parseOutput(KeysOutput, (await integrations(["keys", client.id])).stdout)
     expect(keys.keys.map((entry) => entry.id)).toEqual([key.id])
 
     // Undoing a delegation was the one thing the CLI could not do.
     const revokedGrant = await integrations(["revoke", "grant", grant.id])
     expect(revokedGrant.exitCode, revokedGrant.stderr).toBe(0)
-    const afterRevoke = JSON.parse((await integrations(["grants", "--mine"], sandbox)).stdout) as {
-      grants: ReadonlyArray<unknown>
-    }
+    const afterRevoke = parseOutput(GrantCountOutput, (await integrations(["grants", "--mine"], sandbox)).stdout)
     expect(afterRevoke.grants).toEqual([])
 
     const revokedKey = await integrations(["revoke", "key", key.id])

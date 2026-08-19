@@ -1,3 +1,4 @@
+import { whenPresent } from "@mokronos/wfkit"
 import { Schema } from "effect"
 import {
   completeExecutorOAuth,
@@ -147,8 +148,8 @@ export const authorizeExecutorInBrowser = async (
         authorizationUrl,
         tokenUrl,
         clientId: options.clientId,
-        ...(options.clientSecret === undefined ? {} : { clientSecret: options.clientSecret }),
-        ...(resource === undefined ? {} : { resource })
+        ...whenPresent("clientSecret", options.clientSecret),
+        ...whenPresent("resource", resource)
       })
     } else {
       const registrationEndpoint = oauth.registrationEndpoint ?? discovered?.registrationEndpoint
@@ -163,14 +164,12 @@ export const authorizeExecutorInBrowser = async (
         authorizationUrl,
         tokenUrl,
         scopes: oauth.scopes ?? discovered?.scopesSupported ?? [],
-        ...(discovered?.issuer === undefined ? {} : { issuer: discovered.issuer }),
-        ...(resource === undefined ? {} : { resource }),
-        ...(discovered?.tokenEndpointAuthMethodsSupported === undefined
-          ? {}
-          : {
-              tokenEndpointAuthMethodsSupported:
-                discovered.tokenEndpointAuthMethodsSupported
-            })
+        ...whenPresent("issuer", discovered?.issuer),
+        ...whenPresent("resource", resource),
+        ...whenPresent(
+          "tokenEndpointAuthMethodsSupported",
+          discovered?.tokenEndpointAuthMethodsSupported
+        )
       })
     }
     const started = await auth.start({

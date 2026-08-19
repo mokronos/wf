@@ -22,6 +22,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
           <Loader2Icon className="size-4 animate-spin" />
         ),
       }}
+      // SAFETY: every key here is a CSS custom property, and
+      // React.CSSProperties has no index signature for `--*` names, so a
+      // custom-property block cannot be expressed without the assertion. The
+      // values are all var() references, which React passes through verbatim.
       style={
         {
           "--normal-bg": "var(--popover)",

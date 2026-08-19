@@ -1,4 +1,44 @@
+import { Predicate, Schema } from "effect"
 import type { SecretRef } from "@mokronos/wfkit"
+
+/** The slices of X's and the model's responses this example actually reads.
+ *  Decoding at the boundary rather than asserting a shape means a change on
+ *  their side surfaces here, with a message, instead of as an undefined
+ *  somewhere downstream. Struct ignores the rest of the payload. */
+const XTimelineResponse = Schema.Struct({
+  data: Schema.optional(Schema.Array(Schema.Struct({
+    id: Schema.String,
+    text: Schema.String,
+    created_at: Schema.optional(Schema.String),
+    author_id: Schema.optional(Schema.String)
+  }))),
+  includes: Schema.optional(Schema.Struct({
+    users: Schema.optional(Schema.Array(Schema.Struct({
+      id: Schema.String,
+      name: Schema.optional(Schema.String),
+      username: Schema.optional(Schema.String)
+    })))
+  }))
+})
+
+const ChatCompletionResponse = Schema.Struct({
+  choices: Schema.optional(Schema.Array(Schema.Struct({
+    message: Schema.optional(Schema.Struct({ content: Schema.optional(Schema.String) }))
+  })))
+})
+
+const RankedCandidates = Schema.Array(Schema.Struct({
+  postId: Schema.String,
+  reason: Schema.String
+}))
+
+const FixtureTimeline = Schema.Array(Schema.Struct({
+  id: Schema.String,
+  author: Schema.String,
+  text: Schema.String,
+  createdAt: Schema.String
+}))
+
 
 export interface TimelinePost {
   readonly id: string
@@ -73,12 +113,10 @@ export const resetXEngagementAdapters = () => {
 const getFetch = () => config.fetch ?? fetch
 
 const isConfiguredSecret = (value: SecretRef | string): boolean =>
-  typeof value === "string" && value.length > 0 && !value.startsWith("secret:")
+  Predicate.isString(value) && value.length > 0 && !value.startsWith("secret:")
 
-const readFixtureTimeline = async (): Promise<ReadonlyArray<TimelinePost>> => {
-  const posts = await Bun.file(fixtureUrl).json()
-  return posts as ReadonlyArray<TimelinePost>
-}
+const readFixtureTimeline = async (): Promise<ReadonlyArray<TimelinePost>> =>
+  Schema.decodeUnknownSync(FixtureTimeline)(await Bun.file(fixtureUrl).json())
 
 export const fetchTimeline = async (input: TimelineSourceInput): Promise<ReadonlyArray<TimelinePost>> => {
   if (config.enableRealX !== true || config.xUserId === undefined || !isConfiguredSecret(input.bearerToken)) {
@@ -98,10 +136,7 @@ export const fetchTimeline = async (input: TimelineSourceInput): Promise<Readonl
     throw new Error(`X timeline request failed: ${response.status} ${await response.text()}`)
   }
 
-  const body = await response.json() as {
-    readonly data?: ReadonlyArray<{ readonly id: string; readonly text: string; readonly created_at?: string; readonly author_id?: string }>
-    readonly includes?: { readonly users?: ReadonlyArray<{ readonly id: string; readonly name?: string; readonly username?: string }> }
-  }
+  const body = Schema.decodeUnknownSync(XTimelineResponse)(await response.json())
   const users = new Map((body.includes?.users ?? []).map((user) => [user.id, user.name ?? user.username ?? user.id]))
   return (body.data ?? []).map((post) => ({
     id: post.id,
@@ -150,9 +185,7 @@ const chatCompletion = async (input: ZenInput, messages: ReadonlyArray<{ readonl
     throw new Error(`Zen chat completion failed: ${response.status} ${await response.text()}`)
   }
 
-  const body = await response.json() as {
-    readonly choices?: ReadonlyArray<{ readonly message?: { readonly content?: string } }>
-  }
+  const body = Schema.decodeUnknownSync(ChatCompletionResponse)(await response.json())
   return body.choices?.[0]?.message?.content
 }
 
@@ -165,7 +198,7 @@ const parseCandidates = (
     return undefined
   }
   try {
-    const parsed = JSON.parse(content) as ReadonlyArray<{ readonly postId: string; readonly reason: string }>
+    const parsed = Schema.decodeUnknownSync(RankedCandidates)(JSON.parse(content))
     const byId = new Map(posts.map((post) => [post.id, post]))
     return parsed
       .map((candidate) => {

@@ -1,7 +1,8 @@
-import { Effect, Option, Schema } from "effect"
+import { whenPresent, whenPresentMap } from "./optional.ts"
+import { Effect, Option, Predicate, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import { generateModule } from "@mokronos/integrations-client"
-import type { CodegenTarget, GatewayClient, GrantedTool } from "@mokronos/integrations-client"
+import type { GatewayClient, GrantedTool } from "@mokronos/integrations-client"
 import { cliError, connectToGateway, describeError, openBrowser } from "./connection.ts"
 import type { IntegrationsCliError } from "./connection.ts"
 import {
@@ -70,13 +71,13 @@ const JsonArray = Schema.Array(Schema.Json)
  *  a usable value and fall back to empty rather than failing the command: a
  *  listing that renders nothing is easier for a reader to act on than a crash,
  *  and the gateway is the party responsible for its own response shape. */
-const record = (value: unknown): Record<string, typeof Schema.Json.Type> =>
+const record = (value: typeof Schema.Json.Type | undefined): Record<string, typeof Schema.Json.Type> =>
   Option.getOrElse(Schema.decodeUnknownOption(JsonObject)(value), () => ({}))
 
-const array = (value: unknown): ReadonlyArray<Record<string, typeof Schema.Json.Type>> =>
+const array = (value: typeof Schema.Json.Type | undefined): ReadonlyArray<Record<string, typeof Schema.Json.Type>> =>
   Option.getOrElse(Schema.decodeUnknownOption(JsonArray)(value), () => []).map(record)
 
-const text = (value: unknown): string => value === undefined || value === null ? "" : String(value)
+const text = (value: Schema.Json | undefined): string => value === undefined || value === null ? "" : String(value)
 
 /** Listings are ordered before they are windowed. An offset into an unordered
  *  result addresses different rows on every call, which makes paging worse than
@@ -89,7 +90,7 @@ const sortedBy = <A>(
 const readJsonArgument = async (
   inline_: string | undefined,
   file: string | undefined
-): Promise<unknown> => {
+): Promise<typeof Schema.Json.Type> => {
   if (inline_ !== undefined && file !== undefined) {
     throw cliError("Provide JSON input or --file, not both")
   }
@@ -427,12 +428,12 @@ const connectCommand = Command.make(
         const started = record(await client.request("POST", "/v1/connections/oauth", {
           integration: options.integration,
           connection: options.connection,
-          ...(template === undefined ? {} : { template }),
+          ...whenPresent("template", template),
           ...Option.match(options.clientId, {
             onNone: () => ({}),
             onSome: (value) => ({ clientId: value })
           }),
-          ...(secretName === undefined ? {} : { clientSecret: environmentValue(secretName) }),
+          ...whenPresentMap("clientSecret", secretName, environmentValue),
           timeoutSeconds: options.timeout
         }))
         const sessionId = text(started["id"])
@@ -464,7 +465,7 @@ const connectCommand = Command.make(
       return record(await client.request("POST", "/v1/connections", {
         integration: options.integration,
         connection: options.connection,
-        ...(template === undefined ? {} : { template }),
+        ...whenPresent("template", template),
         values
       }))
     }).pipe(Effect.flatMap((result) => {
@@ -613,7 +614,9 @@ const executeCommand = Command.make(
     }).pipe(Effect.flatMap((outcome) =>
       // Always whole JSON: this is the machine-facing result, and a document
       // cut mid-token is not a smaller answer, it is an unusable one.
-      writeStdoutLine(jsonOutput(outcome, verbose)).pipe(Effect.flatMap(() =>
+      writeStdoutLine(
+        jsonOutput(Schema.decodeUnknownSync(Schema.Json)(outcome), verbose)
+      ).pipe(Effect.flatMap(() =>
         outcome.status === "succeeded" || outcome.status === "pending"
           ? Effect.void
           : Effect.fail(cliError(
@@ -899,7 +902,7 @@ const revokeCommand = Command.make(
       return writeStdoutLine(
         asText
           ? `Revoked ${kind} ${id}${
-            typeof cancelled === "number" && cancelled > 0
+            Predicate.isNumber(cancelled) && cancelled > 0
               ? ` (${cancelled} frozen call(s) cancelled)`
               : ""
           }`
@@ -1050,8 +1053,8 @@ const auditCommand = Command.make(
     }).pipe(Effect.flatMap((result) => {
       const body = record(result)
       const records = array(body["records"])
-      const total = typeof body["total"] === "number" ? body["total"] : records.length
-      const offset = typeof body["offset"] === "number" ? body["offset"] : 0
+      const total = Predicate.isNumber(body["total"]) ? body["total"] : records.length
+      const offset = Predicate.isNumber(body["offset"]) ? body["offset"] : 0
       if (options.text) {
         const lines = records.map((entry) =>
           `${text(entry["createdAt"])}\t${text(entry["outcome"])}\t${text(entry["alias"])}.${
@@ -1114,7 +1117,7 @@ const driftCommand = Command.make(
         empty: baselineNote ?? "No drift since the last refresh.",
         extra: {
           checked: reports.length,
-          ...(baselineNote === undefined ? {} : { baseline: baselineNote })
+          ...whenPresent("baseline", baselineNote)
         },
         line: (entry) => `${text(entry["kind"])}\t${text(entry["integration"])}.${text(entry["tool"])}`,
         row: (entry) => entry
@@ -1160,7 +1163,11 @@ const codegenCommand = Command.make(
             : `Client ${forClient} holds no grants, so there is nothing to generate.`
         )
       }
-      const module_ = generateModule(target as CodegenTarget, tools, client.url)
+      const module_ = generateModule(
+        Schema.decodeUnknownSync(Schema.Literals(["ts", "effect"]))(target),
+        tools,
+        client.url
+      )
       const destination = Option.getOrUndefined(out)
       if (destination !== undefined) {
         await Bun.write(destination, module_)
@@ -1168,7 +1175,7 @@ const codegenCommand = Command.make(
       }
       return { module: module_, tools: tools.length }
     }).pipe(Effect.flatMap((result) =>
-      typeof result.module === "string"
+      Predicate.isString(result.module)
         ? writeStdoutLine(result.module)
         : writeStdoutLine(`Wrote ${text(result.written)} (${result.tools} tool(s))`)
     ))

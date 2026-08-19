@@ -8,7 +8,7 @@ import type { Gateway } from "./host.ts"
 import { createGatewayHandler } from "./http/handler.ts"
 import type { GatewayRequestContext } from "./http/handler.ts"
 import { isLoopbackAddress, mayBorrowLocalCredential } from "./http/loopback.ts"
-import { makeRoutes } from "./http/api.ts"
+import { gatewayRoutes } from "./http/api.ts"
 import { startMaintenanceLoop } from "./maintenance.ts"
 import { createOAuthSessions } from "./oauth-sessions.ts"
 import { generateApiKey, newClientId } from "./keys.ts"
@@ -43,7 +43,7 @@ export const createGatewayService = async (
   const gateway = createGateway({ directory: home })
   const oauth = createOAuthSessions(gateway.executor)
   const maintenance = startMaintenanceLoop(store)
-  const routes = makeRoutes({
+  const routes = gatewayRoutes({
     store,
     executor: gateway.executor,
     retentionDays: options.retentionDays ?? defaultArgumentRetentionDays,
