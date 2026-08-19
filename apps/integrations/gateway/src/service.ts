@@ -3,6 +3,7 @@ import {
   defaultGatewayPort,
   writeGatewayConfig
 } from "./config.ts"
+import { whenPresent } from "@mokronos/wfkit"
 import { createGateway } from "./host.ts"
 import type { Gateway } from "./host.ts"
 import { createGatewayHandler } from "./http/handler.ts"
@@ -50,7 +51,7 @@ export const createGatewayService = async (
     executor: gateway.executor,
     retentionDays: options.retentionDays ?? defaultArgumentRetentionDays,
     oauth,
-    registryUrl: options.registryUrl
+    ...whenPresent("registryUrl", options.registryUrl)
   })
   return {
     home,
@@ -116,8 +117,8 @@ export interface RunningGateway {
  * externally has to be a deliberate act rather than a default. */
 export const serveGateway = async (options: ServeOptions = {}): Promise<RunningGateway> => {
   const service = await createGatewayService({
-    home: options.home,
-    registryUrl: options.registryUrl
+    ...whenPresent("home", options.home),
+    ...whenPresent("registryUrl", options.registryUrl)
   })
   const hostname = options.hostname ?? "127.0.0.1"
   const boundToLoopback = isLoopbackAddress(hostname)

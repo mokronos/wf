@@ -367,7 +367,7 @@ export const gatewayRoutes = (dependencies: ApiDependencies): ReadonlyArray<Rout
               Schema.decodeUnknownSync(Schema.Literals(["mcp", "openapi", "graphql", "cli"]))
             )
           },
-          { registryUrl: dependencies.registryUrl }
+          whenPresent("registryUrl", dependencies.registryUrl)
         ))
       }
     },

@@ -194,11 +194,9 @@ const startVendor = () => {
 const startGateway = async (registryUrl?: string) => {
   const home = await mkdtemp(path.join(os.tmpdir(), "wf-acceptance-"))
   directories.push(home)
-  const gateway = await serveGateway({
-    home,
-    port: 0,
-    registryUrl
-  })
+  const gateway = registryUrl === undefined
+    ? await serveGateway({ home, port: 0 })
+    : await serveGateway({ home, port: 0, registryUrl })
   gateways.push(gateway)
   const config = await readFile(path.join(home, "gateway.json"), "utf8")
   const { apiKey } = parseOutput(ApiKeyConfig, config)
