@@ -516,7 +516,9 @@ const executeCommand = Command.make(
     return gatewayTask(async (client) => {
       if (isDirect) {
         if (!looksLikeAddress(target)) {
-          throw cliError(`--direct expects a tools.… address, got "${target}"`)
+          throw cliError(
+            `--direct expects a tools.<integration>.<owner>.<connection>.<tool> address, got "${target}". Copy one from: integrations schema <integration> <tool>`
+          )
         }
         if (Option.isSome(third)) {
           throw cliError("In direct mode the address is followed by the JSON input only")

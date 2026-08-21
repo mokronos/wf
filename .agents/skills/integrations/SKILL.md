@@ -24,6 +24,7 @@ i connect mcp_linear_app                     # 3. authorize (OAuth opens a brows
 
 i tools mcp_linear_app --filter issue        # browse tool names
 i schema mcp_linear_app list_issues          # read one tool's input/output schema
+                                             # and its canonical tools.… address
 
 i grant <client-id> linear list_issues \
   --integration mcp_linear_app               # 4a. bind an alias for a client (`i clients` for ids)
@@ -31,7 +32,10 @@ i execute linear list_issues '{"limit":5}'   # 4b. call it as a delegated caller
 ```
 
 `i execute --direct <tool-address> '<json>'` runs with your own authority — use
-it to prove a fresh connection works, not for real calls.
+it to prove a fresh connection works, not for real calls. An address has five
+parts, `tools.<integration>.<owner>.<connection>.<tool>` — for example
+`tools.mcp_linear_app.org.default.list_issues`. Never assemble one from memory:
+copy the `address` field out of `i schema <integration> <tool>`.
 
 Every call answers in one shape: `{"status":"succeeded","result":…}`,
 `{"status":"pending","approvalId":…}`, `{"status":"denied","reason":…}`, or
@@ -41,7 +45,10 @@ frozen call rather than asking again, and collects the decision once it lands.
 
 ## Rules
 
-- Start from `search`/`discover`, never guess a URL, tool name, or schema.
+- Start from `search`/`discover`, never guess a URL, address, tool name, or
+  schema. Addresses especially: `integration/tool` and a bare
+  `tools.<integration>.<tool>` both fail — the owner and connection parts are
+  required.
 - Read `schema` for the one tool you settled on before calling it — don't dump
   every schema.
 - Never put a secret on the command line: `--credential-env NAME` names the env
