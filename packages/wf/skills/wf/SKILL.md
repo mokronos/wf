@@ -59,8 +59,8 @@ connection, schema, or history reads in parallel.
 
 ## Discover and connect integrations
 
-Follow this funnel. Use JSON output when extracting fields and `--text` when a
-human will read it.
+Follow this funnel. Every command prints complete JSON; extract fields with
+`jq` when only some are needed.
 
 1. Check what is already known and connected:
 
@@ -74,14 +74,14 @@ human will read it.
    capability. Search is read-only and returns candidate discovery URLs:
 
    ```sh
-   integrations search '<service-or-capability>' --text
+   integrations search '<service-or-capability>'
    ```
 
 3. Select an exact MCP endpoint or OpenAPI document URL from the result or the
    service's official docs, then let Executor detect and register it:
 
    ```sh
-   integrations discover '<mcp-endpoint-or-openapi-url>' --text --verbose
+   integrations discover '<mcp-endpoint-or-openapi-url>' --verbose
    ```
 
    `discover` mutates the local catalog. A no-auth integration is connected
@@ -90,17 +90,17 @@ human will read it.
 
 4. If discovery says authentication is required, stop for the human handoff.
    Inspect the selected method's complete auth metadata from verbose discovery
-   (or `integrations list --verbose`). For OAuth, identify the minimum scopes required
-   by the selected tools from that metadata and the provider's official docs.
-   Explain the account, exact scopes, purpose, and next action, then use the
-   method reported by discovery:
+   (or `integrations list --verbose`). For OAuth, identify from that metadata
+   and the provider's official docs which scopes the consent screen will
+   request — the CLI cannot narrow them, so review before authorizing. Explain
+   the account, expected scopes, purpose, and next action, then run:
 
    ```sh
-   # OAuth; always pass the reviewed minimum set (use '' when none is needed).
-   integrations connect <integration-slug> --scopes '<minimum-scopes>' --text
+   # OAuth. Name the template with --template when discovery listed several.
+   integrations connect <integration-slug>
 
    # API key, bearer, or header; the human sets the value outside chat first.
-   integrations connect <integration-slug> --credential-env SERVICE_TOKEN --text
+   integrations connect <integration-slug> --credential-env SERVICE_TOKEN
    ```
 
    Use `--no-open` when a browser cannot be launched and relay the printed URL.
@@ -111,8 +111,8 @@ human will read it.
    likely to be used:
 
    ```sh
-   integrations tools <integration-slug> --text
-   integrations tools <integration-slug> --filter '<operation>' --text
+   integrations tools <integration-slug>
+   integrations tools <integration-slug> --filter '<operation>'
    integrations schema <integration-slug> <tool-name>
    ```
 
@@ -125,7 +125,7 @@ human will read it.
    also use a minimal safe invocation when useful:
 
    ```sh
-   integrations validate '<tool-address>' --text
+   integrations validate '<tool-address>'
    integrations execute --direct '<tool-address>' '<minimal-json-input>'
    ```
 
@@ -202,14 +202,14 @@ workflow:
    each alias and tool, run:
 
    ```sh
-   integrations validate '{"source":{"kind":"gateway","alias":"<alias>","tool":"<tool>"}}' --text
+   integrations validate '{"source":{"kind":"gateway","alias":"<alias>","tool":"<tool>"}}'
    ```
 
 5. Repair each missing gateway requirement in order:
 
     - Read the alias and tool from the workflow source. Check the current grants
       with `integrations grants --mine` and inspect connected integrations with
-      `integrations connections` and `integrations tools <slug> --text`.
+      `integrations connections` and `integrations tools <slug>`.
     - If the required tool is absent, discover only an exact, trusted endpoint.
       If no exact match exists, use the workflow's documentation or ask the
       human; do not substitute a similar service.
