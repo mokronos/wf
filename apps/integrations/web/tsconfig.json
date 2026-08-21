@@ -10,6 +10,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@mokronos/integrations/domain": ["../gateway/src/domain.ts"],
+      "@mokronos/integrations-client/codegen": ["../ts/src/codegen.ts"],
       "@mokronos/wfkit-executor/schemas": ["../../../packages/wfkit-executor/src/schemas.ts"],
       "@mokronos/wfkit-executor/integration-model": ["../../../packages/wfkit-executor/src/integration-model.ts"],
       "@mokronos/wfkit-executor/registry": ["../../../packages/wfkit-executor/src/registry.ts"]
