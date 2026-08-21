@@ -68,12 +68,11 @@ to an environment variable with
 `--credential-values apiKey=SERVICE_API_KEY,applicationKey=SERVICE_APP_KEY`.
 
 Then inspect the available tools. Browse names and descriptions first, and pull
-the schemas for the one tool you settle on. Integration commands return JSON by
-default; use `--text` for a concise human-readable output:
+the schemas for the one tool you settle on. Integration commands return
+complete JSON; pipe into `jq` to summarize:
 
 ```sh
 integrations tools <integration-slug>
-integrations tools <integration-slug> --text
 integrations tools <integration-slug> --filter <text>
 integrations schema <tool-name>
 ```

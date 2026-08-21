@@ -108,7 +108,7 @@ Effect CLI Command.runWith
             -> searchIntegrations
               -> integrations.sh registry HTTP API
           -> JSON response
-      -> command renders JSON (default) or --text
+          -> command renders the JSON response
 ```
 
 Search is read-only with respect to the Executor catalog, but it is privileged

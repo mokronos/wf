@@ -206,21 +206,20 @@ delete those.
 
 ## Output conventions
 
-Integration commands return JSON by default — the reader is usually an agent.
-`--text` gives a human-readable result instead.
+Integration commands return complete JSON — the reader is usually an agent, and
+a summary that drops fields is the failure mode this CLI exists to prevent.
 
 **Listings return every row.** Nothing is dropped behind a flag you did not know
 to pass, because a truncated answer that looks complete is worse than a large
 one: the reader acts on it. Rows come back in summary form and in a stable
 order, with a `count` field saying how many there were.
 
-Three flags, three separate questions:
+Two flags, two separate questions:
 
 | Flag | Question it answers |
 | --- | --- |
 | `--limit <n>`, `--offset <n>` | *How many rows?* A window over an ordered listing. Present on every listing |
 | `--verbose`, `-v` | *How much of each row?* Complete objects, pretty-printed. Never changes how many rows |
-| `--text` | *For whom?* Tab-separated lines for a human instead of JSON |
 
 When a listing is large it adds a `hint` naming the narrowing flag that fits it
 (`--filter` for tools, `--status` for approvals) — but it still returns
@@ -258,7 +257,7 @@ integrations search [flags] <query>
 | --- | --- |
 | `--kind <mcp\|openapi\|graphql\|cli>` | Limit results to one integration kind |
 | `--limit <integer>` | How many results to ask the registry for. Default 5 |
-| `--text`, `--verbose` | Output mode |
+| `--verbose` | Pretty-print the JSON |
 
 Queries the public integrations.sh catalog and returns the preferred discovery
 URL for each result. Its `--limit` is a request to the registry rather than a
@@ -274,7 +273,7 @@ integrations discover [flags] <url>
 | Flag | Meaning |
 | --- | --- |
 | `--connection <name>` | Connection name. Default `default` |
-| `--text`, `--verbose` | Output mode |
+| `--verbose` | Pretty-print the JSON |
 
 Runs the whole chain: URL → protocol detection (MCP or OpenAPI) → integration
 registration → auth discovery → connection when the service is public → tool
@@ -334,7 +333,7 @@ integrations schema [flags] <integration> <tool>
 | `--filter <text>` | (`tools`) Keep only tools whose name or description contains this text |
 | `--limit`, `--offset` | (`tools`) Window an ordered listing. Tools are ordered by name |
 | `--connection <name>` | (`schema`) Which connection to read the schema through |
-| `--text`, `--verbose` | Output mode |
+| `--verbose` | Pretty-print the JSON |
 
 `schema` returns the tool's address, description, and complete input and output
 schemas, as objects — mirror those in a workflow's `input` and `output`, and

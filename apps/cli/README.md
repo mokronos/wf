@@ -56,9 +56,8 @@ integrations schema <tool-name>
 integrations execute --direct <tool-address> '{"query":"status"}'
 ```
 
-The default connection is named `default`. Integration commands return compact
-JSON by default; use `--text` for human-readable output and `--verbose` for full
-objects. `discover` performs URL
+The default connection is named `default`. Integration commands return complete
+JSON; use `--verbose` for full, pretty-printed objects. `discover` performs URL
 detection, auth discovery, registration, and tool discovery. For OAuth, `connect`
 opens a browser and returns through a loopback callback.
 Multi-value API-key methods use comma-separated
@@ -75,7 +74,7 @@ never enter workflow source.
 
 `search` queries the public integrations.sh catalog and returns the preferred
 discovery URL for each result. Use `--verbose` for every MCP, API, and GraphQL
-surface URL, or `--text` for a human-readable result.
+surface URL.
 
 `wf install` currently registers a per-user service on Linux and macOS. Windows
 service registration is not implemented yet.

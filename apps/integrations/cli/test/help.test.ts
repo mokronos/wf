@@ -108,9 +108,12 @@ describe("integrations CLI help", () => {
 
     expect(help.exitCode).toBe(0)
     expect(help.stdout).toContain("query string")
-    expect(help.stdout).toContain("--text")
     expect(help.stdout).toContain("--verbose")
     expect(help.stdout).toContain("--kind")
+    // JSON is the only output. A human-readable summary that drops fields is
+    // the failure mode this CLI exists to prevent: an agent acts on what it
+    // sees, and what it saw was missing every discovery URL.
+    expect(help.stdout).not.toContain("--text")
   })
 
   test("reports a missing gateway instead of failing obscurely", () => {

@@ -9,10 +9,9 @@ description: Use the `i` (integrations) CLI to find, connect, and call external 
 credential. Nothing else sees a credential. `i` and `integrations` are the same
 command.
 
-Commands print JSON by default; add `--text` for human-readable output, `-v` for
-full objects. Listings return every row — nothing is hidden — so narrow them
-yourself: `--filter` on `tools`, `--limit`/`--offset` on any listing, or a pipe
-into `jq`.
+Commands print complete JSON — every row, every field; `-v` pretty-prints.
+Narrow with `--filter` on `tools`, `--limit`/`--offset` on any listing, or a
+pipe into `jq`.
 
 ## Quickstart
 

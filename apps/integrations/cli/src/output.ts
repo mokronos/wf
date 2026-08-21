@@ -17,10 +17,7 @@ import { Effect, Schema } from "effect"
  * JSON output is always parseable. It is the machine format, and a JSON
  * document truncated mid-token is not a smaller answer — it is no answer. Where
  * a value is long, the *value* is shortened and marked; the document stays
- * whole. `--text` is the format that may abbreviate freely, because a human is
- * reading it and lines survive being cut. */
-
-export const defaultDetailLimit = 800
+ * whole. */
 
 /** The size past which a listing suggests narrowing it. High enough that
  *  ordinary results say nothing, low enough to catch a 300-operation API. */
@@ -65,14 +62,6 @@ export const pageFields = <A>(result: Page<A>, narrowing: string) => {
   }
 }
 
-/** The `--text` counterpart: one trailing line rather than a field. */
-export const pageLine = <A>(result: Page<A>, narrowing: string): string | undefined => {
-  if (result.limit !== undefined || result.offset > 0) {
-    return `Showing ${result.items.length} of ${result.count} (offset ${result.offset}).`
-  }
-  return result.count > largeListing ? `${result.count} rows — ${narrowing}.` : undefined
-}
-
 /** A value on its way out through JSON.stringify. Wider than Schema.Json
  *  because the rows come from decoded gateway responses, which carry Dates and
  *  optional properties typed `| undefined`. */
@@ -86,13 +75,6 @@ export type JsonEncodable =
 /** JSON is compact unless verbose, because an agent pays for whitespace. */
 export const jsonOutput = (value: JsonEncodable, verbose: boolean): string =>
   JSON.stringify(value, null, verbose ? 2 : undefined)
-
-/** Shortens a string value. Only ever applied to a *value*, never to a
- *  serialized document. */
-export const truncate = (value: string, verbose: boolean, limit = defaultDetailLimit): string =>
-  verbose || value.length <= limit
-    ? value
-    : `${value.slice(0, limit)}… (+${value.length - limit} chars)`
 
 export const inline = (value: string, limit: number): string => {
   const collapsed = value.replace(/\s+/g, " ").trim()
@@ -118,13 +100,3 @@ export const withNext = (
   body: Record<string, typeof Schema.Json.Type>,
   next: string | undefined
 ): Record<string, typeof Schema.Json.Type> => next === undefined ? body : { ...body, next }
-
-/** Joins `--text` lines, including the trailing page line when there is one. */
-export const textBlock = (
-  lines: ReadonlyArray<string>,
-  trailer: string | undefined,
-  empty: string
-): string => {
-  if (lines.length === 0) return empty
-  return trailer === undefined ? lines.join("\n") : [...lines, trailer].join("\n")
-}

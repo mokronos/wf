@@ -10,9 +10,6 @@ import {
   jsonOutput,
   page,
   pageFields,
-  pageLine,
-  textBlock,
-  truncate,
   withNext,
   writeStdoutLine
 } from "./output.ts"
@@ -26,9 +23,6 @@ const verboseFlag = () =>
     // flag the reader did not know to pass.
     Flag.withDescription("Show complete objects, pretty-printed")
   )
-
-const textFlag = () =>
-  Flag.boolean("text").pipe(Flag.withDescription("Print a human-readable result"))
 
 const limitFlag = () =>
   Flag.integer("limit").pipe(
@@ -105,31 +99,21 @@ const readJsonArgument = async (
   }
 }
 
-/** Prints a listing, in whichever of the two formats was asked for. Keeping
- *  this in one place is what makes `count`, the window fields, and the hint
- *  behave the same on every listing. */
+/** Prints a listing. Keeping this in one place is what makes `count`, the
+ *  window fields, and the hint behave the same on every listing. */
 const listing = <A>(
   result: Page<A>,
   options: {
     readonly key: string
     readonly narrowing: string
-    readonly asText: boolean
     readonly verbose: boolean
-    readonly line: (item: A) => string
     readonly row: (item: A) => typeof Schema.Json.Type
     readonly empty: string
     readonly next?: string
     readonly extra?: Record<string, typeof Schema.Json.Type>
   }
-): Effect.Effect<void> => {
-  if (options.asText) {
-    return writeStdoutLine(textBlock(
-      result.items.map(options.line),
-      pageLine(result, options.narrowing),
-      options.empty
-    ))
-  }
-  return writeStdoutLine(jsonOutput(
+): Effect.Effect<void> =>
+  writeStdoutLine(jsonOutput(
     withNext({
       ...options.extra,
       [options.key]: result.items.map(options.row),
@@ -137,7 +121,6 @@ const listing = <A>(
     }, options.next),
     options.verbose
   ))
-}
 
 // --- catalog ----------------------------------------------------------------
 
@@ -148,21 +131,15 @@ const discoverCommand = Command.make(
       Argument.withDescription("MCP endpoint or OpenAPI document URL")
     ),
     connection: connectionFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ url, connection, text: asText, verbose }) =>
+  ({ url, connection, verbose }) =>
     gatewayTask((client) => client.request("POST", "/v1/integrations/discover", { url, connection }))
       .pipe(Effect.flatMap((result) => {
         const body = record(result)
         const integration = record(body["integration"])
         const tools = array(body["tools"])
         const slug = text(integration["slug"])
-        if (asText) {
-          return writeStdoutLine(
-            `${slug}\t${text(integration["kind"])}\t${tools.length} tool(s)\nnext: integrations connect ${slug}`
-          )
-        }
         return writeStdoutLine(jsonOutput(
           withNext(
             verbose ? body : { integration, toolCount: tools.length },
@@ -189,10 +166,9 @@ const searchCommand = Command.make(
       // which ranks by relevance. Reordering it here would throw that away.
       Flag.withDescription("How many results to ask the registry for (default: 5)")
     ),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ query, kind, limit, text: asText, verbose }) =>
+  ({ query, kind, limit, verbose }) =>
     gatewayTask((client) => {
       const parameters = new URLSearchParams({ q: query, limit: String(limit) })
       if (Option.isSome(kind)) parameters.set("kind", kind.value)
@@ -200,17 +176,6 @@ const searchCommand = Command.make(
     }).pipe(Effect.flatMap((result) => {
       const body = record(result)
       const results = array(body["results"])
-      if (asText) {
-        return writeStdoutLine(textBlock(
-          results.map((entry) =>
-            `${text(entry["name"])}\t${
-              (Array.isArray(entry["kinds"]) ? entry["kinds"] : []).join(",")
-            }\t${text(entry["url"])}`
-          ),
-          undefined,
-          "No matching integrations."
-        ))
-      }
       return writeStdoutLine(jsonOutput(
         withNext({ ...body, count: results.length }, "integrations discover <url>"),
         verbose
@@ -223,22 +188,18 @@ const integrationsCommand = Command.make(
   {
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ limit, offset, text: asText, verbose }) =>
+  ({ limit, offset, verbose }) =>
     gatewayTask((client) => client.request("GET", "/v1/integrations")).pipe(
       Effect.flatMap((result) => {
         const all = sortedBy(array(record(result)["integrations"]), (entry) => text(entry["slug"]))
         return listing(page(all, window(limit, offset)), {
           key: "integrations",
           narrowing: "window with --limit/--offset",
-          asText,
           verbose,
           empty: "No integrations discovered.",
           next: "integrations tools <integration>",
-          line: (integration) =>
-            `${text(integration["slug"])}\t${text(integration["kind"])}\t${text(integration["name"])}`,
           row: (integration) =>
             verbose ? integration : {
               slug: integration["slug"] ?? null,
@@ -264,10 +225,9 @@ const toolsCommand = Command.make(
     ),
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ integration, filter, limit, offset, text: asText, verbose }) =>
+  ({ integration, filter, limit, offset, verbose }) =>
     gatewayTask((client) =>
       client.request("GET", `/v1/integrations/${encodeURIComponent(integration)}/tools`)
     ).pipe(Effect.flatMap((result) => {
@@ -284,15 +244,10 @@ const toolsCommand = Command.make(
         {
           key: "tools",
           narrowing: "narrow with --filter <text>, or window with --limit/--offset",
-          asText,
           verbose,
           empty: term === undefined ? "No tools available." : `No tools match "${term}".`,
           next: `integrations schema ${integration} <tool>`,
           extra: { integration },
-          line: (tool) =>
-            `${text(tool["name"])}\t${inline(text(tool["description"]), 120)}${
-              verbose ? `\t${text(tool["address"])}` : ""
-            }`,
           row: (tool) =>
             verbose ? tool : {
               name: tool["name"] ?? null,
@@ -309,10 +264,9 @@ const schemaCommand = Command.make(
     integration: Argument.string("integration"),
     tool: Argument.string("tool"),
     connection: connectionFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ integration, tool, connection, text: asText, verbose }) =>
+  ({ integration, tool, connection, verbose }) =>
     gatewayTask((client) =>
       client.request(
         "GET",
@@ -322,14 +276,6 @@ const schemaCommand = Command.make(
       )
     ).pipe(Effect.flatMap((result) => {
       const detail = record(result)
-      if (asText) {
-        return writeStdoutLine([
-          `${text(detail["name"])}\t${text(detail["address"])}`,
-          inline(text(detail["description"]), 400),
-          `input: ${truncate(JSON.stringify(detail["inputSchema"] ?? {}), verbose)}`,
-          `output: ${truncate(JSON.stringify(detail["outputSchema"] ?? {}), verbose)}`
-        ].join("\n"))
-      }
       // Schemas stay objects, whole, at both verbosities. They are the reason
       // to run this command, and a schema handed back as a truncated string
       // has to be re-fetched before it can be used for anything.
@@ -392,7 +338,6 @@ const connectCommand = Command.make(
     clientSecretEnv: Flag.string("client-secret-env").pipe(Flag.optional),
     noOpen: Flag.boolean("no-open"),
     timeout: Flag.integer("timeout").pipe(Flag.withDefault(300)),
-    text: textFlag(),
     verbose: verboseFlag()
   },
   (options) =>
@@ -484,11 +429,6 @@ const connectCommand = Command.make(
           `Note: connection stored as "${storedName}", not "${options.connection}". Use that name from here on.`
         )
       }
-      if (options.text) {
-        return writeStdoutLine(
-          `Connected ${text(connection["integration"])}/${storedName}\t${tools.length} tool(s)`
-        )
-      }
       return writeStdoutLine(jsonOutput(
         withNext(
           options.verbose ? { connection, tools } : { connection, toolCount: tools.length },
@@ -501,8 +441,8 @@ const connectCommand = Command.make(
 
 const connectionsCommand = Command.make(
   "connections",
-  { limit: limitFlag(), offset: offsetFlag(), text: textFlag(), verbose: verboseFlag() },
-  ({ limit, offset, text: asText, verbose }) =>
+  { limit: limitFlag(), offset: offsetFlag(), verbose: verboseFlag() },
+  ({ limit, offset, verbose }) =>
     gatewayTask((client) => client.request("GET", "/v1/connections")).pipe(
       Effect.flatMap((result) => {
         const all = sortedBy(
@@ -512,11 +452,8 @@ const connectionsCommand = Command.make(
         return listing(page(all, window(limit, offset)), {
           key: "connections",
           narrowing: "window with --limit/--offset",
-          asText,
           verbose,
           empty: "No connected integrations.",
-          line: (connection) =>
-            `${text(connection["integration"])}\t${text(connection["name"])}\t${text(connection["template"])}`,
           row: (connection) => connection
         })
       })
@@ -525,8 +462,8 @@ const connectionsCommand = Command.make(
 
 const disconnectCommand = Command.make(
   "disconnect",
-  { integration: Argument.string("integration"), connection: connectionFlag(), text: textFlag() },
-  ({ integration, connection, text: asText }) =>
+  { integration: Argument.string("integration"), connection: connectionFlag() },
+  ({ integration, connection }) =>
     gatewayTask((client) =>
       client.request(
         "DELETE",
@@ -537,9 +474,7 @@ const disconnectCommand = Command.make(
       // from the one typed. Report that one.
       const removed = text(record(result)["connection"] ?? connection)
       return writeStdoutLine(
-        asText
-          ? `Disconnected ${integration}/${removed}`
-          : jsonOutput({ disconnected: true, integration, connection: removed }, false)
+        jsonOutput({ disconnected: true, integration, connection: removed }, false)
       )
     }))
 ).pipe(Command.withDescription("Delete a connection"))
@@ -645,10 +580,9 @@ const validateCommand = Command.make(
     structural: Flag.boolean("structural").pipe(
       Flag.withDescription("Check the shape only, without asking the gateway what resolves")
     ),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ config, file, structural, text: asText, verbose }) =>
+  ({ config, file, structural, verbose }) =>
     gatewayTask(async (client) => {
       const configText = Option.getOrUndefined(config)
       const filePath = Option.getOrUndefined(file)
@@ -666,22 +600,15 @@ const validateCommand = Command.make(
         // default, for every input form rather than only for a bare address.
         live: !structural
       }))
-    }).pipe(Effect.flatMap((report) => {
-      const findings = array(report["findings"])
-      return writeStdoutLine(
-        asText
-          ? findings.map((finding) =>
-            `${text(finding["severity"])}\t${text(finding["check"])}\t${text(finding["message"])}`
-          ).join("\n")
-          : jsonOutput(report, verbose)
-      ).pipe(
+    }).pipe(Effect.flatMap((report) =>
+      writeStdoutLine(jsonOutput(report, verbose)).pipe(
         Effect.flatMap(() =>
           report["ok"] === true
             ? Effect.void
             : Effect.fail(cliError("Integration validation failed"))
         )
       )
-    }))
+    ))
 ).pipe(
   Command.withDescription(
     "Validate an integration node: a gateway alias, an executor address, or a node config"
@@ -692,21 +619,16 @@ const validateCommand = Command.make(
 
 const clientsCommand = Command.make(
   "clients",
-  { limit: limitFlag(), offset: offsetFlag(), text: textFlag(), verbose: verboseFlag() },
-  ({ limit, offset, text: asText, verbose }) =>
+  { limit: limitFlag(), offset: offsetFlag(), verbose: verboseFlag() },
+  ({ limit, offset, verbose }) =>
     gatewayTask((client) => client.request("GET", "/v1/clients")).pipe(
       Effect.flatMap((result) => {
         const all = sortedBy(array(record(result)["clients"]), (entry) => text(entry["name"]))
         return listing(page(all, window(limit, offset)), {
           key: "clients",
           narrowing: "window with --limit/--offset",
-          asText,
           verbose,
           empty: "No clients.",
-          line: (entry) =>
-            `${text(entry["name"])}\t${entry["mayMutate"] === true ? "may-mutate" : "delegated"}\t${
-              entry["revokedAt"] === null ? "live" : "revoked"
-            }\t${text(entry["id"])}`,
           row: (entry) => entry
         })
       })
@@ -719,40 +641,31 @@ const clientCommand = Command.make(
     name: Argument.string("name"),
     mayMutate: Flag.boolean("may-mutate").pipe(
       Flag.withDescription("Allow this client to change the catalog, connections, and grants")
-    ),
-    text: textFlag()
+    )
   },
-  ({ name, mayMutate, text: asText }) =>
+  ({ name, mayMutate }) =>
     gatewayTask((client) => client.request("POST", "/v1/clients", { name, mayMutate })).pipe(
       Effect.flatMap((result) => {
         const created = record(result)
-        return writeStdoutLine(
-          asText
-            ? `Created client ${text(created["name"])}\t${text(created["id"])}`
-            : jsonOutput(
-              withNext(created, `integrations key ${text(created["id"])}`),
-              false
-            )
-        )
+        return writeStdoutLine(jsonOutput(
+          withNext(created, `integrations key ${text(created["id"])}`),
+          false
+        ))
       })
     )
 ).pipe(Command.withDescription("Create a client that grants can be issued to"))
 
 const keyCommand = Command.make(
   "key",
-  { clientId: Argument.string("client-id"), text: textFlag() },
-  ({ clientId, text: asText }) =>
+  { clientId: Argument.string("client-id") },
+  ({ clientId }) =>
     gatewayTask((client) =>
       client.request("POST", `/v1/clients/${encodeURIComponent(clientId)}/keys`, {})
     ).pipe(Effect.flatMap((result) => {
       const issued = record(result)
       // Shown once. Nothing stores the plaintext, so a lost key is reissued
       // rather than recovered.
-      return writeStdoutLine(
-        asText
-          ? `${text(issued["secret"])}\n(shown once — the gateway stores only a hash)`
-          : jsonOutput(issued, false)
-      )
+      return writeStdoutLine(jsonOutput(issued, false))
     }))
 ).pipe(Command.withDescription("Issue an API key for a client. Shown once"))
 
@@ -762,10 +675,9 @@ const keysCommand = Command.make(
     clientId: Argument.string("client-id"),
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ clientId, limit, offset, text: asText, verbose }) =>
+  ({ clientId, limit, offset, verbose }) =>
     gatewayTask((client) =>
       client.request("GET", `/v1/clients/${encodeURIComponent(clientId)}/keys`)
     ).pipe(Effect.flatMap((result) => {
@@ -773,14 +685,9 @@ const keysCommand = Command.make(
       return listing(page(all, window(limit, offset)), {
         key: "keys",
         narrowing: "window with --limit/--offset",
-        asText,
         verbose,
         empty: "No keys issued.",
         next: "integrations revoke key <key-id>",
-        line: (key) =>
-          `${text(key["id"])}\t${key["revokedAt"] === null ? "live" : "revoked"}\tlast used ${
-            key["lastUsedAt"] === null ? "never" : text(key["lastUsedAt"])
-          }`,
         row: (key) => key
       })
     }))
@@ -798,8 +705,7 @@ const grantCommand = Command.make(
     connection: connectionFlag(),
     requireApproval: Flag.boolean("require-approval").pipe(
       Flag.withDescription("Freeze this tool's calls for a human instead of running them")
-    ),
-    text: textFlag()
+    )
   },
   (options) =>
     gatewayTask((client) =>
@@ -814,14 +720,9 @@ const grantCommand = Command.make(
         },
         decision: options.requireApproval ? "require_approval" : "allow"
       })
-    ).pipe(Effect.flatMap((result) => {
-      const grant = record(result)
-      return writeStdoutLine(
-        options.text
-          ? `Granted ${text(grant["alias"])}.${text(grant["tool"])}\t${text(grant["decision"])}`
-          : jsonOutput(grant, false)
-      )
-    }))
+    ).pipe(Effect.flatMap((result) =>
+      writeStdoutLine(jsonOutput(record(result), false))
+    ))
 ).pipe(Command.withDescription("Delegate one tool through one connection to one client"))
 
 const grantRow = (tool: GrantedTool) => ({
@@ -840,10 +741,9 @@ const grantsCommand = Command.make(
     ),
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ clientId, mine, limit, offset, text: asText, verbose }) =>
+  ({ clientId, mine, limit, offset, verbose }) =>
     gatewayTask(async (client) => {
       if (mine) {
         if (Option.isSome(clientId)) {
@@ -864,18 +764,8 @@ const grantsCommand = Command.make(
       return listing(page(all, window(limit, offset)), {
         key: "grants",
         narrowing: "window with --limit/--offset",
-        asText,
         verbose,
         empty: mine ? "No granted tools." : "No grants.",
-        line: (grant) => {
-          const connection = record(grant["connection"])
-          const target = grant["connection"] === undefined
-            ? text(grant["integration"])
-            : `${text(connection["owner"])}:${text(connection["integration"])}/${
-              text(connection["name"])
-            }`
-          return `${text(grant["alias"])}.${text(grant["tool"])}\t${text(grant["decision"])}\t${target}`
-        },
         row: (grant) => grant
       })
     }))
@@ -887,10 +777,9 @@ const revokeCommand = Command.make(
     kind: Argument.choice("kind", ["grant", "client", "key"]).pipe(
       Argument.withDescription("What to revoke")
     ),
-    id: Argument.string("id"),
-    text: textFlag()
+    id: Argument.string("id")
   },
-  ({ kind, id, text: asText }) =>
+  ({ kind, id }) =>
     gatewayTask((client) =>
       client.request(
         "POST",
@@ -903,16 +792,7 @@ const revokeCommand = Command.make(
       )
     ).pipe(Effect.flatMap((result) => {
       const body = record(result)
-      const cancelled = body["cancelledApprovals"]
-      return writeStdoutLine(
-        asText
-          ? `Revoked ${kind} ${id}${
-            Predicate.isNumber(cancelled) && cancelled > 0
-              ? ` (${cancelled} frozen call(s) cancelled)`
-              : ""
-          }`
-          : jsonOutput({ revoked: true, kind, id, ...body }, false)
-      )
+      return writeStdoutLine(jsonOutput({ revoked: true, kind, id, ...body }, false))
     }))
 ).pipe(
   Command.withDescription(
@@ -928,10 +808,9 @@ const approvalsCommand = Command.make(
     status: Flag.choice("status", ["pending", "approved", "denied", "expired"]).pipe(Flag.optional),
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ status, limit, offset, text: asText, verbose }) =>
+  ({ status, limit, offset, verbose }) =>
     gatewayTask((client) =>
       client.request(
         "GET",
@@ -945,14 +824,9 @@ const approvalsCommand = Command.make(
       return listing(page(all, window(limit, offset)), {
         key: "approvals",
         narrowing: "narrow with --status, or window with --limit/--offset",
-        asText,
         verbose,
         empty: "No approvals.",
         next: "integrations approve <id>",
-        line: (approval) =>
-          `${text(approval["id"])}\t${text(approval["status"])}\t${text(approval["alias"])}.${
-            text(approval["tool"])
-          }`,
         row: (approval) => approval
       })
     }))
@@ -960,19 +834,13 @@ const approvalsCommand = Command.make(
 
 const approvalCommand = Command.make(
   "approval",
-  { id: Argument.string("approval-id"), text: textFlag(), verbose: verboseFlag() },
-  ({ id, text: asText, verbose }) =>
+  { id: Argument.string("approval-id"), verbose: verboseFlag() },
+  ({ id, verbose }) =>
     // Deliberately the delegated route: the caller that proposed a frozen call
     // is the one that needs to watch it, and that caller holds no privileged
     // key. Without this, `execute` hands back an id nothing can resolve.
     gatewayTask((client) => client.approval(id)).pipe(Effect.flatMap((approval) =>
-      writeStdoutLine(
-        asText
-          ? `${approval.id}\t${approval.status}\t${approval.alias}.${approval.tool}${
-            approval.decidedBy === null ? "" : `\tby ${approval.decidedBy}`
-          }`
-          : jsonOutput(approval, verbose)
-      )
+      writeStdoutLine(jsonOutput(approval, verbose))
     ))
 ).pipe(Command.withDescription("Read one frozen invocation, as the caller that proposed it"))
 
@@ -981,22 +849,18 @@ const approveCommand = Command.make(
   {
     id: Argument.string("approval-id"),
     by: Flag.string("by").pipe(Flag.optional, Flag.withDescription("Record who approved")),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ id, by, text: asText, verbose }) =>
+  ({ id, by, verbose }) =>
     gatewayTask((client) =>
       client.request("POST", `/v1/approvals/${encodeURIComponent(id)}/approve`, {
         ...Option.match(by, { onNone: () => ({}), onSome: (value) => ({ decidedBy: value }) })
       })
     ).pipe(Effect.flatMap((result) => {
       const body = record(result)
-      const outcome = record(body["outcome"])
       // The gateway performed the call. Approving discharged one frozen
       // invocation; it did not hand anyone a capability.
-      return writeStdoutLine(
-        asText ? `Approved ${id}\t${text(outcome["status"])}` : jsonOutput(body, verbose)
-      )
+      return writeStdoutLine(jsonOutput(body, verbose))
     }))
 ).pipe(Command.withDescription("Approve a frozen invocation; the gateway then performs it"))
 
@@ -1005,16 +869,15 @@ const denyCommand = Command.make(
   {
     id: Argument.string("approval-id"),
     by: Flag.string("by").pipe(Flag.optional),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ id, by, text: asText, verbose }) =>
+  ({ id, by, verbose }) =>
     gatewayTask((client) =>
       client.request("POST", `/v1/approvals/${encodeURIComponent(id)}/deny`, {
         ...Option.match(by, { onNone: () => ({}), onSome: (value) => ({ decidedBy: value }) })
       })
     ).pipe(Effect.flatMap((result) =>
-      writeStdoutLine(asText ? `Denied ${id}` : jsonOutput(record(result), verbose))
+      writeStdoutLine(jsonOutput(record(result), verbose))
     ))
 ).pipe(Command.withDescription("Deny a frozen invocation"))
 
@@ -1037,7 +900,6 @@ const auditCommand = Command.make(
       Flag.optional,
       Flag.withDescription("Only records at or after this time (ISO 8601)")
     ),
-    text: textFlag(),
     verbose: verboseFlag()
   },
   (options) =>
@@ -1060,20 +922,6 @@ const auditCommand = Command.make(
       const records = array(body["records"])
       const total = Predicate.isNumber(body["total"]) ? body["total"] : records.length
       const offset = Predicate.isNumber(body["offset"]) ? body["offset"] : 0
-      if (options.text) {
-        const lines = records.map((entry) =>
-          `${text(entry["createdAt"])}\t${text(entry["outcome"])}\t${text(entry["alias"])}.${
-            text(entry["tool"])
-          }\t${text(entry["subject"])}`
-        )
-        return writeStdoutLine(textBlock(
-          lines,
-          records.length < total
-            ? `Showing ${records.length} of ${total} (offset ${offset}).`
-            : undefined,
-          "No audit records."
-        ))
-      }
       return writeStdoutLine(jsonOutput(
         { records, count: total, showing: records.length, offset },
         options.verbose
@@ -1087,10 +935,9 @@ const driftCommand = Command.make(
     integration: Argument.string("integration").pipe(Argument.optional),
     limit: limitFlag(),
     offset: offsetFlag(),
-    text: textFlag(),
     verbose: verboseFlag()
   },
-  ({ integration, limit, offset, text: asText, verbose }) =>
+  ({ integration, limit, offset, verbose }) =>
     gatewayTask((client) =>
       client.request(
         "POST",
@@ -1117,14 +964,12 @@ const driftCommand = Command.make(
       return listing(page(entries, window(limit, offset)), {
         key: "drift",
         narrowing: "window with --limit/--offset",
-        asText,
         verbose,
         empty: baselineNote ?? "No drift since the last refresh.",
         extra: {
           checked: reports.length,
           ...whenPresent("baseline", baselineNote)
         },
-        line: (entry) => `${text(entry["kind"])}\t${text(entry["integration"])}.${text(entry["tool"])}`,
         row: (entry) => entry
       })
     }))
@@ -1188,18 +1033,12 @@ const codegenCommand = Command.make(
 
 const maintenanceCommand = Command.make(
   "maintenance",
-  { text: textFlag() },
-  ({ text: asText }) =>
+  {},
+  () =>
     gatewayTask((client) => client.request("POST", "/v1/maintenance", {})).pipe(
       Effect.flatMap((result) => {
         const body = record(result)
-        return writeStdoutLine(
-          asText
-            ? `Expired ${text(body["expiredApprovals"])} approval(s) and ${
-              text(body["expiredAuditArguments"])
-            } audit argument record(s)`
-            : jsonOutput(body, false)
-        )
+        return writeStdoutLine(jsonOutput(body, false))
       })
     )
 ).pipe(

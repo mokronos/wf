@@ -86,8 +86,8 @@ integrations execute --direct <tool-address> '{"query":"status"}'
 integrations connections
 ```
 
-The default connection is `default`. Integration commands return JSON by default;
-use `--text` for human-readable output. `tools` lists names and descriptions
+The default connection is `default`. Integration commands return complete JSON;
+pipe into `jq` to summarize. `tools` lists names and descriptions
 grouped by integration, narrowed by `--filter`; `schema` returns one tool's
 address and full input and output schemas, from a bare tool name, an
 integration slug plus a tool name, or a tool address.
