@@ -1,8 +1,0 @@
-{
-  "name": "@wf/example-connected-case",
-  "private": true,
-  "type": "module",
-  "dependencies": {
-    "@mokronos/wfkit": "workspace:*"
-  }
-}

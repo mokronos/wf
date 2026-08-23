@@ -5,14 +5,11 @@ import type {
   StepRetryPolicy,
   SynchronousSchema
 } from "./workflow-model.ts"
-import { integrationSourceKey, IntegrationSource } from "./integration-contract.ts"
-export type { IntegrationInvoker } from "./integration-contract.ts"
-export {
-  formatIntegrationSource,
-  IntegrationAlias,
-  integrationSourceKey,
-  IntegrationSource
-} from "./integration-contract.ts"
+import { IntegrationSource } from "./integration-contract.ts"
+export { IntegrationAlias, IntegrationSource } from "./integration-contract.ts"
+
+const integrationSourceKey = (source: IntegrationSource): string =>
+  `gateway:${encodeURIComponent(source.alias)}:${encodeURIComponent(source.tool)}`
 
 export const integration = <I, O>(config: {
   readonly name?: string

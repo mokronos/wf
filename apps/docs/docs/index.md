@@ -24,12 +24,6 @@ wf run hello '{"message":"hello from wf"}'
 
 State lives under `~/.wf` by default. Set `WF_HOME` to use another directory.
 
-## Integrations
-
-Workflow definitions can declare provider-neutral integration steps. Gateway
-discovery, credentials, grants, policy, and HTTP execution are owned by the
-separate [integrations gateway](https://github.com/mokronos/integrations).
-
 ## Next
 
 - [**wf CLI**](cli.md) documents commands and output.

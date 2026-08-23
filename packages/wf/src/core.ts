@@ -4,7 +4,6 @@ import { Activity, DurableClock, DurableDeferred, Workflow, WorkflowEngine } fro
 import { Cause, Effect, Exit, Layer, Option, Predicate, Schema } from "effect"
 import type * as Duration from "effect/Duration"
 import { emitWorkflowEvent } from "./events.ts"
-import type { IntegrationInvoker } from "./integration-contract.ts"
 import {
   ExecutionResourceRegistry
 } from "./execution-resources.ts"
@@ -34,7 +33,6 @@ import {
 } from "./determinism.ts"
 import type { InMemoryDeterminismState } from "./determinism.ts"
 import {
-  formatIntegrationSource,
   isTerminalFailure,
   StepRetryPolicy,
   terminalFailure
@@ -56,8 +54,6 @@ import type {
 } from "./workflow-model.ts"
 export {
   defineStep,
-  formatIntegrationSource,
-  integrationSourceKey,
   IntegrationSource,
   StepRetryPolicy,
   terminalFailure
@@ -214,7 +210,6 @@ export interface InMemoryExecutionOptions {
   /** Execution-scoped signal adapter. Defaults to the legacy singleton. */
   readonly signalTransport?: SignalTransport
   readonly secrets?: SecretResolver
-  readonly integrations?: IntegrationInvoker
   readonly concurrency?: ConcurrencyLimiter
 }
 
@@ -325,19 +320,11 @@ const executeStep = async <
   readonly step: DefinedStep<Input, Output, Errors>
   readonly input: Input["Type"]
   readonly context: StepContext<Errors["Type"]>
-  readonly integrations?: IntegrationInvoker
 }): Promise<Output["Type"] | TerminalFailure<Errors["Type"]>> => {
   if (options.step.kind === "local") {
     return await options.step.execute(options.input, options.context)
   }
-  if (options.integrations === undefined) {
-    throw new Error(
-      `No integration invoker configured for ${formatIntegrationSource(options.step.source)}`
-    )
-  }
-  const input = Schema.decodeUnknownSync(Schema.Json)(options.input)
-  const result = await options.integrations.invoke(options.step.source, input)
-  return decodeSync(options.step.output, result)
+  throw new Error(`Integration node ${options.step.name} requires an external runner`)
 }
 
 const nextInvocation = (counters: Map<string, number>, name: string): number => {
@@ -490,7 +477,6 @@ const makeCtx = <WErrors>(
         const registry = yield* ExecutionResourceRegistry
         const resources = registry.get(executionId)
         const resolver = resources.secrets
-        const integrations = resources.integrations
         const result = yield* Effect.tryPromise({
           try: async () => {
             const release = await (resources.concurrency ?? defaultConcurrencyLimiter)
@@ -500,12 +486,11 @@ const makeCtx = <WErrors>(
                 step.input,
                 await resolveSecretReferences(input, resolver)
               )
-               const value = await executeStep({
-                 step,
-                 input: executeInput,
-                 context: makeStepContext(executionId, attempt, resolver),
-                 ...whenPresent("integrations", integrations)
-               })
+              const value = await executeStep({
+                step,
+                input: executeInput,
+                context: makeStepContext(executionId, attempt, resolver)
+              })
               if (isTerminalFailure(value)) {
                 throw value
               }
@@ -936,7 +921,7 @@ const makeInMemoryCtx = <WErrors>(
   emit: (event: WorkflowEvent) => Promise<void>,
   options: Pick<
     InMemoryExecutionOptions,
-    "signal" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "signalTransport" | "secrets" | "integrations" | "concurrency"
+    "signal" | "stepExecutor" | "sleep" | "signalTimeout" | "signalValue" | "signalTransport" | "secrets" | "concurrency"
   > = {}
 ): WorkflowContext<WErrors> => {
   const counters = new Map<string, number>()
@@ -1014,8 +999,7 @@ const makeInMemoryCtx = <WErrors>(
                   : await executeStep({
                       step,
                       input: executeInput,
-                      context: stepContext,
-                      ...whenPresent("integrations", options.integrations)
+                      context: stepContext
                     })
                 if (isTerminalFailure(value)) {
                   throw {
@@ -1503,7 +1487,6 @@ export const defineWorkflow = <
         ...whenPresent("signalValue", options.signalValue),
         ...whenPresent("signalTransport", options.signalTransport),
         ...whenPresent("secrets", options.secrets),
-        ...whenPresent("integrations", options.integrations),
         ...whenPresent("concurrency", options.concurrency)
       }
     )
@@ -1561,7 +1544,6 @@ export const defineWorkflow = <
     const resources = ExecutionResourceRegistry.layer({
       ...whenPresent("events", options.onEvent),
       ...whenPresent("secrets", options.secrets),
-      ...whenPresent("integrations", options.integrations),
       ...whenPresent("concurrency", options.concurrency),
       ...whenPresent("signals", options.signalTransport)
     })

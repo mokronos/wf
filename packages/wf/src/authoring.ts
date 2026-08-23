@@ -15,11 +15,9 @@ export {
   StepRetryPolicy
 } from "./core.ts"
 export {
-  formatIntegrationSource,
   integration,
   IntegrationSource
 } from "./integration.ts"
-export type { IntegrationInvoker } from "./integration.ts"
 export type {
   DefinedWorkflow,
   DefinedStep,

@@ -12,11 +12,7 @@ import type { IntegrationSource } from "./integration-contract.ts"
 export type DynamicService = Schema.Schema.Type<Schema.Top>
 export type SynchronousSchema<A> = Schema.Codec<A, DynamicService, never, never>
 
-export {
-  formatIntegrationSource,
-  integrationSourceKey,
-  IntegrationSource
-} from "./integration-contract.ts"
+export { IntegrationSource } from "./integration-contract.ts"
 
 const TerminalFailureTypeId: unique symbol = Symbol.for("wf/TerminalFailure")
 

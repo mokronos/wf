@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { createWorkflowClient, createWorkflowRuntime, defineStep, defineWorkflow } from "../src"
 
 const dbPath = () => path.join(mkdtempSync(path.join(tmpdir(), "wf-phase8-")), "wf.sqlite")
@@ -167,8 +167,8 @@ describe("Phase 8 durable cancellation", () => {
       name: "alreadyCompleted",
       input: Schema.Struct({}),
       output: Schema.String,
-      run: function* () {
-        return "done"
+      run: function* (_, ctx) {
+        return yield* ctx.effect(Effect.succeed("done"))
       }
     })
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })

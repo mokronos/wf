@@ -40,7 +40,6 @@
   },
   "devDependencies": {
     "@effect/platform-bun": "4.0.0-beta.59",
-    "@mokronos/integrations-client": "^0.2.0",
     "@mokronos/observability": "workspace:*",
     "@mokronos/wfkit": "workspace:*",
     "effect": "4.0.0-beta.59"

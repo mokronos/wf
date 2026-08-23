@@ -1,10 +1,6 @@
 import { whenPresent } from "./optional.ts"
 import { Schema } from "effect"
-export {
-  formatIntegrationSource,
-  integrationSourceKey,
-  IntegrationSource
-} from "./integration-contract.ts"
+export { IntegrationSource } from "./integration-contract.ts"
 import { IntegrationSource } from "./integration-contract.ts"
 
 export const ExecutionId = Schema.String.pipe(Schema.brand("ExecutionId"))
@@ -454,9 +450,7 @@ export const WorkflowGraphNodeMetadata = Schema.Struct({
     keyed: Schema.Boolean
   })),
   compensates: Schema.optionalKey(Schema.Boolean),
-  /** Present on steps built by `integration()`. This is what makes a workflow's
-   *  external dependencies readable from a trace, so `wf validate` can report
-   *  what needs connecting without executing anything. */
+  /** Present on declarative integration nodes. */
   integration: Schema.optionalKey(IntegrationSource)
 })
 export type WorkflowGraphNodeMetadata = typeof WorkflowGraphNodeMetadata.Type

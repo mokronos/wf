@@ -1,7 +1,6 @@
 import { Context, Layer } from "effect"
 import type { SecretResolver } from "./secrets.ts"
 import type { WorkflowEventSink } from "./event-sink.ts"
-import type { IntegrationInvoker } from "./integration-contract.ts"
 import type { ConcurrencyLimiter } from "./concurrency.ts"
 import type { SignalTransport } from "./signal.ts"
 
@@ -10,7 +9,6 @@ import type { SignalTransport } from "./signal.ts"
 export interface ExecutionResources {
   readonly events?: WorkflowEventSink
   readonly secrets?: SecretResolver
-  readonly integrations?: IntegrationInvoker
   readonly concurrency?: ConcurrencyLimiter
   readonly signals?: SignalTransport
 }

@@ -19,7 +19,6 @@
       "@mokronos/wfkit": ["packages/wf/src/index.ts"],
       "@mokronos/wfkit/optional": ["packages/wf/src/optional.ts"],
       "@mokronos/wfkit/authoring": ["packages/wf/src/authoring.ts"],
-      "@mokronos/wfkit/integrations": ["packages/wf/src/integration-contract.ts"],
       "@mokronos/wfkit/schemas": ["packages/wf/src/schemas.ts"],
       "@mokronos/wfkit/testing": ["packages/wf/src/testing/index.ts"]
     },

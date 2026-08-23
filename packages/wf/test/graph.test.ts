@@ -4,7 +4,6 @@ import {
   defineWorkflow,
   integration,
   t,
-  workflowGraphIntegrations,
   workflowToGraph
 } from "../src/index"
 
@@ -87,7 +86,7 @@ const ParallelWorkflow = defineWorkflow({
 })
 
 describe("workflowToGraph", () => {
-  test("records alias requirements without invoking a host", async () => {
+  test("records integration node metadata without invoking an external system", async () => {
     const createIssue = integration({
       source: { kind: "gateway", alias: "linear", tool: "issues.create" },
       input: t.struct({ title: t.string }),
@@ -104,21 +103,14 @@ describe("workflowToGraph", () => {
 
     const graph = await workflowToGraph(workflow, { input: { title: "Inspect me" } })
 
-    // The graph carries the alias and the tool, and nothing about which
-    // connection serves them — that is bound per deployment.
     expect(graph.nodes.find((node) => node.kind === "step")?.metadata.integration).toEqual({
       kind: "gateway",
       alias: "linear",
       tool: "issues.create"
     })
-    expect(workflowGraphIntegrations(graph)).toEqual([{
-      kind: "gateway",
-      alias: "linear",
-      tool: "issues.create"
-    }])
   })
 
-  test("keeps requirements on different aliases distinct", async () => {
+  test("gives distinct integration sources distinct default names", () => {
     const dotted = integration({
       source: { kind: "gateway", alias: "linear", tool: "org.create" },
       input: t.struct({}),
@@ -129,22 +121,7 @@ describe("workflowToGraph", () => {
       input: t.struct({}),
       output: t.struct({})
     })
-    const workflow = defineWorkflow({
-      name: "DistinctIntegrationRequirements",
-      input: t.struct({}),
-      output: t.struct({}),
-      run: function* (_, ctx) {
-        yield* ctx.run(dotted, {})
-        return yield* ctx.run(owned, {})
-      }
-    })
-
     expect(dotted.name).not.toBe(owned.name)
-    const graph = await workflowToGraph(workflow, { input: {} })
-    expect(workflowGraphIntegrations(graph)).toEqual([
-      { kind: "gateway", alias: "linear", tool: "org.create" },
-      { kind: "gateway", alias: "linear-org", tool: "create" }
-    ])
   })
 
 

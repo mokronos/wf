@@ -3,17 +3,9 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { dirname, extname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
-import { Schema } from "effect"
 
 const packageDirectory = join(dirname(fileURLToPath(import.meta.url)), "..")
 const temporaryDirectories: string[] = []
-const DependencyMap = Schema.Record(Schema.String, Schema.String)
-const PackageManifest = Schema.Struct({
-  dependencies: Schema.optional(DependencyMap),
-  devDependencies: Schema.optional(DependencyMap),
-  peerDependencies: Schema.optional(DependencyMap),
-  optionalDependencies: Schema.optional(DependencyMap)
-})
 
 const typescriptFiles = async (directory: string): Promise<ReadonlyArray<string>> => {
   const files: string[] = []
@@ -73,24 +65,7 @@ describe("package architecture", () => {
     await assertNoImportCycles([join(packageDirectory, "src")])
   })
 
-  test("the authoring package does not depend on gateway implementations", async () => {
-    const manifest = Schema.decodeUnknownSync(Schema.fromJsonString(PackageManifest))(
-      await readFile(join(packageDirectory, "package.json"), "utf8")
-    )
-    const dependencySections = [
-      manifest.dependencies,
-      manifest.devDependencies,
-      manifest.peerDependencies,
-      manifest.optionalDependencies
-    ]
-
-    expect(dependencySections.every((dependencies) =>
-      dependencies?.["@mokronos/integrations"] === undefined &&
-      dependencies?.["@mokronos/integrations-executor"] === undefined
-    )).toBe(true)
-  })
-
-  test("local steps cannot invoke integrations outside first-class integration steps", async () => {
+  test("the integration node is declarative", async () => {
     const workflowModel = await readFile(join(packageDirectory, "src", "workflow-model.ts"), "utf8")
     const integrationStep = await readFile(join(packageDirectory, "src", "integration.ts"), "utf8")
 
@@ -99,38 +74,11 @@ describe("package architecture", () => {
     expect(integrationStep).toContain('kind: "integration"')
   })
 
-  test("authoring and integration contracts have explicit package subpaths", async () => {
+  test("authoring has an explicit package subpath without an integration runtime subpath", async () => {
     const packageJson = await readFile(join(packageDirectory, "package.json"), "utf8")
 
     expect(packageJson).toContain('"./authoring"')
-    expect(packageJson).toContain('"./integrations"')
-  })
-
-  test("the workflow CLI reaches integrations only through the gateway", async () => {
-    const cliRoot = await readFile(
-      join(packageDirectory, "..", "..", "apps", "cli", "src", "main.ts"),
-      "utf8"
-    )
-    const workflowCommands = await readFile(
-      join(packageDirectory, "..", "..", "apps", "cli", "src", "cli", "main.ts"),
-      "utf8"
-    )
-
-    // wf holds no credentials and composes no Executor of its own. It is a
-    // gateway client like any other, which is what keeps the privileged
-    // boundary in one process. The gateway owns that boundary in its repository.
-    for (const source of [cliRoot, workflowCommands]) {
-      expect(source).not.toContain("createExecutorHost")
-      expect(source).not.toContain("createExecutorServices")
-      expect(source).not.toContain("setExecutorStorageDirectory")
-      expect(source).not.toContain("@mokronos/wfkit-executor")
-    }
-    // Where wf does reach integrations, it is through the thin gateway client.
-    expect(workflowCommands).toContain("@mokronos/integrations-client")
-    // ...and the dashboard does not reach them at all any more: the gateway
-    // serves its own control plane, which is the only surface holding the
-    // privileged API. wf serves workflows and runs.
-    expect(cliRoot).not.toContain("/api/integrations")
+    expect(packageJson).not.toContain('"./integrations"')
   })
 
   test("production TypeScript has no explicit any escape hatches", async () => {

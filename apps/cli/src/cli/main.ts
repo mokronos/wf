@@ -14,15 +14,11 @@ import {
   parseWorkflowSourceHash,
   sampleValueForJsonSchema,
   toJsonText,
-  workflowArtifactToGraph,
-  workflowGraphIntegrations
+  workflowArtifactToGraph
 } from "@mokronos/wfkit"
-import { formatIntegrationSource } from "@mokronos/wfkit/integrations"
-import { createGatewayIntegrationInvoker } from "../gateway-invoker.ts"
-import { createGatewayClient, resolveClientConnection } from "@mokronos/integrations-client"
 import { migrateLegacyCatalog } from "../migrate-catalog.ts"
 import { sourcesPath, workflowsPath } from "../paths.ts"
-import type { IntegrationSource, JsonSchema, PendingSignal, SampleValue, WorkflowArtifact, WorkflowCatalog, WorkflowClient, WorkflowEvent, WorkflowGraphNodeKind, WorkflowGraphNodeMetadata, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowId, WorkflowPayload, WorkflowRunRecord, WorkflowSourceStore } from "@mokronos/wfkit"
+import type { JsonSchema, PendingSignal, SampleValue, WorkflowArtifact, WorkflowCatalog, WorkflowClient, WorkflowEvent, WorkflowGraphNodeKind, WorkflowGraphNodeMetadata, WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowId, WorkflowPayload, WorkflowRunRecord, WorkflowSourceStore } from "@mokronos/wfkit"
 
 // A caught value. TypeScript types every catch binding as unknown because
 // JavaScript lets any value be thrown, so there is nothing narrower to accept.
@@ -396,86 +392,6 @@ const printValidationResult = (
   }
 }
 
-/** One traced integration requirement paired with whether the locally
- *  configured key can actually reach it. */
-interface IntegrationReadiness {
-  readonly source: IntegrationSource
-  readonly status: "ready" | "requires-approval" | "not-granted" | "no-gateway"
-  readonly detail: string
-}
-
-/** Checks every alias the trace reached against the grants of whichever key is
- * configured here.
- *
- * This is the half of validation that is NOT a property of the workflow source:
- * the same definition is ready for one person and ungranted for another,
- * because an alias is bound per deployment. A workflow arriving from a
- * colleague validates structurally but reports here exactly which aliases its
- * new owner still has to bind through the gateway. */
-const checkGraphIntegrations = async (
-  graph: NonNullable<Awaited<ReturnType<typeof workflowArtifactToGraph>>["graph"]>
-): Promise<ReadonlyArray<IntegrationReadiness>> => {
-  const required = workflowGraphIntegrations(graph)
-  if (required.length === 0) return []
-  const connection = await resolveClientConnection()
-  if (connection === undefined) {
-    return required.map((source) => ({
-      source,
-      status: "no-gateway" as const,
-      detail: "no gateway configured; start one with `integrations serve`"
-    }))
-  }
-  const granted = await createGatewayClient(connection).tools().catch(() => undefined)
-  if (granted === undefined) {
-    return required.map((source) => ({
-      source,
-      status: "no-gateway" as const,
-      detail: "the configured gateway did not answer"
-    }))
-  }
-  return required.map((source) => {
-    const match = granted.find((tool) =>
-      tool.alias === source.alias && tool.tool === source.tool
-    )
-    if (match === undefined) {
-      return {
-        source,
-        status: "not-granted" as const,
-        detail: `no grant aliased ${source.alias} exposes ${source.tool} to this key`
-      }
-    }
-    return match.decision === "require_approval"
-      ? {
-        source,
-        status: "requires-approval" as const,
-        detail: `${match.integration}; each call waits for a human`
-      }
-      : { source, status: "ready" as const, detail: match.integration }
-  })
-}
-
-const isReadyReadiness = (entry: IntegrationReadiness): boolean =>
-  entry.status === "ready" || entry.status === "requires-approval"
-
-const printIntegrationReadiness = (
-  entries: ReadonlyArray<IntegrationReadiness>,
-  verbose: boolean
-) => {
-  if (entries.length === 0) return
-  console.log(bold("integrations:"))
-  const visible = verbose ? entries : entries.slice(0, defaultDiagnosticLimit)
-  for (const entry of visible) {
-    const line = `${formatIntegrationSource(entry.source)}: ${entry.detail}`
-    const detail = verbose || line.length <= defaultDiagnosticDetailLimit
-      ? line
-      : `${line.slice(0, defaultDiagnosticDetailLimit)}… (+${line.length - defaultDiagnosticDetailLimit} chars)`
-    console.log(
-      `  ${isReadyReadiness(entry) ? green(entry.status) : red(entry.status)}\t${detail}`
-    )
-  }
-  printMoreHint(visible.length, entries.length)
-}
-
 const validationError = (
   result: Awaited<ReturnType<typeof workflowArtifactToGraph>>,
   verbose: boolean
@@ -769,8 +685,7 @@ const engineDatabasePath = (storageDir: string) => path.join(storageDir, "engine
 const createEngineBackedClient = (runtimeOptions: CliRuntimeOptions) => {
   const runtime = createWorkflowRuntime({
     backend: "sqlite",
-    databasePath: engineDatabasePath(runtimeOptions.storageDir),
-    integrations: createGatewayIntegrationInvoker()
+    databasePath: engineDatabasePath(runtimeOptions.storageDir)
   })
   const client = createWorkflowClient(runtime)
   return { runtime, client }
@@ -809,8 +724,8 @@ const migrateOnce = async (storageDir: string, verbose: boolean): Promise<void> 
 
 /**
  * Opening the catalog is also where a pre-file `wf.sqlite` gets unpacked, once.
- * Commands that never look at workflows — help, integrations — leave storage
- * untouched, which is what keeps `wf --help` a read-only act.
+ * Commands that never look at workflows leave storage untouched, which is what
+ * keeps `wf --help` a read-only act.
  */
 const openCatalog = async (runtime: CliRuntimeOptions, verbose: boolean): Promise<WorkflowCatalog> => {
   await migrateOnce(runtime.storageDir, verbose)
@@ -960,41 +875,18 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
     const invalid = result.diagnostics.length > 0 ||
       result.graph === undefined ||
       result.graph.diagnostics.length > 0
-    // Read requirements from whatever the trace reached, even when a later node
-    // failed: a partial trace still names connections the caller has to make,
-    // and reporting them now saves a second round trip.
-    const integrations = result.graph === undefined
-      ? []
-      : await checkGraphIntegrations(result.graph)
-    const unmet = integrations.filter((entry) => !isReadyReadiness(entry))
     if (json) {
-      console.log(toJsonText({
-        ...result,
-        integrationReadinessScope: "traced-path",
-        integrations
-      }))
-      if (invalid || unmet.length > 0) process.exitCode = 1
+      console.log(toJsonText(result))
+      if (invalid) process.exitCode = 1
       return
     }
     if (invalid) {
-      printIntegrationReadiness(integrations, verbose)
       throw validationError(result, verbose)
     }
     printValidationResult(result, verbose)
-    printIntegrationReadiness(integrations, verbose)
-    console.log(dim("integration readiness covers only the traced path; use --input for other branches"))
-    // A workflow can be structurally perfect and still unrunnable here. Exit
-    // nonzero so a caller scripting `wf validate` before `wf run` stops.
-    if (unmet.length > 0) {
-      throw new Error(
-        `${artifact.id} needs ${unmet.length} integration tool${unmet.length === 1 ? "" : "s"} connected before it can run`
-      )
-    }
   })
 ).pipe(
-  Command.withDescription(
-    "Validate a workflow without starting a durable run, and report which of its integrations still need connecting"
-  ),
+  Command.withDescription("Validate a workflow without starting a durable run"),
   Command.withExamples([
     { command: "wf validate welcome-email" },
     { command: "wf validate --file workflows/email.ts --json" }

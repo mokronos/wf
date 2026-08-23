@@ -29,7 +29,6 @@ export {
   sampleValueForJsonSchema,
   sampleValueForSchema,
   workflowArtifactToGraph,
-  workflowGraphIntegrations,
   workflowToGraph
 } from "./graph.ts"
 export type {

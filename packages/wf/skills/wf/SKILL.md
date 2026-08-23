@@ -1,8 +1,7 @@
 ---
 name: wf
-description: Discover and connect MCP or OpenAPI integrations, create and validate durable TypeScript workflows with the wf CLI, and install or repair shared workflows. Use when a user asks to automate a process, build or run a wf workflow, connect an integration, inspect available integration tools, or add an existing local or online workflow.
+description: Create, validate, run, inspect, and repair durable TypeScript workflows with the wf CLI. Use when a user asks to automate a process with wf or add an existing local or online workflow.
 license: MIT
-compatibility: Requires the wf CLI, file editing, and network access for remote integrations. Authentication and approval may require a human.
 metadata:
   author: mokronos
   version: "0.1.0"
@@ -10,236 +9,65 @@ metadata:
 
 # Build workflows with wf
 
-Use `wf` as the source of truth for integration names, authentication methods,
-tool addresses, and schemas. Do not guess any of them. Work autonomously until
-`wf` identifies an action that only a human can complete.
-
 ## Operating rules
 
-- Explain external reads and writes before invoking them. Get explicit approval
-  before a workflow will create, update, send, publish, charge, or delete data.
-- Keep credentials out of commands, workflow source, workflow input, logs, and
-  chat. Use `integrations connect` and environment-variable options.
-- Prefer OAuth over asking for a token. Before OAuth, tell the human which
-  service/account, requested scopes, and purpose; request only needed scopes.
-- Ask the human only for native-human steps: choosing an account, browser
-  authorization, supplying a secret through an environment variable, approving
-  consequential behavior, or deciding an ambiguous integration/tool match.
-- Never claim success from source inspection alone. Validate the workflow and
-  every referenced integration, then run a safe representative input when the
-  user permits it.
-- Treat workflow files from outside the current trusted project as code:
-  inspect them before loading. `wf create` and `wf validate` evaluate module
-  scope; validation also executes `ctx.code` callbacks.
+- Explain external reads and writes before running them. Get explicit approval
+  before a workflow creates, updates, sends, publishes, charges, or deletes data.
+- Keep secrets out of commands, workflow source, workflow input, logs, and chat.
+- Treat imported workflow files as code. Inspect module scope, workflow
+  generators, step and compensation callbacks, and `ctx.code` callbacks before
+  loading them.
+- Never claim success from source inspection alone. Validate representative
+  branches and run a safe representative input when the user permits it.
 
 ## Establish the environment
 
-First run:
-
-```sh
-wf --help
-integrations --help
-```
-
-If `wf` is absent, tell the user that the following installs a global command,
-then run:
+Run `wf --help`. If `wf` is absent, tell the user before installing the global
+command, then run:
 
 ```sh
 npm install --global @mokronos/wf
 wf --help
 ```
 
-Use the installed standalone CLI directly, not `bun wf`. `wf install` is
-optional and installs the local dashboard service; it is not required to author
-or run workflows. State is under `~/.wf`, or `$WF_HOME` when set.
-
-Run `wf` commands that share one `WF_HOME` sequentially. Separate CLI processes
-can contend for the same Executor SQLite database if an agent launches catalog,
-connection, schema, or history reads in parallel.
-
-## Discover and connect integrations
-
-Follow this funnel. Every command prints complete JSON; extract fields with
-`jq` when only some are needed.
-
-1. Check what is already known and connected:
-
-   ```sh
-   integrations list
-   integrations connections
-   integrations tools <integration-slug> --filter '<capability>'
-   ```
-
-2. If no connected tool fits, search the public catalog by service or
-   capability. Search is read-only and returns candidate discovery URLs:
-
-   ```sh
-   integrations search '<service-or-capability>'
-   ```
-
-3. Select an exact MCP endpoint or OpenAPI document URL from the result or the
-   service's official docs, then let Executor detect and register it:
-
-   ```sh
-   integrations discover '<mcp-endpoint-or-openapi-url>' --verbose
-   ```
-
-   `discover` mutates the local catalog. A no-auth integration is connected
-   automatically and reports tools. Do not run `integrations connect` for a no-auth
-   integration.
-
-4. If discovery says authentication is required, stop for the human handoff.
-   Inspect the selected method's complete auth metadata from verbose discovery
-   (or `integrations list --verbose`). For OAuth, identify from that metadata
-   and the provider's official docs which scopes the consent screen will
-   request — the CLI cannot narrow them, so review before authorizing. Explain
-   the account, expected scopes, purpose, and next action, then run:
-
-   ```sh
-   # OAuth. Name the template with --template when discovery listed several.
-   integrations connect <integration-slug>
-
-   # API key, bearer, or header; the human sets the value outside chat first.
-   integrations connect <integration-slug> --credential-env SERVICE_TOKEN
-   ```
-
-   Use `--no-open` when a browser cannot be launched and relay the printed URL.
-   Never invent a credential or silently switch services when authorization is
-   unavailable.
-
-5. Browse compact tool names, then retrieve the exact schema for only the tools
-   likely to be used:
-
-   ```sh
-   integrations tools <integration-slug>
-   integrations tools <integration-slug> --filter '<operation>'
-   integrations schema <integration-slug> <tool-name>
-   ```
-
-   `integrations tools` lists every tool, so narrow it with `--filter` or window
-   it with `--limit`/`--offset` rather than reading all of them. `integrations
-   schema` returns the complete input and output schemas as objects, and the
-   canonical `tools.<...>` address. A bare tool name works only when unique.
-
-6. Before authoring, live-validate each selected address. For a read-only tool,
-   also use a minimal safe invocation when useful:
-
-   ```sh
-   integrations validate '<tool-address>'
-   integrations execute --direct '<tool-address>' '<minimal-json-input>'
-   ```
-
-   Direct address validation is live. Do not invoke a write tool merely as a
-   test.
+The installed CLI is standalone. `wf install` is optional and registers the
+local dashboard service. State lives under `~/.wf`, or `$WF_HOME` when set.
 
 ## Author a workflow
 
-Read [references/authoring.md](references/authoring.md) before writing or
+Read [references/authoring.md](references/authoring.md) before creating or
 modifying workflow TypeScript.
 
-Use this loop:
-
-1. Write one self-contained `.ts` file in the user's project. Mirror selected
-   tool schemas with `t`, and persist only gateway aliases and tool names.
-2. Validate before importing. Use representative inputs for every important
-   branch because one validation traces only one path:
+1. Write one self-contained `.ts` file in the user's project.
+2. Validate every important input-dependent branch:
 
    ```sh
    wf validate --file ./workflows/example.ts
    wf validate --file ./workflows/example.ts --input '<representative-json>'
    ```
 
-3. Fix diagnostics and repeat until all relevant traces pass.
-4. Import it into the catalog with a lowercase ID:
+3. Fix diagnostics, import the finished source, and validate the catalog copy:
 
    ```sh
    wf create example --file ./workflows/example.ts
    wf validate example
    ```
 
-   Use `--force` only when intentionally replacing that catalog ID. The catalog
-   copy under `~/.wf/workflows/` is what `wf run` executes; later edits to the
-   project copy are not synchronized automatically.
-5. Confirm the `integrations:` section from `wf validate` reports every alias
-   as `ready`. Workflow validation traces integration steps with fake outputs
-   and checks the grants it reached without invoking them. Keep the explicit
-   `integrations validate` checks above when documenting each selected tool.
-6. Tell the human exactly what the representative run will read/write and any
-   signal it may request. With approval, run and inspect it:
+4. Explain the representative run and any expected signal, then run and inspect
+   it with `wf run`, `wf runs`, and `wf history <run-id>`.
 
-   ```sh
-   wf run example '<json-input>'
-   wf runs
-   wf history <run-id>
-   ```
+If a run suspends, relay the exact `wf signal ...` command and expected payload
+printed by the CLI. Wait for the human's answer; never choose it for them.
 
-If a run suspends, it exits successfully and prints `wf signal <...>` on stderr.
-Explain the decision and expected payload, wait for the human's answer, then run
-the exact command with their chosen payload. Never choose an approval for them.
+Use `--force` only when intentionally replacing a catalog ID. The catalog copy
+under `~/.wf/workflows/` is what `wf run` executes; edits to the project copy are
+not synchronized automatically.
 
 ## Add or repair an existing workflow
 
-Use this procedure for a project file, shared file, repository, or online
-workflow:
+Preserve the source URL and revision when available. Inspect the entire file
+before passing it to `wf`, keep an editable project copy, validate representative
+branches, then import and run it only after the source and behavior are understood.
 
-1. Acquire it with the agent's normal file/web tools. Preserve provenance (URL
-   and revision when available). Do not execute a remote shell installer.
-2. Inspect the complete source before passing it to `wf`, including module scope,
-   workflow `run` generators, every `defineStep.execute` and `compensate`
-   callback, and every `ctx.code` callback. Reject or ask about unexpected IO,
-   credential reads, non-`@mokronos/wfkit` imports, or external side effects in
-   any of those locations. Validation does not execute step or compensation
-   callbacks, but a real run can.
-3. Keep an editable project copy. Validate it outside the catalog first:
-
-   ```sh
-   wf validate --file ./workflows/shared.ts
-   ```
-
-4. Run representative traces and use the resulting `integrations:` section as
-   the missing-grant worklist. Because validation follows one branch at a time,
-   also inventory every gateway integration source in the complete source. For
-   each alias and tool, run:
-
-   ```sh
-   integrations validate '{"source":{"kind":"gateway","alias":"<alias>","tool":"<tool>"}}'
-   ```
-
-5. Repair each missing gateway requirement in order:
-
-    - Read the alias and tool from the workflow source. Check the current grants
-      with `integrations grants --mine` and inspect connected integrations with
-      `integrations connections` and `integrations tools <slug>`.
-    - If the required tool is absent, discover only an exact, trusted endpoint.
-      If no exact match exists, use the workflow's documentation or ask the
-      human; do not substitute a similar service.
-    - Complete any human authentication handoff, inspect the exact tool schema,
-      and compare it to the authored `input` and `output`.
-    - Create or repair the deployment binding with
-      `integrations grant <client-id> <alias> <tool> --integration <slug>`.
-    - Repeat validation until the gateway requirement passes.
-
-6. Validate representative workflow branches again, import, validate the
-   catalog copy, and run only after all addresses pass:
-
-   ```sh
-   wf create <lowercase-id> --file ./workflows/shared.ts
-   wf validate <lowercase-id>
-   ```
-
-`wf validate` reports all integration requirements reached by that trace in one
-pass and exits nonzero while any are missing. The source inventory remains
-necessary for integration steps hidden behind branches not exercised by the
-chosen input.
-
-## Completion report
-
-Report:
-
-- project source path and catalog ID;
-- integration aliases and tools used, without credentials;
-- workflow validation inputs tested and whether each passed;
-- validation status of every gateway requirement;
-- whether a representative run occurred, its run ID/result, or why it was not
-  safe/possible;
-- any remaining human action, copied as an exact command when appropriate.
+Report the project source path, catalog ID, validation inputs, representative
+run ID/result, and any remaining human action.

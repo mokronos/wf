@@ -148,9 +148,9 @@
 
 <section id="vision">
   <h2><span class="num">1</span>The vision</h2>
-  <p>wf is an <strong>agent-first workflow automation platform</strong> — n8n/Zapier territory, but the LLM agent is the <em>workflow designer</em>, not the runtime. The agent discovers connectors, inspects schemas and auth requirements, composes durable workflows, tests them against fixtures, inspects failures, repairs the definition, and deploys versioned artifacts.</p>
+  <p>wf is an <strong>agent-first workflow automation platform</strong> — n8n/Zapier territory, but the LLM agent is the <em>workflow designer</em>, not the runtime. The agent composes durable workflows, tests them against fixtures, inspects failures, repairs the definition, and deploys versioned artifacts.</p>
   <div class="callout">
-    <p><strong>Core principle:</strong> structured orchestration, typed integrations, code for computation.</p>
+    <p><strong>Core principle:</strong> structured orchestration and code for computation.</p>
     <p>Workflow semantics (triggers, branches, retries, waits, human tasks, compensation, versioning) are first-class engine primitives. Local data manipulation lives in plain TypeScript transform steps — not dozens of specialized UI nodes.</p>
   </div>
   <p>The deliverable is a <strong>repeatable workflow artifact</strong>, not an expensive LLM execution trace. The LLM designs; the deployed workflow runs deterministically on a small DSL over a durable execution engine (<code>@effect/workflow</code>). Long-term goal: the durability of Temporal-style engines with the accessibility and observability of visual automation tools.</p>
@@ -189,7 +189,6 @@
   <h3>Table stakes nearly every business platform shares</h3>
   <table>
     <tr><th>Feature</th><th>Benchmark / notes</th></tr>
-    <tr><td>Managed credential vault + OAuth</td><td>Zapier shared connections; n8n external vaults (AWS/Azure/HashiCorp); credentials as first-class objects (Tines)</td></tr>
     <tr><td>Trigger trio: webhook + cron + polling</td><td>The app-specific trigger catalog is the moat — Zapier ~8,000 apps, Pipedream ~3,000 event sources</td></tr>
     <tr><td>SSO/SCIM + RBAC + audit logs</td><td>Universal enterprise gate; SIEM export at high tiers</td></tr>
     <tr><td>Retry machinery at 3 levels</td><td>Per-step retries; run-level replay (Zapier Autoreplay, Make incomplete-executions queue); <strong>replay-from-failed-step</strong> (Step Functions Redrive is the gold standard)</td></tr>
@@ -212,7 +211,6 @@
       <ul>
         <li>SSO / SAML / SCIM, RBAC</li>
         <li>Workspaces &amp; environments</li>
-        <li>Credential-vault UI</li>
         <li>Connector allow/block (DLP)</li>
         <li>Task inboxes, spend quotas</li>
         <li>Compliance paper (SOC 2…)</li>

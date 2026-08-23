@@ -36,20 +36,6 @@ describe("CLI help", () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain("Durable workflows and a local dashboard")
     expect(result.stdout).toContain("install")
-    // Integrations moved to their own binary, which installs alongside wf.
-    // (The word still appears in `wf validate`'s description, so this checks
-    // for the subcommand entry rather than the bare word.)
-    expect(result.stdout).not.toContain("integrations, i")
-  })
-
-  test("offers an upgrade command that reports before it changes anything", () => {
-    const listed = runCli(["--help"])
-    expect(listed.stdout).toContain("upgrade")
-
-    const help = runCli(["upgrade", "--help"])
-    expect(help.exitCode).toBe(0)
-    expect(help.stdout).toContain("--check")
-    expect(help.stdout).toContain("--pull")
   })
 
   test("shows command-specific help from the command definition", () => {

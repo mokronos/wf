@@ -7,6 +7,10 @@ When im using these words im talking about the following:
 
 - Never use `any` or `unknown`. Model every compile-time-known shape with Effect Schema (the schema is the single source of truth; derive TS types via `typeof X.Type`), brand identifiers where mix-ups are possible, and parse external/dynamic data at the boundary with `Schema.decodeUnknown*` instead of casting. No `as` casts to silence the compiler.
 
+## Validation
+
+- After making changes, run `bun run verify` from the repository root. It runs linting, typechecking, all automated tests, the credential-free examples, and all project builds. Do not consider the work complete until it passes; if a failure is unrelated or requires external credentials, report it explicitly instead of silently skipping it.
+
 <!-- effect-solutions:start -->
 ## Effect Best Practices
 

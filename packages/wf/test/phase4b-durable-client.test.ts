@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import { createWorkflowClient, createWorkflowRuntime, defineStep, defineWorkflow, t } from "../src"
 
 const dbPath = () => path.join(mkdtempSync(path.join(tmpdir(), "wf-phase4b-")), "wf.sqlite")
@@ -83,8 +83,8 @@ describe("Phase 4b durable workflow client", () => {
       name: "DurableDateResult",
       input: t.struct({}),
       output: t.struct({ observedAt: t.date }),
-      run: function* () {
-        return { observedAt: expected }
+      run: function* (_, ctx) {
+        return yield* ctx.effect(Effect.succeed({ observedAt: expected }))
       }
     })
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
@@ -109,8 +109,8 @@ describe("Phase 4b durable workflow client", () => {
       name: "InvalidDurableDateResult",
       input: t.struct({}),
       output: t.struct({ observedAt: t.date }),
-      run: function* () {
-        return { observedAt: new Date("invalid") }
+      run: function* (_, ctx) {
+        return yield* ctx.effect(Effect.succeed({ observedAt: new Date("invalid") }))
       }
     })
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })
@@ -133,8 +133,8 @@ describe("Phase 4b durable workflow client", () => {
       name: "sqliteIdentity",
       input: Schema.Struct({ value: Schema.String }),
       output: Schema.String,
-      run: function* (input) {
-        return input.value
+      run: function* (input, ctx) {
+        return yield* ctx.effect(Effect.succeed(input.value))
       }
     })
     const runtime = createWorkflowRuntime({ backend: "sqlite", databasePath: dbPath() })

@@ -22,9 +22,6 @@ wf
 └── daemon
 ```
 
-Integrations are a separate binary; see the
-[integrations repository](https://github.com/mokronos/integrations).
-
 ## Global flags
 
 Every command accepts these:
@@ -46,8 +43,6 @@ machine-readable modes such as `wf validate --json` are always lossless.
 | Variable | Effect |
 | --- | --- |
 | `WF_HOME` | Directory for the workflow catalog, run history, and engine state. Defaults to `~/.wf` |
-| `INTEGRATIONS_HOME` | Overrides `WF_HOME` for the gateway's storage only |
-| `INTEGRATIONS_URL`, `INTEGRATIONS_API_KEY` | Point integration steps at a specific gateway instead of the local `~/.wf/gateway.json` |
 
 ## wf create
 
@@ -78,8 +73,7 @@ against.
 
 ## wf validate
 
-Load and trace a workflow without starting a durable run, and report which of
-its integrations still need connecting.
+Load and trace a workflow without starting a durable run.
 
 ```text
 wf validate [flags] [<workflow-id>]
@@ -98,21 +92,12 @@ wf validate --file workflows/email.ts --json
 wf validate orders --input '{"orderId":"1842","amount":42}'
 ```
 
-Validation traces the workflow body in memory with faked steps — no integration
-is called and no run is recorded — so it is safe to run in a loop while
-repairing a definition. Use `--input` when the flow branches on a value.
+Validation traces the workflow body in memory with faked steps and records no
+run, so it is safe to use in a repair loop. Use `--input` when the flow branches
+on a value.
 
-It reports the workflow's input, output, and error schemas, the ordered flow of
-orchestration calls, and the state of each integration requirement:
-
-```text
-integrations:
-  ready	issues.create_issue
-  not-granted	linear.create_issue: no grant aliased linear exposes create_issue to this key
-```
-
-**Exit code:** non-zero while the workflow is invalid or any integration
-requirement is unmet, which makes it a gate before `wf run`.
+It reports the workflow's input, output, and error schemas and the ordered flow
+of orchestration calls. The exit code is non-zero while the workflow is invalid.
 
 ## wf list
 
@@ -145,13 +130,6 @@ run stays suspended in SQLite:
 [signal] fileIssue expects payload schema: {"type":"object","properties":{"approved":{"type":"boolean"}},...}
 Resume with: wf signal 04dc7f53-... fileIssue '{"approved":true}'
 ```
-
-Integration steps are performed through the gateway. If a grant requires human
-approval, the gateway freezes the invocation and the step retries until the
-approval is decided; the workflow itself never gains the capability. If no
-gateway is configured, the step fails with `No integration gateway configured.
-Start one with 'integrations serve', or set INTEGRATIONS_URL and
-INTEGRATIONS_API_KEY.`
 
 ## wf runs
 

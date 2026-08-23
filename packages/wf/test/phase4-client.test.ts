@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { Schema } from "effect"
+import { Effect, Schema } from "effect"
 import {
   createWorkflowClient,
   createWorkflowRuntime,
@@ -179,8 +179,8 @@ describe("Phase 4 workflow client", () => {
       name: "freshStarts",
       input: Schema.Struct({ value: Schema.String }),
       output: Schema.String,
-      run: function* (input) {
-        return input.value
+      run: function* (input, ctx) {
+        return yield* ctx.effect(Effect.succeed(input.value))
       }
     })
     const client = createWorkflowClient()
@@ -334,8 +334,8 @@ describe("Phase 4 workflow client", () => {
       name: "workflowProjection",
       input: Schema.Void,
       output: Schema.String,
-      run: function* () {
-        return "ok"
+      run: function* (_, ctx) {
+        return yield* ctx.effect(Effect.succeed("ok"))
       }
     })
     const client = createWorkflowClient()

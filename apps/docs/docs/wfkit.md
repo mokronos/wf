@@ -37,7 +37,6 @@ export const HelloWorkflow = defineWorkflow({
 | --- | --- |
 | `@mokronos/wfkit` | Everything below: authoring, runtime, client, and test runtime |
 | `@mokronos/wfkit/authoring` | Authoring only. Free of runtime imports, so workflow modules can be inspected by non-Bun tooling |
-| `@mokronos/wfkit/integrations` | The dependency-light integration contract (`IntegrationSource`, `IntegrationInvoker`) |
 | `@mokronos/wfkit/schemas` | Shared Effect schemas for runs, events, and graphs |
 | `@mokronos/wfkit/testing` | `createTestRuntime` and its helpers |
 
@@ -166,7 +165,7 @@ process pointed at the same database.
 
 ```ts
 const summary = yield* ctx.code("build-review-summary", {
-  reason: "Give the human reviewer one stable summary of all integration results",
+  reason: "Give the human reviewer one stable summary of all results",
   output: t.string,
   run: () => `${created.caseId}: ${customer.name}`
 })
@@ -202,41 +201,6 @@ Each branch should be a single pre-built orchestration call (`ctx.run`,
 dynamically inside a branch is not replay-safe yet. Inside a durable `ctx.all`,
 replay checks use call identity rather than journal position, so divergence
 detection inside parallel blocks is coarser than in sequential code.
-
-## Integration steps
-
-`integration(...)` is one durable node backed by a tool the gateway holds a
-grant for. The workflow stores an **alias** and a tool name, and nothing else:
-
-```ts
-import { integration, t } from "@mokronos/wfkit"
-
-const createIssue = integration({
-  name: "CreateIssue",
-  source: { kind: "gateway", alias: "issues", tool: "create_issue" },
-  input: t.struct({ team: t.string, title: t.string }),
-  output: t.struct({ id: t.string, url: t.string }),
-  retry: { attempts: 3, backoff: "exponential" }
-})
-```
-
-| Field | Meaning |
-| --- | --- |
-| `source.kind` | Always `"gateway"` |
-| `source.alias` | The logical name the workflow requires, `^[a-z][a-z0-9-]*$`. Bound to a connection per machine by a grant |
-| `source.tool` | The tool name as the remote declares it |
-| `name` | Optional step name. Defaults to `Integration:gateway:<alias>:<tool>` |
-| `input`, `output` | Schemas mirroring what `integrations schema` reported |
-| `retry` | Same policy as a local step |
-
-Connection names, owner tiers, credentials, and resolved tool addresses never
-appear in workflow source — they are environment, not definition. Integration
-steps declare no typed errors: gateway failures (a restart, an approval a human
-has not decided yet) are transient, and the durable engine rides them out.
-
-Generated bindings for exactly the tools your key can reach are available with
-`integrations codegen --target effect`; see the
-[integrations repository](https://github.com/mokronos/integrations).
 
 ## Secrets
 
@@ -288,7 +252,6 @@ try {
 | `backend` | `"memory"` or `"sqlite"` |
 | `databasePath` | Where SQLite state lives |
 | `secrets` | A `SecretResolver` for `SecretRef` inputs |
-| `integrations` | An `IntegrationInvoker` — the adapter integration steps call through |
 | `timerPollIntervalMs` | How often storage is polled for due timers and undelivered messages. Defaults to 250ms; durable timers can fire up to one interval late |
 | `sqliteBusyTimeoutMs` | SQLite busy timeout |
 

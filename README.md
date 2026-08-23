@@ -20,14 +20,16 @@ State defaults to `~/.wf`; set `WF_HOME` to use another directory.
 
 - **Structured orchestration:** typed steps, retries, timers, signals, parallel
   work, and compensations are durable runtime primitives.
-- **Provider-neutral integrations:** workflow definitions name an alias and
-  tool; the runtime receives an integration invoker from its composition root.
 - **Code for computation:** deterministic transforms stay as TypeScript code;
   external IO belongs in durable steps.
 
-The integrations gateway and its TypeScript client now live in
-[`mokronos/integrations`](https://github.com/mokronos/integrations). `wf` consumes
-the client API without owning gateway credentials, policy, or execution code.
+## Integration nodes
+
+`wfkit` retains a declarative integration node for portable workflow
+definitions. Executing those nodes requires the separate
+[`mokronos/integrations`](https://github.com/mokronos/integrations) gateway and
+runner; this repository does not include integration discovery, credentials,
+policy, client wiring, or execution.
 
 ## Repository Map
 

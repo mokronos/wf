@@ -131,7 +131,6 @@ export const createMemoryWorkflowClient = (runtime?: WorkflowRuntime): WorkflowC
         determinism: createInMemoryDeterminismState(),
         signalTransport: signals,
         ...whenPresent("secrets", runtime?.secrets),
-        ...whenPresent("integrations", runtime?.integrations),
         ...whenPresent("concurrency", runtime?.concurrency),
         onEvent: async (event) => {
           appendHistory(execution, event)

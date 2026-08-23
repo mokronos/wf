@@ -23,7 +23,7 @@ export const LoaderHashWorkflow = defineWorkflow({
 `
 
 describe("workflow artifact loader", () => {
-  test("hashes the complete stored source, including step and integration definitions", async () => {
+  test("hashes the complete stored source", async () => {
     const firstArtifact = {
       id: parseWorkflowId("loader-hash-a"),
       source: source("first")
@@ -42,19 +42,4 @@ describe("workflow artifact loader", () => {
     expect(first.workflow.sourceHash).not.toBe(second.workflow.sourceHash)
   })
 
-  test("keeps IntegrationError available to legacy source snapshots", async () => {
-    const loaded = await loadWorkflowArtifact({
-      id: parseWorkflowId("legacy-integration-error"),
-      source: `import { defineWorkflow, IntegrationError, t } from "@mokronos/wfkit"
-export const LegacyIntegrationErrorWorkflow = defineWorkflow({
-  name: "LegacyIntegrationErrorWorkflow",
-  input: t.void,
-  output: t.void,
-  errors: IntegrationError,
-  run: function* () { return undefined }
-})`
-    })
-
-    expect(loaded.workflow.errors).toBeDefined()
-  })
 })

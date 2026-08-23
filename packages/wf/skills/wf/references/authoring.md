@@ -4,14 +4,13 @@ Read this when creating or modifying a workflow file.
 
 ## Artifact contract
 
-- Import named APIs only from `@mokronos/wfkit`. Do not import `effect`, package
-  subpaths, relative helpers, or arbitrary dependencies in a stored artifact.
+- Import named APIs only from `@mokronos/wfkit`. Do not import package subpaths,
+  relative helpers, or arbitrary dependencies in a stored artifact.
 - Keep the file self-contained. Export one named workflow, or use a default
   export if the file contains multiple workflows.
 - Workflow `run` is a deterministic generator, `function*`, not `async`.
-- External IO belongs in `defineStep` or `integration`, never directly in
-  `run`. Use `ctx.now()` and `ctx.random()`, never `Date.now()` or
-  `Math.random()`.
+- External IO belongs in `defineStep`, never directly in `run`.
+- Use `ctx.now()` and `ctx.random()`, never `Date.now()` or `Math.random()`.
 - `ctx.code` is for small pure computations. It requires `reason`, `output`, and
   `run`; its callback executes during validation.
 - Use stable, descriptive names. Changing orchestration order or identity can
@@ -19,14 +18,12 @@ Read this when creating or modifying a workflow file.
 
 ## Schemas
 
-The supported vocabulary is:
-
 ```ts
 t.string
 t.number
 t.boolean
 t.void
-t.date // Date in workflow code; encoded as an ISO string in durable storage/output
+t.date
 t.unknown
 t.struct({ field: t.string })
 t.array(t.string)
@@ -36,66 +33,7 @@ t.optional(t.string)
 t.union([First, Second])
 ```
 
-Mirror a tool's actual schema from `integrations schema`; never infer it from
-the tool name. Integration input must be JSON-compatible. Generic MCP results
-are normalized before output decoding, so use the normalized output schema shown
-by the CLI and confirmed by a safe invocation when possible.
-
-## Integration and parallel template
-
-A workflow names an **alias** and a **tool**, never a connection or an address.
-The alias is a requirement you declare, like an environment variable: whoever
-deploys the workflow binds it with `integrations grant`. That is what lets the
-same definition run for different people against their own connections.
-
-Choose the alias yourself while authoring — do not copy one out of the catalog.
-Replace all schemas with values returned by the CLI:
-
-```ts
-import { defineWorkflow, integration, t } from "@mokronos/wfkit"
-
-const LookupResult = t.struct({ value: t.string })
-const DetailResult = t.struct({ detail: t.string })
-
-const lookup = integration({
-  name: "Lookup",
-  source: { kind: "gateway", alias: "service-a", tool: "lookup" },
-  input: t.struct({ query: t.string }),
-  output: LookupResult,
-  retry: { attempts: 3, backoff: "exponential" }
-})
-
-const details = integration({
-  name: "Details",
-  source: { kind: "gateway", alias: "service-b", tool: "details" },
-  input: t.struct({ topic: t.string }),
-  output: DetailResult
-})
-
-export const ResearchWorkflow = defineWorkflow({
-  name: "ResearchWorkflow",
-  input: t.struct({ query: t.string, topic: t.string }),
-  output: t.struct({ summary: t.string }),
-  run: function* (input, ctx) {
-    const [found, explained] = yield* ctx.all([
-      ctx.run(lookup, { query: input.query }),
-      ctx.run(details, { topic: input.topic })
-    ], { name: "collect-research", concurrency: 2 })
-
-    return yield* ctx.code("summarize-research", {
-      reason: "Combine both persisted integration results deterministically",
-      output: t.struct({ summary: t.string }),
-      run: () => ({ summary: `${found.value}: ${explained.detail}` })
-    })
-  }
-})
-```
-
-`ctx.all` is the parallel primitive; there is no `parallel()` or `ctx.parallel`.
-Each branch must be one pre-built orchestration call such as `ctx.run` or
-`ctx.code`. Do not sequence more `ctx.*` calls inside a parallel branch.
-
-## Other primitives
+## Primitives
 
 ```ts
 const value = yield* ctx.run(step, input)
@@ -108,14 +46,12 @@ const decision = yield* ctx.waitForSignal(
   t.struct({ approved: t.boolean, reviewer: t.string }),
   { timeout: "24 hours" }
 )
-
-if (decision.type === "timeout" || !decision.value.approved) {
-  return yield* ctx.fail({ _tag: "Rejected", reason: "not approved" })
-}
 ```
 
 Use plain deterministic TypeScript for branches and loops. Signal timeouts are
-values, not thrown errors. Avoid parallel waits sharing one public signal name.
+values, not thrown errors. Avoid parallel waits that share one public signal
+name. `ctx.all` accepts pre-built orchestration calls; do not create further
+`ctx.*` calls inside a parallel branch.
 
 ## Steps, errors, and compensation
 
@@ -135,31 +71,23 @@ const performAction = defineStep({
     return { resultId: input.id }
   },
   compensate: async (result) => {
-    // Undo the completed action idempotently.
     console.log(`undo ${result.resultId}`)
   }
 })
 ```
 
-- Thrown step errors are transient and follow retry policy. Return
-  `step.fail(...)` for declared terminal business failures; do not throw it.
-- `attempts` is total attempts. Backoff is `"none"` or `"exponential"`.
-- Declare the workflow's business-error schema explicitly; step errors are not
-  automatically aggregated.
+- Thrown step errors are transient and follow the retry policy. Return
+  `step.fail(...)` for declared terminal business failures.
+- `attempts` is the total number of attempts. Backoff is `"none"` or
+  `"exponential"`.
 - Successful compensatable steps unwind in reverse order after a later failure.
   Compensation is not retried, so make it idempotent.
-- `integration(...)` does not support compensation. Design write workflows and
-  rollback behavior deliberately.
 
 ## Validation limits
 
 - `wf validate` transpiles and evaluates; it does not run TypeScript typecheck.
-- It traces one input-dependent path with generated step/integration outputs.
-  Validate each important branch with `--input`.
-- It fakes `defineStep.execute`, integration calls, sleeps, and signal delivery,
-  but runs module scope and `ctx.code`; keep those safe.
-- It live-checks each integration address reached by the traced branch and exits
-  nonzero when one is unavailable. Validate representative inputs and still
-  inventory source addresses so untaken branches are not missed.
-- An unbounded loop can hang validation. Keep all orchestration loops bounded by
-  validated input or persisted results.
+- It traces one input-dependent path with generated step outputs. Validate every
+  important branch with `--input`.
+- It fakes step execution, sleeps, and signal delivery, but runs module scope and
+  `ctx.code`; keep those safe.
+- Bound orchestration loops by validated input or persisted results.

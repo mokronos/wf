@@ -195,7 +195,7 @@ export const createDurableWorkflowClient = (runtime: WorkflowRuntime): WorkflowC
       }
       signalClaims.claim(executionId, waiting)
       // Ensure this runtime has loaded the suspended execution before waking
-      // it so replay uses this runtime's secrets and integration adapters.
+      // it so replay uses this runtime's execution-scoped resources.
       try {
         await runtime.resume({ workflow, executionId })
         await runtime.deliverSignal({

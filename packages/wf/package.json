@@ -57,12 +57,6 @@
       "development": "./src/schemas.ts",
       "default": "./dist/schemas.js"
     },
-    "./integrations": {
-      "types": "./dist/integration-contract.d.ts",
-      "bun": "./src/integration-contract.ts",
-      "development": "./src/integration-contract.ts",
-      "default": "./dist/integration-contract.js"
-    },
     "./testing": {
       "types": "./dist/testing/index.d.ts",
       "bun": "./src/testing/index.ts",

@@ -13,7 +13,6 @@ import {
   createExecutionResourceRegistry,
   ExecutionResourceRegistry
 } from "./execution-resources.ts"
-import type { IntegrationInvoker } from "./integration-contract.ts"
 import { createConcurrencyLimiter } from "./concurrency.ts"
 import type { ConcurrencyLimiter } from "./concurrency.ts"
 import { createSignalTransport } from "./signal.ts"
@@ -50,8 +49,6 @@ export interface WorkflowRuntimeOptions {
   /** Resolves SecretRef inputs to their values at step execution time.
    *  Only the reference string is ever persisted. */
   readonly secrets?: SecretResolver
-  /** Concrete adapter used by provider-neutral integration steps. */
-  readonly integrations?: IntegrationInvoker
   readonly sqliteBusyTimeoutMs?: number
   /** How often the engine polls storage for due timers and undelivered
    *  messages. Durable timers (signal timeouts, long sleeps) can fire up to
@@ -63,7 +60,6 @@ export interface WorkflowRuntime {
   readonly backend: "memory" | "sqlite"
   readonly databasePath?: string
   readonly secrets?: SecretResolver
-  readonly integrations?: IntegrationInvoker
   readonly concurrency: ConcurrencyLimiter
   readonly signals: SignalTransport
   register(workflows: ReadonlyArray<DefinedWorkflow>): void
@@ -116,7 +112,6 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
   const databasePath = options.databasePath
   const resourceRegistry = createExecutionResourceRegistry({
     ...whenPresent("secrets", options.secrets),
-    ...whenPresent("integrations", options.integrations),
     concurrency,
     signals
   })
@@ -128,7 +123,6 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     resourceRegistry.register(executionId, {
       ...whenPresent("events", onEvent),
       ...whenPresent("secrets", options.secrets),
-      ...whenPresent("integrations", options.integrations),
       concurrency,
       signals
     })
@@ -228,7 +222,6 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
     backend: options.backend,
     ...whenPresent("databasePath", databasePath),
     ...whenPresent("secrets", options.secrets),
-    ...whenPresent("integrations", options.integrations),
     concurrency,
     signals,
 
@@ -368,7 +361,7 @@ export const makeWorkflowEffect = (
   const execution = Effect.gen(function* () {
     Schema.decodeUnknownSync(wf.input)(payload)
     yield* emitWorkflowEvent({ type: "workflow.started", workflowName, payload })
-    const result = yield* wf.workflow.executeStandalone({ value: payload }).pipe(
+    const result = yield* wf.workflow.executeStandalone(payload).pipe(
       Effect.tap(() => Effect.annotateCurrentSpan({ "wf.execution.outcome": "completed" })),
       Effect.tap((result) =>
         emitWorkflowEvent({ type: "workflow.completed", workflowName, result })
