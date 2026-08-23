@@ -16,8 +16,7 @@ import { workflowCommands, type CliRuntimeOptions } from "./cli/main.ts"
 import { telemetryLayer } from "@mokronos/observability"
 import assets from "./embedded-web-assets.gen.ts"
 import { enginePath, wfHome, workflowsPath } from "./paths.ts"
-import { defaultPort, installService, serviceIsRegistered } from "./service.ts"
-import { upgradeCli } from "@mokronos/integrations-cli/upgrade"
+import { defaultPort, installService } from "./service.ts"
 import packageMetadata from "../package.json" with { type: "json" }
 
 const mimeTypeFor = (pathname: string): string => {
@@ -207,39 +206,6 @@ const makeRootCommand = (runtime: CliRuntimeOptions) => {
     })
   ).pipe(Command.withDescription("Register and start the per-user local dashboard service"))
 
-  /** Upgrades the CLI, and nothing else: the dashboard service keeps serving the
-   * version it started with until someone runs `wf install`, which is what the
-   * hint says. Restarting a service is a decision, not a side effect of an
-   * update. */
-  const upgradeCommand = Command.make(
-    "upgrade",
-    {
-      check: Flag.boolean("check").pipe(
-        Flag.withDescription("Report the available version and change nothing")
-      ),
-      pull: Flag.boolean("pull").pipe(
-        Flag.withDescription("For a source install: fast-forward the checkout it runs from")
-      )
-    },
-    ({ check, pull }) =>
-      serviceTask(async () => {
-        const result = await upgradeCli({
-          packageName: packageMetadata.name,
-          currentVersion: packageMetadata.version,
-          command: "wf upgrade",
-          check,
-          pull,
-          rebuildHint: "bun run install:local --compiled"
-        })
-        for (const line of result.lines) console.log(line)
-        if (result.changed && await serviceIsRegistered()) {
-          console.log(
-            "The installed service is still running the old version. Restart it with: wf install"
-          )
-        }
-      })
-  ).pipe(Command.withDescription("Upgrade this CLI to the latest published version"))
-
   const webCommand = Command.make(
     "web",
     {
@@ -283,7 +249,6 @@ const makeRootCommand = (runtime: CliRuntimeOptions) => {
     Command.withSubcommands([
       ...workflowCommands(runtime),
       installCommand,
-      upgradeCommand,
       webCommand,
       daemonCommand
     ] as const)

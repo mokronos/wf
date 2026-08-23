@@ -19,13 +19,6 @@
       "@mokronos/wfkit": ["packages/wf/src/index.ts"],
       "@mokronos/wfkit/optional": ["packages/wf/src/optional.ts"],
       "@mokronos/wfkit/authoring": ["packages/wf/src/authoring.ts"],
-      "@mokronos/wfkit-executor": ["packages/wfkit-executor/src/index.ts"],
-      "@mokronos/wfkit-executor/schemas": ["packages/wfkit-executor/src/schemas.ts"],
-      "@mokronos/wfkit-executor/integration-model": ["packages/wfkit-executor/src/integration-model.ts"],
-      "@mokronos/integrations": ["apps/integrations/gateway/src/index.ts"],
-      "@mokronos/integrations/domain": ["apps/integrations/gateway/src/domain.ts"],
-      "@mokronos/integrations-client": ["apps/integrations/ts/src/index.ts"],
-      "@mokronos/integrations-cli/upgrade": ["apps/integrations/cli/src/upgrade.ts"],
       "@mokronos/wfkit/integrations": ["packages/wf/src/integration-contract.ts"],
       "@mokronos/wfkit/schemas": ["packages/wf/src/schemas.ts"],
       "@mokronos/wfkit/testing": ["packages/wf/src/testing/index.ts"]
@@ -58,11 +51,8 @@
       }
     ]
   },
-  // The two React apps each own an `@/*` alias pointing at their own src, which
-  // a single root project cannot resolve two ways. They are type-checked
-  // through their own tsconfigs instead — see the `typecheck` script. Same for
-  // the Workers deployment: it types D1 through structural interfaces rather
-  // than ambient globals, which belongs in its own project.
+  // The React app owns an `@/*` alias and is type-checked through its own
+  // project instead — see the `typecheck` script.
   // The vendored anti-slop Oxlint plugin is third-party tooling source, not
   // owned project source: it is type-checked upstream and does not compile
   // under this repo's stricter options. Oxlint ignores it too.
@@ -71,8 +61,6 @@
     "node_modules",
     "**/.tmp/**",
     "apps/wf/web",
-    "apps/integrations/web",
-    "apps/integrations/worker",
     "tools/oxlint/anti-slop"
   ]
 }

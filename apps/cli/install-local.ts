@@ -5,30 +5,14 @@ import path from "node:path"
 const packageDirectory = import.meta.dirname
 const repositoryDirectory = path.resolve(packageDirectory, "../..")
 const entryPoint = path.join(packageDirectory, "src", "main.ts")
-const integrationsEntryPoint = path.join(
-  repositoryDirectory,
-  "apps",
-  "integrations",
-  "cli",
-  "src",
-  "main.ts"
-)
 
-/** Both binaries, because a wf without integrations cannot run a workflow that
- * touches one — the credentials live behind the gateway the second binary
- * starts. Published installs get this from a package dependency; locally it has
- * to be explicit. */
 interface Installable {
   readonly name: string
   readonly entry: string
 }
 
 const installables = (): ReadonlyArray<Installable> => [
-  { name: "wf", entry: entryPoint },
-  { name: "integrations", entry: integrationsEntryPoint },
-  // `i` is the short alias, mirroring the second bin entry in the
-  // integrations-cli package so local and published installs match.
-  { name: "i", entry: integrationsEntryPoint }
+  { name: "wf", entry: entryPoint }
 ]
 
 type Mode = "source" | "compiled"
@@ -40,7 +24,7 @@ interface Options {
 
 const usage = `Install the working tree's binaries onto your PATH.
 
-Installs wf, integrations, and i (a second name for integrations).
+Installs wf.
 
 Usage:
   bun run install:local [--compiled] [--dir <directory>]
@@ -52,8 +36,7 @@ Usage:
                 so restart it after source changes with: wf install
   --compiled    Build the current-platform wf binary and link that instead.
                 Slower and needs a rebuild per change, but matches the published
-                shape. integrations and i are always source shims; they have no
-                compiled variant yet.
+                shape.
   --dir <path>  Install directory. Defaults to the first of ~/.bun/bin or
                 ~/.local/bin that already exists.
 `
@@ -130,7 +113,6 @@ const clearTarget = async (target: string): Promise<void> => {
   const contents = await Bun.file(target).text()
   if (
     !contents.includes(entryPoint) &&
-    !contents.includes(integrationsEntryPoint) &&
     !contents.includes("Local development install of")
   ) {
     throw new Error(`Refusing to replace ${target}: not a local install. Move it aside first.`)
@@ -197,11 +179,10 @@ const main = async (): Promise<void> => {
     const suffix = process.platform === "win32" ? ".exe" : ""
     const target = path.join(options.directory, `${installable.name}${suffix}`)
     await clearTarget(target)
-    // Only wf has a compiled variant; integrations and its alias stay source shims.
-    if (options.mode === "compiled" && installable.name === "wf") await installCompiled(target)
+    if (options.mode === "compiled") await installCompiled(target)
     else await installShim(target, installable.entry)
     await chmod(target, 0o755).catch(() => undefined)
-    const installKind = options.mode === "compiled" && installable.name === "wf" ? "compiled" : "source"
+    const installKind = options.mode === "compiled" ? "compiled" : "source"
     console.log(`installed ${installable.name} -> ${target} (${installKind})`)
     await reportShadowing(target)
   }
@@ -210,7 +191,6 @@ const main = async (): Promise<void> => {
     console.log("\nno rebuild needed after source changes")
     // A shim only affects new processes; running services hold the old code.
     console.log("restart the dashboard after source changes: wf install")
-    console.log("the gateway does not autostart — run it with: integrations serve")
   }
 }
 

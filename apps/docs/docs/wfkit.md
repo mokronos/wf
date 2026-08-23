@@ -235,7 +235,8 @@ steps declare no typed errors: gateway failures (a restart, an approval a human
 has not decided yet) are transient, and the durable engine rides them out.
 
 Generated bindings for exactly the tools your key can reach are available with
-`integrations codegen --target effect`; see the [Gateway client](client.md).
+`integrations codegen --target effect`; see the
+[integrations repository](https://github.com/mokronos/integrations).
 
 ## Secrets
 

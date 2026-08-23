@@ -22,7 +22,8 @@ wf
 └── daemon
 ```
 
-Integrations are a separate binary — see the [Integrations CLI](integrations.md).
+Integrations are a separate binary; see the
+[integrations repository](https://github.com/mokronos/integrations).
 
 ## Global flags
 
@@ -205,34 +206,12 @@ wf install [--verbose]
 ```
 
 `systemd --user` on Linux, `launchd` on macOS. The service serves workflow
-graphs, run history, and connected integrations from `~/.wf` at
+graphs and run history from `~/.wf` at
 `http://127.0.0.1:4787`; it does not execute workflows. Windows service
 registration is not implemented yet.
 
 The background service keeps running the code it started with — after upgrading
 or editing sources, run `wf install` again to restart it.
-
-## wf upgrade
-
-Upgrade this CLI to the latest published version.
-
-```text
-wf upgrade [--check] [--pull]
-```
-
-| Flag | Meaning |
-| --- | --- |
-| `--check` | Report the version that is available and change nothing |
-| `--pull` | For a source install: fast-forward the checkout the CLI runs from |
-
-A global install is replaced through the package manager that owns it; a source
-install (`bun run install:local`) is fast-forwarded with `--pull`, which also
-runs `bun install` when the lockfile moved and reminds you to rebuild if the copy
-on your `PATH` is a compiled binary. Upgrading does not restart the dashboard
-service — run `wf install` for that.
-
-Shared with `integrations upgrade`: the detection and registry lookup live in
-`@mokronos/integrations-cli/upgrade`, which `wf` already depends on.
 
 ## wf web
 

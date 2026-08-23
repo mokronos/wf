@@ -1,5 +1,5 @@
 site_name: wf docs
-site_description: Durable TypeScript workflows — the wf CLI, the wfkit SDK, the integrations CLI, and the gateway client.
+site_description: Durable TypeScript workflows with the wf CLI and wfkit SDK.
 site_url: https://mokronos.github.io/wf/docs/
 repo_url: https://github.com/mokronos/wf
 repo_name: mokronos/wf
@@ -54,11 +54,6 @@ nav:
   - Overview: index.md
   - wf CLI: cli.md
   - TypeScript SDK: wfkit.md
-  - Integrations CLI: integrations.md
-  - Gateway client: client.md
-  - Architecture:
-      - Effect services and layers: effect-services-and-layers.md
-      - System and call stacks: system-architecture.md
   - Home ↗: https://mokronos.github.io/wf/
 
 markdown_extensions:

@@ -411,7 +411,7 @@ interface IntegrationReadiness {
  * the same definition is ready for one person and ungranted for another,
  * because an alias is bound per deployment. A workflow arriving from a
  * colleague validates structurally but reports here exactly which aliases its
- * new owner still has to bind. See docs/adr/0003. */
+ * new owner still has to bind through the gateway. */
 const checkGraphIntegrations = async (
   graph: NonNullable<Awaited<ReturnType<typeof workflowArtifactToGraph>>["graph"]>
 ): Promise<ReadonlyArray<IntegrationReadiness>> => {

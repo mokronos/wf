@@ -5,7 +5,8 @@ import { Schema } from "effect"
  * A workflow declares the alias it needs, the way a program declares an
  * environment variable it needs; each deployment binds that name to whatever
  * connection is right there. That is what lets one definition run for different
- * people against different connections without changing. See docs/adr/0003. */
+ * people against different connections without changing. The gateway owns the
+ * deployment binding behind this portable requirement. */
 export const IntegrationAlias = Schema.String.pipe(
   Schema.refine((value): value is string => /^[a-z][a-z0-9-]*$/.test(value))
 )

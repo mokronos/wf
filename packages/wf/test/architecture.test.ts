@@ -70,13 +70,10 @@ afterEach(async () => {
 
 describe("package architecture", () => {
   test("local package imports are acyclic", async () => {
-    await assertNoImportCycles([
-      join(packageDirectory, "src"),
-      join(packageDirectory, "..", "wfkit-executor", "src")
-    ])
+    await assertNoImportCycles([join(packageDirectory, "src")])
   })
 
-  test("the authoring package does not depend on the integration executor", async () => {
+  test("the authoring package does not depend on gateway implementations", async () => {
     const manifest = Schema.decodeUnknownSync(Schema.fromJsonString(PackageManifest))(
       await readFile(join(packageDirectory, "package.json"), "utf8")
     )
@@ -88,7 +85,8 @@ describe("package architecture", () => {
     ]
 
     expect(dependencySections.every((dependencies) =>
-      dependencies?.["@mokronos/wfkit-executor"] === undefined
+      dependencies?.["@mokronos/integrations"] === undefined &&
+      dependencies?.["@mokronos/integrations-executor"] === undefined
     )).toBe(true)
   })
 
@@ -120,7 +118,7 @@ describe("package architecture", () => {
 
     // wf holds no credentials and composes no Executor of its own. It is a
     // gateway client like any other, which is what keeps the privileged
-    // boundary in one process. See docs/adr/0001.
+    // boundary in one process. The gateway owns that boundary in its repository.
     for (const source of [cliRoot, workflowCommands]) {
       expect(source).not.toContain("createExecutorHost")
       expect(source).not.toContain("createExecutorServices")
@@ -136,11 +134,7 @@ describe("package architecture", () => {
   })
 
   test("production TypeScript has no explicit any escape hatches", async () => {
-    const sourceRoots = [
-      join(packageDirectory, "src"),
-      join(packageDirectory, "..", "wfkit-executor", "src")
-    ]
-    const files = (await Promise.all(sourceRoots.map(typescriptFiles))).flat()
+    const files = await typescriptFiles(join(packageDirectory, "src"))
     const explicitAny = /\b(?:as|extends)\s+any\b|[:=]\s*any\b|[<,]\s*any\s*[,>]/
     const offenders: string[] = []
     for (const file of files) {
@@ -152,16 +146,6 @@ describe("package architecture", () => {
       }
     }
     expect(offenders).toEqual([])
-  })
-
-  test("integration discovery remains read-only", async () => {
-    const discovery = await readFile(
-      join(packageDirectory, "..", "wfkit-executor", "src", "discovery.ts"),
-      "utf8"
-    )
-    expect(discovery).not.toMatch(
-      /from "\.\/(?:auth|connections|provisioning|tools)\.ts"/
-    )
   })
 
   test("importing the runtime has no filesystem side effects", async () => {
