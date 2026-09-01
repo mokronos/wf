@@ -1,5 +1,5 @@
 import type { WorkflowPayload } from "./schemas.ts"
-import { Schema } from "effect"
+import { Data, Schema } from "effect"
 
 type SynchronousSchema<A = Schema.Schema.Type<Schema.Top>> = Schema.Codec<
   A,
@@ -8,13 +8,10 @@ type SynchronousSchema<A = Schema.Schema.Type<Schema.Top>> = Schema.Codec<
   never
 >
 
-export class SignalDeliveryError extends Schema.TaggedErrorClass<SignalDeliveryError>()(
-  "SignalDeliveryError",
-  {
-    message: Schema.String,
-    cause: Schema.optionalKey(Schema.Defect)
-  }
-) {}
+export class SignalDeliveryError extends Data.TaggedError("SignalDeliveryError")<{
+  readonly message: string
+  readonly cause?: unknown
+}> {}
 
 interface SignalWaiter {
   /** The payload as it arrived, before this waiter's schema has seen it.

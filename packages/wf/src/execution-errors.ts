@@ -1,25 +1,19 @@
-import { Schema } from "effect"
+import { Data } from "effect"
 
-export class StepExecutionError extends Schema.TaggedErrorClass<StepExecutionError>()(
-  "StepExecutionError",
-  {
-    stepName: Schema.String,
-    cause: Schema.Defect
-  }
-) {
+export class StepExecutionError extends Data.TaggedError("StepExecutionError")<{
+  readonly stepName: string
+  readonly cause: unknown
+}> {
   override get message(): string {
     const detail = this.cause instanceof Error ? this.cause.message : String(this.cause)
     return `Step ${this.stepName} failed: ${detail}`
   }
 }
 
-export class CodeExecutionError extends Schema.TaggedErrorClass<CodeExecutionError>()(
-  "CodeExecutionError",
-  {
-    name: Schema.String,
-    cause: Schema.Defect
-  }
-) {
+export class CodeExecutionError extends Data.TaggedError("CodeExecutionError")<{
+  readonly name: string
+  readonly cause: unknown
+}> {
   override get message(): string {
     const detail = this.cause instanceof Error ? this.cause.message : String(this.cause)
     return `Code block ${this.name} failed: ${detail}`

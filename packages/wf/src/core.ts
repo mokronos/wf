@@ -7,15 +7,13 @@ import { emitWorkflowEvent } from "./events.ts"
 import {
   ExecutionResourceRegistry
 } from "./execution-resources.ts"
-import type { SerializableValue, WorkflowEvent } from "./schemas.ts"
 import { ExecutionId, jsonSchemaOf } from "./schemas.ts"
+import type { WorkflowEvent } from "./schemas.ts"
 import {
   defaultSignalTransport,
   SignalDeliveryError
 } from "./signal.ts"
-import type { SignalTransport } from "./signal.ts"
 import { defaultConcurrencyLimiter } from "./concurrency.ts"
-import type { ConcurrencyLimiter } from "./concurrency.ts"
 import {
   Cancelled,
   CancellationRequest,
@@ -40,9 +38,7 @@ import {
 import type {
   DefinedStep,
   DynamicService,
-  IntegrationSource,
   StepContext,
-  StepExecutionContext,
   SignalOutcome,
   SynchronousSchema,
   TerminalFailure,
@@ -92,6 +88,10 @@ export {
   SecretResolutionContext
 } from "./secrets.ts"
 export type { SecretResolver } from "./secrets.ts"
+import { DefinedWorkflowTypeId } from "./workflow-definition.ts"
+import type { InMemoryExecutionOptions, WorkflowDefinition, WorkflowEngineHandle } from "./workflow-definition.ts"
+export { DefinedWorkflowTypeId } from "./workflow-definition.ts"
+export type { DefinedWorkflow, InMemoryExecutionOptions, InspectableStep, StepExecutionOverride, WorkflowDefinition, WorkflowEngineHandle } from "./workflow-definition.ts"
 
 type DynamicEffect = Effect.Effect<DynamicService, DynamicService, DynamicService>
 interface WorkflowCompensator {
@@ -116,118 +116,6 @@ const encodeWorkflowPayload = (value: DynamicService): WorkflowPayload =>
 const decodeWorkflowPayload = (payload: WorkflowPayload): DynamicService =>
   payload.type === "void" ? undefined : payload.value
 
-export const DefinedWorkflowTypeId = Symbol.for("wf/DefinedWorkflow")
-
-export interface WorkflowEngineHandle {
-  readonly name: string
-  readonly execute: (
-    engine: WorkflowEngine.WorkflowEngine["Service"],
-    executionId: string,
-    payload: DynamicService
-  ) => Effect.Effect<DynamicService, DynamicService>
-  readonly executeStandalone: (
-    payload: DynamicService
-  ) => Effect.Effect<
-    DynamicService,
-    DynamicService,
-    WorkflowEngine.WorkflowEngine
-  >
-  readonly resume: (
-    engine: WorkflowEngine.WorkflowEngine["Service"],
-    executionId: string
-  ) => Effect.Effect<void>
-  readonly interrupt: (
-    engine: WorkflowEngine.WorkflowEngine["Service"],
-    executionId: string
-  ) => Effect.Effect<void>
-}
-
-export interface WorkflowDefinition<
-  Input extends SynchronousSchema<DynamicService>,
-  Output extends SynchronousSchema<DynamicService>,
-  Errors extends SynchronousSchema<DynamicService>
-> {
-  readonly [DefinedWorkflowTypeId]: typeof DefinedWorkflowTypeId
-  readonly name: string
-  readonly sourceHash: string
-  readonly input: Input
-  readonly output: Output
-  readonly errors: Errors
-  readonly workflow: WorkflowEngineHandle
-  readonly layer: Layer.Layer<
-    never,
-    never,
-    WorkflowEngine.WorkflowEngine | ExecutionResourceRegistry
-  >
-  execute(payload: Input["Type"]): Effect.Effect<
-    Output["Type"],
-    Errors["Type"] | unknown,
-    WorkflowEngine.WorkflowEngine
-  >
-  executeInMemory(
-    payload: Input["Type"],
-    options?: InMemoryExecutionOptions
-  ): Promise<Output["Type"]>
-}
-
-export type DefinedWorkflow<
-  I = DynamicService,
-  O = DynamicService,
-  WErrors = DynamicService
-> = WorkflowDefinition<
-  SynchronousSchema<I>,
-  SynchronousSchema<O>,
-  SynchronousSchema<WErrors>
->
-
-export interface InMemoryExecutionOptions {
-  readonly executionId?: string
-  readonly signal?: AbortSignal
-  readonly determinism?: InMemoryDeterminismState
-  readonly onEvent?: (event: WorkflowEvent) => void | Promise<void>
-  readonly stepExecutor?: (options: {
-    readonly step: InspectableStep
-    readonly input: unknown
-    readonly invocation: number
-    readonly activityName: string
-    readonly context: StepExecutionContext
-  }) => StepExecutionOverride | Promise<StepExecutionOverride>
-  readonly sleep?: (options: {
-    readonly executionId: string
-    readonly name: string
-    readonly duration: Duration.Input
-  }) => Promise<void>
-  readonly signalTimeout?: (options: {
-    readonly executionId: string
-    readonly name: string
-    readonly duration: Duration.Input
-  }) => Promise<void>
-  readonly signalValue?: (options: {
-    readonly executionId: string
-    readonly name: string
-    readonly schema: SynchronousSchema<DynamicService>
-  }) => SerializableValue | Promise<SerializableValue>
-  /** Execution-scoped signal adapter. Defaults to the legacy singleton. */
-  readonly signalTransport?: SignalTransport
-  readonly secrets?: SecretResolver
-  readonly concurrency?: ConcurrencyLimiter
-}
-
-export interface InspectableStep {
-  readonly kind: "local" | "integration"
-  readonly name: string
-  readonly input: Schema.Top
-  readonly output: Schema.Top
-  readonly errors: Schema.Top
-  readonly retry?: StepRetryPolicy
-  readonly concurrency?: { readonly limit: number; readonly key?: object }
-  readonly compensate?: object
-  readonly source?: IntegrationSource
-}
-
-export type StepExecutionOverride =
-  | { readonly handled: false }
-  | { readonly handled: true; readonly value: unknown }
 
 interface CompensationEntry {
   readonly stepName: string
@@ -537,7 +425,7 @@ const makeCtx = <WErrors>(
       let activity: DynamicEffect = Activity.make({
         name: activityName,
         success: step.output,
-        error: Schema.Unknown,
+        error: Schema.Defect(),
         execute
       })
 
@@ -889,7 +777,7 @@ const makeCtx = <WErrors>(
       const activity = Activity.make({
         name: activityName,
         success: options.output,
-        error: Schema.Unknown,
+        error: Schema.Defect(),
         execute
       }).pipe(Effect.mapError((error) =>
         new CodeExecutionError({ name, cause: unwrapAsyncFailure(error) })
@@ -1427,12 +1315,11 @@ export const defineWorkflow = <
     .update(schemaFingerprint(errors))
     .digest("hex")
 
-  const workflow = Workflow.make({
-    name: config.name,
+  const workflow = Workflow.make(config.name, {
     payload: WorkflowPayloadSchema,
     idempotencyKey: (payload) => JSON.stringify(payload),
     success: config.output,
-    error: Schema.Unknown
+    error: Schema.Defect()
   })
 
   const layer = workflow.toLayer(
@@ -1454,7 +1341,7 @@ export const defineWorkflow = <
   )
 
   const workflowHandle: WorkflowEngineHandle = {
-    name: workflow.name,
+    name: workflow._tag,
     execute: (engine, executionId, payload) =>
       engine.execute(workflow, { executionId, payload: encodeWorkflowPayload(payload) }),
     executeStandalone: (payload) => workflow.execute(encodeWorkflowPayload(payload)),

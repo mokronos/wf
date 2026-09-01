@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Data, Schema } from "effect"
 
 export const OrchestrationKind = Schema.Literals([
   "step",
@@ -19,13 +19,10 @@ export const OrchestrationCall = Schema.Struct({
 })
 export type OrchestrationCall = typeof OrchestrationCall.Type
 
-export class NonDeterminismError extends Schema.TaggedErrorClass<NonDeterminismError>()(
-  "NonDeterminismError",
-  {
-    expected: OrchestrationCall,
-    actual: OrchestrationCall
-  }
-) {
+export class NonDeterminismError extends Data.TaggedError("NonDeterminismError")<{
+  readonly expected: OrchestrationCall
+  readonly actual: OrchestrationCall
+}> {
   override get message(): string {
     return `Non-deterministic workflow replay: expected ${formatCall(this.expected)} but saw ${formatCall(this.actual)}`
   }

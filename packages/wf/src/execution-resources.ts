@@ -1,13 +1,13 @@
 import { Context, Layer } from "effect"
 import type { SecretResolver } from "./secrets.ts"
-import type { WorkflowEventSink } from "./event-sink.ts"
+import type { WorkflowEvent } from "./schemas.ts"
 import type { ConcurrencyLimiter } from "./concurrency.ts"
 import type { SignalTransport } from "./signal.ts"
 
 /** Replaceable dependencies owned by one workflow execution. Keeping them in
  * one record gives the runtime one registration and cleanup lifecycle. */
 export interface ExecutionResources {
-  readonly events?: WorkflowEventSink
+  readonly events?: (event: WorkflowEvent) => void | Promise<void>
   readonly secrets?: SecretResolver
   readonly concurrency?: ConcurrencyLimiter
   readonly signals?: SignalTransport

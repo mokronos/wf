@@ -20,12 +20,12 @@ import {
   paginate,
   pendingSignalsFromHistory
 } from "./client-lifecycle.ts"
-import { decodePersistedJsonSchema } from "./json-schema-validation.ts"
+import { decodePersistedJsonSchema } from "./loader.ts"
 import {
   decodeStoredValue,
   durableExecutionRecord
-} from "./durable-client-model.ts"
-import type { DurableExecutionRow } from "./durable-client-model.ts"
+} from "./durable-client-store.ts"
+import type { DurableExecutionRow } from "./durable-client-store.ts"
 import { createDurableClientStore } from "./durable-client-store.ts"
 import type {
   WorkflowClient,

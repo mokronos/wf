@@ -69,14 +69,14 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@effect/platform-bun": "4.0.0-beta.59",
-    "@effect/platform-node": "4.0.0-beta.59",
-    "@effect/platform-node-shared": "4.0.0-beta.59",
-    "@effect/sql-sqlite-bun": "4.0.0-beta.59",
+    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/platform-node": "4.0.0-rc.112",
+    "@effect/platform-node-shared": "4.0.0-rc.112",
+    "@effect/sql-sqlite-bun": "4.0.0-rc.112",
     "@libsql/client": "0.17.3",
     "@mokronos/observability": "workspace:*",
     "drizzle-orm": "0.45.2",
-    "effect": "4.0.0-beta.59",
+    "effect": "4.0.0-rc.112",
     "yaml": "^2.9.0"
   }
 }

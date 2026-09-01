@@ -9,8 +9,8 @@
     "examples/*"
   ],
   "overrides": {
-    "@effect/platform-node-shared": "4.0.0-beta.59",
-    "effect": "4.0.0-beta.59"
+    "@effect/platform-node-shared": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.112"
   },
   "scripts": {
     "build:observability": "bun run --cwd packages/observability build",

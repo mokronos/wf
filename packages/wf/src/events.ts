@@ -1,7 +1,8 @@
 import { Effect } from "effect"
 import { ExecutionResourceRegistry } from "./execution-resources.ts"
 import { WorkflowEvent as WorkflowEventSchema, isWorkflowEvent } from "./schemas.ts"
-export type { WorkflowEventSink } from "./event-sink.ts"
+
+export type WorkflowEventSink = (event: WorkflowEvent) => void | Promise<void>
 
 export { isWorkflowEvent }
 export const WorkflowEvent = WorkflowEventSchema

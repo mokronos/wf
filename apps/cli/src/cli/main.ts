@@ -110,6 +110,7 @@ const defaultDiagnosticLimit = 5
 const defaultDiagnosticDetailLimit = 160
 
 const verboseFlag = () => Flag.boolean("verbose").pipe(
+  Flag.withDefault(false),
   Flag.withAlias("v"),
   Flag.withDescription("Show complete details")
 )
@@ -785,6 +786,7 @@ const createCommand = (runtime: CliRuntimeOptions) => Command.make(
       Flag.withDescription("Import TypeScript from a file")
     ),
     force: Flag.boolean("force").pipe(
+      Flag.withDefault(false),
       Flag.withDescription("Replace an existing workflow id")
     ),
     verbose: verboseFlag()
@@ -852,6 +854,7 @@ const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
       Flag.withDescription("Use this JSON value while tracing the workflow")
     ),
     json: Flag.boolean("json").pipe(
+      Flag.withDefault(false),
       Flag.withDescription("Print the complete validation graph as JSON")
     ),
     verbose: verboseFlag()

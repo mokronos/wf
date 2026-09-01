@@ -19,10 +19,7 @@ interface SchemaVocabulary {
 // codec when encoding, while still accepting an in-process Date before the
 // first persistence round trip.
 const WorkflowDate = Schema.Union([Schema.DateFromString, Schema.Date]).pipe(
-  Schema.decodeTo(
-    Schema.DateValid,
-    SchemaTransformation.transform({ decode: (date) => date, encode: (date) => date })
-  )
+  Schema.decodeTo(Schema.Date, SchemaTransformation.transform({ decode: (date) => date, encode: (date) => date }))
 )
 
 // `t` is the LLM-facing schema vocabulary. We re-export a small, lowercase

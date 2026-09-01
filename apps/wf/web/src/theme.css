@@ -1,0 +1,72 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.5rem;
+  --background: oklch(0.97 0.006 95);
+  --foreground: oklch(0.17 0.018 248);
+  --card: oklch(0.99 0.004 95);
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --primary: oklch(0.34 0.088 198);
+  --primary-foreground: oklch(0.98 0.006 95);
+  --secondary: oklch(0.92 0.01 95);
+  --secondary-foreground: oklch(0.22 0.018 248);
+  --muted: oklch(0.9 0.008 95);
+  --muted-foreground: oklch(0.46 0.018 248);
+  --accent: oklch(0.82 0.15 86);
+  --accent-foreground: oklch(0.16 0.02 95);
+  --destructive: oklch(0.58 0.19 28);
+  --border: oklch(0.84 0.012 95);
+  --input: oklch(0.88 0.01 95);
+  --ring: oklch(0.53 0.11 198);
+  --sidebar: oklch(0.18 0.018 248);
+  --sidebar-foreground: oklch(0.94 0.006 95);
+  --canvas: oklch(0.21 0.018 248);
+  --canvas-line: oklch(0.38 0.024 248);
+}
+
+@theme inline {
+  --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "SFMono-Regular", "Cascadia Code", "Liberation Mono", monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 2px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: linear-gradient(90deg, rgba(35, 85, 96, 0.08) 1px, transparent 1px), linear-gradient(180deg, rgba(35, 85, 96, 0.08) 1px, transparent 1px), var(--background);
+  background-size: 32px 32px;
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+button, input { font: inherit; }
+code, pre { font-family: var(--font-mono); }

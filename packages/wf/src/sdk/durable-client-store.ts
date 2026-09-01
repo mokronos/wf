@@ -2,21 +2,108 @@ import { Database } from "bun:sqlite"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { Schema } from "effect"
-import type { WorkflowHistoryEvent, WorkflowHistoryRecord } from "../schemas.ts"
+import type { WorkflowHistoryRecord, WorkflowPayload } from "../schemas.ts"
 import { replayDedupeKey } from "../replay.ts"
 import { nowIso } from "./client-lifecycle.ts"
-import { migrateClientDatabase } from "./client-database.ts"
-import {
-  decodeExecutionRow,
-  decodeHistoryRow,
-  decodeStoredHistoryEvent,
-  encodeStoredValue
-} from "./durable-client-model.ts"
-import type {
-  DurableExecutionRow,
-  DurableHistoryRow
-} from "./durable-client-model.ts"
+import { whenPresent } from "../optional.ts"
+import { WorkflowHistoryEvent, WorkflowRunStatus } from "../schemas.ts"
+import { optionalFinishedAt } from "./client-lifecycle.ts"
+import type { WorkflowExecutionRecord } from "./client-model.ts"
 import { toJsonText } from "./json.ts"
+
+const StoredValueJson = Schema.fromJsonString(
+  Schema.Struct({ value: Schema.optionalKey(Schema.Unknown) })
+)
+
+export const encodeStoredValue = (value: WorkflowPayload): string =>
+  Schema.encodeSync(StoredValueJson)({ value })
+
+export const decodeStoredValue = (json: string): WorkflowPayload =>
+  Schema.decodeUnknownSync(Schema.UndefinedOr(Schema.Json))(
+    Schema.decodeUnknownSync(StoredValueJson)(json).value
+  )
+
+export const DurableExecutionRow = Schema.Struct({
+  id: Schema.String,
+  artifact_id: Schema.NullOr(Schema.String),
+  workflow_name: Schema.String,
+  status: WorkflowRunStatus,
+  payload_json: Schema.String,
+  idempotency_key: Schema.NullOr(Schema.String),
+  actor: Schema.NullOr(Schema.String),
+  source_hash: Schema.NullOr(Schema.String),
+  result_json: Schema.NullOr(Schema.String),
+  error_json: Schema.NullOr(Schema.String),
+  started_at: Schema.String,
+  finished_at: Schema.NullOr(Schema.String)
+})
+export type DurableExecutionRow = typeof DurableExecutionRow.Type
+
+const DurableHistoryRow = Schema.Struct({
+  sequence: Schema.Number,
+  event_json: Schema.String,
+  created_at: Schema.String
+})
+type DurableHistoryRow = typeof DurableHistoryRow.Type
+
+const StoredHistoryEventJson = Schema.fromJsonString(WorkflowHistoryEvent)
+const decodeExecutionRow = Schema.decodeUnknownSync(DurableExecutionRow)
+const decodeHistoryRow = Schema.decodeUnknownSync(DurableHistoryRow)
+const decodeStoredHistoryEvent = Schema.decodeUnknownSync(StoredHistoryEventJson)
+
+export const durableExecutionRecord = (
+  row: DurableExecutionRow
+): WorkflowExecutionRecord => ({
+  executionId: row.id,
+  ...whenPresent("artifactId", row.artifact_id),
+  workflowName: row.workflow_name,
+  status: row.status,
+  payload: decodeStoredValue(row.payload_json),
+  startedAt: row.started_at,
+  ...optionalFinishedAt(row.finished_at ?? undefined),
+  ...whenPresent("sourceHash", row.source_hash)
+})
+
+const migrateClientDatabase = (db: Database): void => {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wf_client_executions (
+      id TEXT PRIMARY KEY, artifact_id TEXT, workflow_name TEXT NOT NULL, status TEXT NOT NULL,
+      payload_json TEXT NOT NULL, idempotency_key TEXT, actor TEXT, source_hash TEXT,
+      result_json TEXT, error_json TEXT, started_at TEXT NOT NULL, finished_at TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS wf_client_executions_idempotency_idx
+      ON wf_client_executions(workflow_name, idempotency_key) WHERE idempotency_key IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS wf_client_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, execution_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+      event_json TEXT NOT NULL, created_at TEXT NOT NULL, dedupe_key TEXT,
+      UNIQUE(execution_id, sequence)
+    );
+  `)
+  const columns = db.query<{ name: string }, []>("PRAGMA table_info(wf_client_history)").all()
+  if (!columns.some((column) => column.name === "dedupe_key")) db.exec("ALTER TABLE wf_client_history ADD COLUMN dedupe_key TEXT")
+  const executionColumns = db.query<{ name: string }, []>("PRAGMA table_info(wf_client_executions)").all()
+  if (!executionColumns.some((column) => column.name === "artifact_id")) db.exec("ALTER TABLE wf_client_executions ADD COLUMN artifact_id TEXT")
+  if (!executionColumns.some((column) => column.name === "source_hash")) db.exec("ALTER TABLE wf_client_executions ADD COLUMN source_hash TEXT")
+  if (executionColumns.some((column) => column.name === "workflow_version")) {
+    db.exec(`DROP INDEX IF EXISTS wf_client_executions_idempotency_idx;
+      ALTER TABLE wf_client_executions DROP COLUMN workflow_version;
+      CREATE UNIQUE INDEX IF NOT EXISTS wf_client_executions_idempotency_idx
+        ON wf_client_executions(workflow_name, idempotency_key) WHERE idempotency_key IS NOT NULL;`)
+  }
+  const legacyWorkflowTable = db.query<{ readonly name: string }, []>("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'wf_client_workflows'").get()
+  if (legacyWorkflowTable !== null) db.exec(`UPDATE wf_client_executions SET source_hash = (
+    SELECT source_hash FROM wf_client_workflows WHERE wf_client_workflows.workflow_name = wf_client_executions.workflow_name
+  ) WHERE source_hash IS NULL AND EXISTS (
+    SELECT 1 FROM wf_client_workflows WHERE wf_client_workflows.workflow_name = wf_client_executions.workflow_name
+  );`)
+  db.exec(`DROP TABLE IF EXISTS wf_client_workflows;
+    DELETE FROM wf_client_history WHERE dedupe_key IS NOT NULL AND id NOT IN (
+      SELECT MIN(id) FROM wf_client_history WHERE dedupe_key IS NOT NULL GROUP BY execution_id, dedupe_key
+    );
+    DROP INDEX IF EXISTS wf_client_history_dedupe_idx;
+    CREATE UNIQUE INDEX wf_client_history_dedupe_idx ON wf_client_history(execution_id, dedupe_key)
+      WHERE dedupe_key IS NOT NULL`)
+}
 
 const NewExecution = Schema.Struct({
   id: Schema.String,

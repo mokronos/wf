@@ -1,6 +1,7 @@
-import { Predicate } from "effect"
+import { JsonSchema as EffectJsonSchema, Predicate, Schema, SchemaRepresentation } from "effect"
 import { createHash } from "node:crypto"
 import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core.ts"
+import type { JsonSchema, WorkflowPayload } from "../schemas.ts"
 import * as authoring from "../authoring.ts"
 import type { WorkflowArtifact } from "./artifact.ts"
 
@@ -26,6 +27,22 @@ export interface LoadedWorkflow {
 export type ArtifactValidation =
   | { readonly valid: true; readonly loaded: LoadedWorkflow; readonly diagnostics: ReadonlyArray<string> }
   | { readonly valid: false; readonly diagnostics: ReadonlyArray<string> }
+
+const RuntimeJsonSchema = Schema.declare<EffectJsonSchema.JsonSchema>(
+  (value): value is EffectJsonSchema.JsonSchema => Predicate.isObject(value)
+)
+
+export const decodePersistedJsonSchema = (
+  schema: JsonSchema,
+  value: WorkflowPayload
+): WorkflowPayload => {
+  const runtimeSchema = Schema.decodeUnknownSync(RuntimeJsonSchema)(schema)
+  const document = EffectJsonSchema.fromSchemaDraft2020_12(runtimeSchema)
+  if (!Schema.is(SchemaRepresentation.fromJsonSchemaDocument(document))(value)) {
+    throw new Error("Signal payload failed persisted JSON Schema validation")
+  }
+  return value
+}
 
 // A type guard's input has to be wider than the type it proves, so unknown is
 // the correct parameter type for one.

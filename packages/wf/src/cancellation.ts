@@ -1,4 +1,4 @@
-import { Schema } from "effect"
+import { Data, Schema } from "effect"
 
 export const cancellationDeferredName = "wf:cancel"
 
@@ -8,9 +8,9 @@ export const CancellationRequest = Schema.Struct({
 })
 export type CancellationRequest = typeof CancellationRequest.Type
 
-export class Cancelled extends Schema.TaggedErrorClass<Cancelled>()("Cancelled", {
-  compensate: Schema.Boolean
-}) {
+export class Cancelled extends Data.TaggedError("Cancelled")<{
+  readonly compensate: boolean
+}> {
   override get message(): string {
     return "Workflow execution cancelled"
   }

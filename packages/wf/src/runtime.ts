@@ -1,7 +1,8 @@
 import { whenPresent } from "./optional.ts"
 import type { WorkflowPayload } from "./schemas.ts"
+import { BunServices } from "@effect/platform-bun"
 import { NodeRuntime } from "@effect/platform-node"
-import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
+import { Data, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
 import type { DefinedWorkflow } from "./core.ts"
 import type { SecretResolver } from "./secrets.ts"
@@ -95,10 +96,9 @@ export interface WorkflowRuntime {
   dispose(): Promise<void>
 }
 
-export class WorkflowConflictError extends Schema.TaggedErrorClass<WorkflowConflictError>()(
-  "WorkflowConflictError",
-  { workflowName: Schema.String }
-) {
+export class WorkflowConflictError extends Data.TaggedError("WorkflowConflictError")<{
+  readonly workflowName: string
+}> {
   override get message(): string {
     return `Workflow ${this.workflowName} is already registered with different source`
   }
@@ -151,7 +151,8 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
       // provideMerge, not provide: the tracer must sit in the runtime's root
       // environment or the outermost execution span falls back to the no-op
       // default tracer and is never exported.
-      Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" }))
+      Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" })),
+      Layer.provideMerge(BunServices.layer)
     )
     return workflowLayers.reduce(
       (layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer),
@@ -355,7 +356,8 @@ export const makeWorkflowEffect = (
       options.onEvent === undefined ? {} : { events: options.onEvent }
     )),
     // Merged upward so the tracer reaches this program's own root span too.
-    Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" }))
+    Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" })),
+    Layer.provideMerge(BunServices.layer)
   )
   const workflowName = String(wf.workflow.name ?? wf.name ?? "Workflow")
   const execution = Effect.gen(function* () {

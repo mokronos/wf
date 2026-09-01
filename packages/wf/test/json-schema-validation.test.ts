@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { decodePersistedJsonSchema } from "../src/sdk/json-schema-validation.ts"
+import { decodePersistedJsonSchema } from "../src/sdk/loader.ts"
 import { jsonSchemaOf } from "../src/schemas.ts"
 
 describe("persisted JSON Schema validation", () => {

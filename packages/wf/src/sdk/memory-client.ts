@@ -5,7 +5,7 @@ import { isCancellableRunStatus, isTerminalRunStatus, statusAfterEvent } from ".
 import { ExecutionId } from "../schemas.ts"
 import type { WorkflowHistoryEvent, WorkflowHistoryRecord, WorkflowPayload } from "../schemas.ts"
 import type { WorkflowRuntime } from "../runtime.ts"
-import { decodeStoredValue } from "./durable-client-model.ts"
+import { decodeStoredValue } from "./durable-client-store.ts"
 import { createSignalTransport } from "../signal.ts"
 import {
   createSignalDeliveryClaims,
