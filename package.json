@@ -30,6 +30,7 @@
     "example:order-saga": "cd examples/order-saga && bun run main.ts",
     "example:approval": "cd examples/approval && bun run main.ts demo",
     "install:local": "bun run apps/cli/install-local.ts",
+    "refresh": "bun run scripts/refresh.ts",
     "lint": "oxlint",
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --build --noEmit && tsc -p apps/wf/web",

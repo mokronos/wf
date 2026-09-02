@@ -49,3 +49,9 @@ bun run typecheck
 bun test
 bun run build
 ```
+
+Refresh the local `wf` install and dashboard service after changing sources:
+
+```bash
+bun run refresh
+```
