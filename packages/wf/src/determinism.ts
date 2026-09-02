@@ -1,4 +1,5 @@
 import { Data, Schema } from "effect"
+import type { WorkflowGraphNodeMetadata, WorkflowGraphNodeSchemas } from "./schemas.ts"
 
 export const OrchestrationKind = Schema.Literals([
   "step",
@@ -35,12 +36,17 @@ export interface InMemoryDeterminismState {
     readonly branches: ReadonlyArray<ReadonlyArray<OrchestrationCall>>
   }>
   readonly values: Map<string, unknown>
+  readonly nodeInspection: Map<OrchestrationCall, {
+    readonly metadata: WorkflowGraphNodeMetadata
+    readonly schemas: WorkflowGraphNodeSchemas
+  }>
 }
 
 export const createInMemoryDeterminismState = (): InMemoryDeterminismState => ({
   calls: [],
   blocks: [],
-  values: new Map()
+  values: new Map(),
+  nodeInspection: new Map()
 })
 
 export const formatCall = (call: OrchestrationCall): string =>

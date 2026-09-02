@@ -202,9 +202,11 @@ describe("workflowToGraph", () => {
       description: "Derive a friendly subject from the recipient's email local part",
       metadata: {
         activityName: "build-subject#1",
-        reason: "Derive a friendly subject from the recipient's email local part"
+        reason: "Derive a friendly subject from the recipient's email local part",
+        code: expect.stringContaining("Welcome")
       }
     })
+    expect(node?.schemas?.output).toMatchObject({ type: "string" })
     expect(graph.diagnostics).toEqual([])
   })
 

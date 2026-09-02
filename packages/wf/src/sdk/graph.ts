@@ -140,14 +140,17 @@ const graphNodeForCall = (
     readonly eventMetadata: ReadonlyMap<string, WorkflowGraphNodeMetadata>
     readonly steps: ReadonlyMap<string, WorkflowGraphNodeMetadata>
     readonly schemas: ReadonlyMap<string, WorkflowGraphNodeSchemas>
+    readonly inspection: InMemoryDeterminismState["nodeInspection"]
     readonly nameCounts: ReadonlyMap<string, number>
   }
 ): WorkflowGraphNode => {
   const id = nodeId(call.kind, call.name, call.counter)
-  const schemas = options.schemas.get(id)
+  const inspection = options.inspection.get(call)
+  const schemas = options.schemas.get(id) ?? inspection?.schemas
   const metadata: WorkflowGraphNodeMetadata = {
     ...options.eventMetadata.get(id),
     ...options.steps.get(id),
+    ...inspection?.metadata,
     ...whenPresent("branches", call.branches)
   }
   const description = Predicate.isString(metadata.reason)
@@ -237,6 +240,7 @@ const graphFromTrace = (options: {
       eventMetadata,
       steps: options.steps,
       schemas: options.schemas,
+      inspection: options.determinism.nodeInspection,
       nameCounts
     })
     nodes.push(node)
@@ -260,6 +264,7 @@ const graphFromTrace = (options: {
           eventMetadata,
           steps: options.steps,
           schemas: options.schemas,
+          inspection: options.determinism.nodeInspection,
           nameCounts
         })
         nodes.push(branchNode)

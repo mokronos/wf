@@ -1130,6 +1130,10 @@ const makeInMemoryCtx = <WErrors>(
       const invocation = nextInvocation(counters, name)
       const activityName = `${name}#${invocation}`
       const call: OrchestrationCall = { kind: "code", name, counter: invocation }
+      determinism.nodeInspection.set(call, {
+        metadata: { code: options.run.toString() },
+        schemas: { ...whenPresent("output", jsonSchemaOf(options.output)) }
+      })
       // SAFETY: the in-memory counterpart of the code path above: every failure
       // is rewrapped as CodeExecutionError, leaving only that and
       // NonDeterminismError.

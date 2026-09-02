@@ -744,6 +744,56 @@ h3 {
   white-space: pre-wrap;
 }
 
+.node-purpose {
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.node-facts {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.node-facts > div {
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 10px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 7px;
+  font-size: 13px;
+}
+
+.node-facts dt {
+  color: var(--muted-foreground);
+  font-weight: 650;
+}
+
+.node-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.code-view {
+  max-height: 360px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid oklch(0.28 0.025 248);
+  border-radius: 8px;
+  background: oklch(0.16 0.018 248);
+  color: oklch(0.91 0.012 95);
+  padding: 12px;
+  font-size: 12px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.code-view .comment { color: oklch(0.64 0.035 165); }
+.code-view .string { color: oklch(0.82 0.11 86); }
+.code-view .number { color: oklch(0.76 0.12 295); }
+.code-view .keyword { color: oklch(0.72 0.11 215); }
+
 @media (max-width: 960px) {
   .app-shell {
     display: flex;

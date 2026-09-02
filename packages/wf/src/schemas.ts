@@ -347,6 +347,7 @@ export type WorkflowGraphNodeSchemas = typeof WorkflowGraphNodeSchemas.Type
 
 export const WorkflowGraphNodeMetadata = Schema.Struct({
   activityName: OptionalString,
+  code: OptionalString,
   input: OptionalUnknown,
   duration: OptionalUnknown,
   timeout: OptionalUnknown,
