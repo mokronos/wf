@@ -1,0 +1,12 @@
+{
+  "name": "@wf-examples/campaign-rollout",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "bun run main.ts"
+  },
+  "dependencies": {
+    "@mokronos/wfkit": "workspace:*"
+  }
+}

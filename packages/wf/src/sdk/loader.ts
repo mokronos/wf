@@ -66,8 +66,12 @@ const importArtifactModule = async (
   artifact: WorkflowArtifact
 ): Promise<WorkflowModule> => {
   const compiled = await compileWorkflowSource(artifact)
-  const url = `data:text/javascript;base64,${Buffer.from(compiled).toString("base64")}`
-  return await import(url)
+  const url = URL.createObjectURL(new Blob([compiled], { type: "text/javascript" }))
+  try {
+    return await import(url)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
 }
 
 const compileWorkflowSource = async (artifact: WorkflowArtifact): Promise<string> => {
