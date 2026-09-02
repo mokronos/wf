@@ -42,4 +42,15 @@ describe("workflow artifact loader", () => {
     expect(first.workflow.sourceHash).not.toBe(second.workflow.sourceHash)
   })
 
+  test("loads a large workflow source", async () => {
+    const artifact = {
+      id: parseWorkflowId("loader-large-source"),
+      source: `${source("large")}\n/* ${"x".repeat(100_000)} */`
+    }
+
+    const loaded = await loadWorkflowArtifact(artifact)
+
+    expect(loaded.workflow.name).toBe("LoaderHashWorkflow")
+  })
+
 })

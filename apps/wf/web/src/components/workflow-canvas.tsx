@@ -2,13 +2,16 @@ import { useMemo } from "react"
 import * as dagre from "dagre"
 import ReactFlow, { Background, Controls, MiniMap, type Edge, type Node } from "reactflow"
 import "reactflow/dist/style.css"
-import { Activity, FileCode2, GitBranch, Info } from "lucide-react"
+import { Activity, FileCode2, GitBranch, Info, RefreshCw } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import type { WorkflowGraph, WorkflowGraphNode } from "@/lib/api"
 import { compactDate } from "@/lib/format"
 import { nodeTypes, type FlowNodeData } from "./workflow-node"
+import { cn } from "@/lib/utils"
 
 const NODE_WIDTH = 250
 const NODE_HEIGHT = 86
@@ -75,7 +78,8 @@ export function WorkflowCanvas({
   loading,
   selectedNodeId,
   onInspect,
-  onDeselect
+  onDeselect,
+  onReload
 }: {
   readonly graph: WorkflowGraph | undefined
   readonly diagnostics: ReadonlyArray<string>
@@ -84,6 +88,7 @@ export function WorkflowCanvas({
   readonly selectedNodeId: string | undefined
   readonly onInspect: (node: WorkflowGraphNode) => void
   readonly onDeselect: () => void
+  readonly onReload: () => Promise<void>
 }) {
   const flowNodes = useMemo(
     () => layoutNodes(graph, selectedNodeId, onInspect),
@@ -109,6 +114,17 @@ export function WorkflowCanvas({
         <span className="updated-at">
           {generatedAt === undefined ? "" : `updated ${compactDate(generatedAt)}`}
         </span>
+      </div>
+      <div className="canvas-refresh">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button variant="secondary" size="icon" onClick={() => void onReload()} disabled={loading}>
+              <RefreshCw className={cn(loading && "animate-spin")} aria-hidden="true" />
+              <span className="sr-only">Refresh workflows</span>
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Refresh workflows</TooltipContent>
+        </Tooltip>
       </div>
 
       {loading ? (

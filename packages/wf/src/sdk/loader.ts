@@ -1,5 +1,9 @@
 import { JsonSchema as EffectJsonSchema, Predicate, Schema, SchemaRepresentation } from "effect"
 import { createHash } from "node:crypto"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 import { DefinedWorkflowTypeId, type DefinedWorkflow } from "../core.ts"
 import type { JsonSchema, WorkflowPayload } from "../schemas.ts"
 import * as authoring from "../authoring.ts"
@@ -66,11 +70,13 @@ const importArtifactModule = async (
   artifact: WorkflowArtifact
 ): Promise<WorkflowModule> => {
   const compiled = await compileWorkflowSource(artifact)
-  const url = URL.createObjectURL(new Blob([compiled], { type: "text/javascript" }))
+  const directory = await mkdtemp(join(tmpdir(), "wf-artifact-"))
+  const modulePath = join(directory, "workflow.mjs")
   try {
-    return await import(url)
+    await writeFile(modulePath, compiled)
+    return await import(pathToFileURL(modulePath).href)
   } finally {
-    URL.revokeObjectURL(url)
+    await rm(directory, { recursive: true, force: true })
   }
 }
 

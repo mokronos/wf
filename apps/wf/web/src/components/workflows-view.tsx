@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react"
-import { AlertTriangle, PanelRight, RefreshCw } from "lucide-react"
+import { AlertTriangle, ChevronDown, Info } from "lucide-react"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { NodeInspector } from "@/components/node-inspector"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { MetadataList } from "@/components/metadata-list"
 import { SchemaView } from "@/components/schema-view"
 import { WorkflowCanvas } from "@/components/workflow-canvas"
@@ -99,16 +96,6 @@ export function WorkflowsView({
               })}
             </SelectContent>
           </Select>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="outline" size="icon" onClick={() => void onReload()} disabled={loading}>
-                <RefreshCw className={cn(loading && "animate-spin")} aria-hidden="true" />
-                <span className="sr-only">Refresh workflows</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Refresh workflows</TooltipContent>
-          </Tooltip>
-          <WorkflowDetails selected={selected} />
         </div>
       </header>
 
@@ -120,6 +107,8 @@ export function WorkflowsView({
         </Alert>
       ) : null}
 
+      <WorkflowDetails selected={selected} />
+
       <div className={cn("graph-workspace", selectedNode !== undefined && "inspector-open")}>
         <WorkflowCanvas
           graph={selected?.graph}
@@ -129,6 +118,7 @@ export function WorkflowsView({
           selectedNodeId={selectedNode?.id}
           onInspect={onInspect}
           onDeselect={() => setSelectedNode(undefined)}
+          onReload={onReload}
         />
         {selectedNode === undefined ? null : (
           <NodeInspector node={selectedNode} onClose={() => setSelectedNode(undefined)} />
@@ -180,30 +170,20 @@ function WorkflowDetails({
   readonly selected: WorkflowArtifactGraph | undefined
 }) {
   return (
-    <Sheet>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <SheetTrigger asChild>
-            <Button variant="outline" size="icon" disabled={selected === undefined}>
-              <PanelRight aria-hidden="true" />
-              <span className="sr-only">Open workflow details</span>
-            </Button>
-          </SheetTrigger>
-        </TooltipTrigger>
-        <TooltipContent>Details</TooltipContent>
-      </Tooltip>
-      <SheetContent className="details-sheet">
-        <SheetHeader>
-          <SheetTitle>{selected === undefined ? "Workflow details" : workflowLabel(selected)}</SheetTitle>
-        </SheetHeader>
-        <Tabs defaultValue="workflow">
-          <TabsList>
-            <TabsTrigger value="workflow">Workflow</TabsTrigger>
-            <TabsTrigger value="source">Source</TabsTrigger>
-          </TabsList>
-          <TabsContent value="workflow" className="tab-panel">
-            {selected === undefined ? null : (
-              <div className="stack">
+    <details className="workflow-details">
+      <summary>
+        <span><Info aria-hidden="true" /> Workflow details</span>
+        <ChevronDown aria-hidden="true" />
+      </summary>
+      {selected === undefined ? null : (
+        <div className="workflow-details-content">
+          <Tabs defaultValue="workflow">
+            <TabsList>
+              <TabsTrigger value="workflow">Overview</TabsTrigger>
+              <TabsTrigger value="source">Source</TabsTrigger>
+            </TabsList>
+            <TabsContent value="workflow" className="tab-panel">
+              <div className="workflow-details-grid">
                 <MetadataList
                   value={{
                     name: workflowLabel(selected),
@@ -223,14 +203,14 @@ function WorkflowDetails({
                 )}
                 <WorkflowSchemaDetails selected={selected} />
               </div>
-            )}
-          </TabsContent>
-          <TabsContent value="source" className="tab-panel">
-            <pre className="source-view">{selected?.artifact.source ?? ""}</pre>
-          </TabsContent>
-        </Tabs>
-      </SheetContent>
-    </Sheet>
+            </TabsContent>
+            <TabsContent value="source" className="tab-panel">
+              <pre className="source-view">{selected.artifact.source}</pre>
+            </TabsContent>
+          </Tabs>
+        </div>
+      )}
+    </details>
   )
 }
 
