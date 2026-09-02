@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "@mokronos/wfkit": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "catalog:"
   }
 }

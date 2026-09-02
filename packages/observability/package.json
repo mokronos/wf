@@ -44,6 +44,6 @@
     "build": "rm -rf dist && tsc -p tsconfig.build.json"
   },
   "dependencies": {
-    "effect": "4.0.0-rc.112"
+    "effect": "catalog:"
   }
 }

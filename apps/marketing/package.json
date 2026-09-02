@@ -9,11 +9,11 @@
     "preview": "astro preview"
   },
   "dependencies": {
-    "@fontsource-variable/jetbrains-mono": "^5.2.8",
-    "@fontsource-variable/manrope": "^5.2.8",
-    "astro": "^5.16.4"
+    "@fontsource-variable/jetbrains-mono": "catalog:",
+    "@fontsource-variable/manrope": "catalog:",
+    "astro": "catalog:"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.5"
+    "@astrojs/check": "catalog:"
   }
 }

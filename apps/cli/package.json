@@ -39,9 +39,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "devDependencies": {
-    "@effect/platform-bun": "4.0.0-rc.112",
+    "@effect/platform-bun": "catalog:",
     "@mokronos/observability": "workspace:*",
     "@mokronos/wfkit": "workspace:*",
-    "effect": "4.0.0-rc.112"
+    "effect": "catalog:"
   }
 }
