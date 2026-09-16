@@ -9,7 +9,6 @@ import type { SignalTransport } from "./signal.ts"
 import type { ExecutionResourceRegistry } from "./execution-resources.ts"
 import type {
   DynamicService,
-  IntegrationSource,
   StepExecutionContext,
   StepRetryPolicy,
   SynchronousSchema
@@ -41,7 +40,6 @@ export interface InMemoryExecutionOptions {
 }
 
 export interface InspectableStep {
-  readonly kind: "local" | "integration"
   readonly name: string
   readonly input: Schema.Top
   readonly output: Schema.Top
@@ -49,7 +47,6 @@ export interface InspectableStep {
   readonly retry?: StepRetryPolicy
   readonly concurrency?: { readonly limit: number; readonly key?: object }
   readonly compensate?: object
-  readonly source?: IntegrationSource
 }
 
 export type StepExecutionOverride = { readonly handled: false } | { readonly handled: true; readonly value: unknown }

@@ -23,14 +23,6 @@ State defaults to `~/.wf`; set `WF_HOME` to use another directory.
 - **Code for computation:** deterministic transforms stay as TypeScript code;
   external IO belongs in durable steps.
 
-## Integration nodes
-
-`wfkit` retains a declarative integration node for portable workflow
-definitions. Executing those nodes requires the separate
-[`mokronos/integrations`](https://github.com/mokronos/integrations) gateway and
-runner; this repository does not include integration discovery, credentials,
-policy, client wiring, or execution.
-
 ## Repository Map
 
 | Path | Purpose |

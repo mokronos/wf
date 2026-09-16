@@ -2,8 +2,6 @@ import { Schema } from "effect"
 import { decodeJsonSchema, JsonSchema, jsonSchemaOf } from "./json-schema.ts"
 export { decodeJsonSchema, JsonSchema, jsonSchemaOf }
 export type { SerializableValue, WorkflowPayload } from "./json-schema.ts"
-export { IntegrationSource } from "./integration-contract.ts"
-import { IntegrationSource } from "./integration-contract.ts"
 
 export const ExecutionId = Schema.String.pipe(Schema.brand("ExecutionId"))
 export type ExecutionId = typeof ExecutionId.Type
@@ -361,9 +359,7 @@ export const WorkflowGraphNodeMetadata = Schema.Struct({
     limit: Schema.Number,
     keyed: Schema.Boolean
   })),
-  compensates: Schema.optionalKey(Schema.Boolean),
-  /** Present on declarative integration nodes. */
-  integration: Schema.optionalKey(IntegrationSource)
+  compensates: Schema.optionalKey(Schema.Boolean)
 })
 export type WorkflowGraphNodeMetadata = typeof WorkflowGraphNodeMetadata.Type
 

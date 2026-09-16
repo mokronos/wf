@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test"
 import {
   defineStep,
   defineWorkflow,
-  integration,
   t,
   workflowToGraph
 } from "../src/index"
@@ -86,45 +85,6 @@ const ParallelWorkflow = defineWorkflow({
 })
 
 describe("workflowToGraph", () => {
-  test("records integration node metadata without invoking an external system", async () => {
-    const createIssue = integration({
-      source: { kind: "gateway", alias: "linear", tool: "issues.create" },
-      input: t.struct({ title: t.string }),
-      output: t.struct({ id: t.string })
-    })
-    const workflow = defineWorkflow({
-      name: "IntegrationGraphWorkflow",
-      input: t.struct({ title: t.string }),
-      output: t.struct({ id: t.string }),
-      run: function* (input, ctx) {
-        return yield* ctx.run(createIssue, input)
-      }
-    })
-
-    const graph = await workflowToGraph(workflow, { input: { title: "Inspect me" } })
-
-    expect(graph.nodes.find((node) => node.kind === "step")?.metadata.integration).toEqual({
-      kind: "gateway",
-      alias: "linear",
-      tool: "issues.create"
-    })
-  })
-
-  test("gives distinct integration sources distinct default names", () => {
-    const dotted = integration({
-      source: { kind: "gateway", alias: "linear", tool: "org.create" },
-      input: t.struct({}),
-      output: t.struct({})
-    })
-    const owned = integration({
-      source: { kind: "gateway", alias: "linear-org", tool: "create" },
-      input: t.struct({}),
-      output: t.struct({})
-    })
-    expect(dotted.name).not.toBe(owned.name)
-  })
-
-
   test("does not run real void steps when the tracer returns undefined", async () => {
     let executions = 0
     const sideEffect = defineStep({

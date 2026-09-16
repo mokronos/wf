@@ -7,12 +7,9 @@ import { NonDeterminismError } from "./determinism.ts"
 import { CodeExecutionError, StepExecutionError } from "./execution-errors.ts"
 import type { SecretResolutionContext } from "./secrets.ts"
 import { SignalDeliveryError } from "./signal.ts"
-import type { IntegrationSource } from "./integration-contract.ts"
 
 export type DynamicService = Schema.Schema.Type<Schema.Top>
 export type SynchronousSchema<A> = Schema.Codec<A, DynamicService, never, never>
-
-export { IntegrationSource } from "./integration-contract.ts"
 
 const TerminalFailureTypeId: unique symbol = Symbol.for("wf/TerminalFailure")
 
@@ -52,7 +49,7 @@ export type StepRetryPolicy = typeof StepRetryPolicy.Type
 
 export type StepConcurrency<I> = StepConcurrencyPolicy<I>
 
-interface StepDefinition<
+export interface DefinedStep<
   Input extends SynchronousSchema<DynamicService>,
   Output extends SynchronousSchema<DynamicService>,
   Errors extends SynchronousSchema<DynamicService>
@@ -69,36 +66,13 @@ interface StepDefinition<
     input: Input["Type"],
     reason: Cause.Cause<unknown>
   ) => void | Promise<void>
-  readonly retry?: StepRetryPolicy
-  readonly concurrency?: StepConcurrency<Input["Type"]>
-}
-
-export interface DefinedLocalStep<
-  Input extends SynchronousSchema<DynamicService>,
-  Output extends SynchronousSchema<DynamicService>,
-  Errors extends SynchronousSchema<DynamicService>
-> extends StepDefinition<Input, Output, Errors> {
-  readonly kind: "local"
   readonly execute: (
     input: Input["Type"],
     step: StepContext<Errors["Type"]>
   ) => Promise<Output["Type"] | TerminalFailure<Errors["Type"]>>
+  readonly retry?: StepRetryPolicy
+  readonly concurrency?: StepConcurrency<Input["Type"]>
 }
-
-export interface DefinedIntegrationStep<
-  Input extends SynchronousSchema<DynamicService>,
-  Output extends SynchronousSchema<DynamicService>,
-  Errors extends SynchronousSchema<DynamicService>
-> extends StepDefinition<Input, Output, Errors> {
-  readonly kind: "integration"
-  readonly source: IntegrationSource
-}
-
-export type DefinedStep<
-  Input extends SynchronousSchema<DynamicService>,
-  Output extends SynchronousSchema<DynamicService>,
-  Errors extends SynchronousSchema<DynamicService>
-> = DefinedLocalStep<Input, Output, Errors> | DefinedIntegrationStep<Input, Output, Errors>
 
 export type Step<I, O, E = never> = DefinedStep<
   SynchronousSchema<I>,
@@ -129,13 +103,12 @@ export const defineStep = <
   ) => void | Promise<void>
   readonly retry?: StepRetryPolicy
   readonly concurrency?: StepConcurrency<Input["Type"]>
-}): DefinedLocalStep<Input, Output, Errors | typeof Schema.Never> => {
+}): DefinedStep<Input, Output, Errors | typeof Schema.Never> => {
   const retry = config.retry === undefined
     ? undefined
     : Schema.decodeUnknownSync(StepRetryPolicy)(config.retry)
   return {
     ...config,
-    kind: "local",
     errors: config.errors ?? Schema.Never,
     ...whenPresent("retry", retry)
   }

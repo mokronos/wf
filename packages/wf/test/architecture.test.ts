@@ -65,20 +65,10 @@ describe("package architecture", () => {
     await assertNoImportCycles([join(packageDirectory, "src")])
   })
 
-  test("the integration node is declarative", async () => {
-    const workflowModel = await readFile(join(packageDirectory, "src", "workflow-model.ts"), "utf8")
-    const integrationStep = await readFile(join(packageDirectory, "src", "integration.ts"), "utf8")
-
-    expect(workflowModel).not.toContain("invokeIntegration")
-    expect(integrationStep).not.toContain("execute:")
-    expect(integrationStep).toContain('kind: "integration"')
-  })
-
-  test("authoring has an explicit package subpath without an integration runtime subpath", async () => {
+  test("authoring has an explicit package subpath", async () => {
     const packageJson = await readFile(join(packageDirectory, "package.json"), "utf8")
 
     expect(packageJson).toContain('"./authoring"')
-    expect(packageJson).not.toContain('"./integrations"')
   })
 
   test("production TypeScript has no explicit any escape hatches", async () => {

@@ -85,7 +85,6 @@ const stepSchemas = (step: InspectableStep): WorkflowGraphNodeSchemas | undefine
 }
 
 const describeStep = (step: InspectableStep): WorkflowGraphNodeMetadata => ({
-  ...whenPresent("integration", step.kind === "integration" ? step.source : undefined),
   ...whenPresent("retry", step.retry),
   ...whenPresentFields(step.concurrency, (concurrency) => ({
     concurrency: { limit: concurrency.limit, keyed: concurrency.key !== undefined }

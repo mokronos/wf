@@ -41,7 +41,6 @@ import type {
   StepContext,
   SignalOutcome,
   SynchronousSchema,
-  TerminalFailure,
   WorkflowAllError,
   WorkflowAllSuccess,
   WorkflowContext,
@@ -50,7 +49,6 @@ import type {
 } from "./workflow-model.ts"
 export {
   defineStep,
-  IntegrationSource,
   StepRetryPolicy,
   terminalFailure
 } from "./workflow-model.ts"
@@ -199,21 +197,6 @@ const makeStepContext = <E>(
     return Promise.resolve(resolver.resolve(name, context))
   }
 })
-
-const executeStep = async <
-  Input extends SynchronousSchema<DynamicService>,
-  Output extends SynchronousSchema<DynamicService>,
-  Errors extends SynchronousSchema<DynamicService>
->(options: {
-  readonly step: DefinedStep<Input, Output, Errors>
-  readonly input: Input["Type"]
-  readonly context: StepContext<Errors["Type"]>
-}): Promise<Output["Type"] | TerminalFailure<Errors["Type"]>> => {
-  if (options.step.kind === "local") {
-    return await options.step.execute(options.input, options.context)
-  }
-  throw new Error(`Integration node ${options.step.name} requires an external runner`)
-}
 
 const nextInvocation = (counters: Map<string, number>, name: string): number => {
   const invocation = (counters.get(name) ?? 0) + 1
@@ -374,11 +357,10 @@ const makeCtx = <WErrors>(
                 step.input,
                 await resolveSecretReferences(input, resolver)
               )
-              const value = await executeStep({
-                step,
-                input: executeInput,
-                context: makeStepContext(executionId, attempt, resolver)
-              })
+              const value = await step.execute(
+                executeInput,
+                makeStepContext(executionId, attempt, resolver)
+              )
               if (isTerminalFailure(value)) {
                 throw value
               }
@@ -884,11 +866,7 @@ const makeInMemoryCtx = <WErrors>(
                     })
                 const value = override.handled
                   ? override.value
-                  : await executeStep({
-                      step,
-                      input: executeInput,
-                      context: stepContext
-                    })
+                  : await step.execute(executeInput, stepContext)
                 if (isTerminalFailure(value)) {
                   throw {
                     _wfFailureType: "terminal",

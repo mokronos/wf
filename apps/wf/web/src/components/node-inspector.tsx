@@ -44,12 +44,11 @@ function SchemaSection({ schemas }: { readonly schemas: WorkflowGraphNodeSchemas
 
 function PoliciesSection({ node }: { readonly node: WorkflowGraphNode }) {
   if (node.kind !== "step") return null
-  const { retry, concurrency, compensates, integration } = node.metadata
+  const { retry, concurrency, compensates } = node.metadata
   return <section className="inspector-section"><h3>Execution policy</h3><div className="policy-grid">
     <div><span>Retry</span><code>{retry === undefined ? "none" : prettyJson(retry)}</code></div>
     <div><span>Concurrency</span><code>{concurrency === undefined ? "unbounded" : prettyJson(concurrency)}</code></div>
     <div><span>Compensation</span><code>{compensates === true ? "available" : "none"}</code></div>
-    {integration === undefined ? null : <div><span>Integration</span><code>{prettyJson(integration)}</code></div>}
   </div></section>
 }
 
