@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { expect, test } from "bun:test"
+import { expect, test } from "@effect/vitest"
 import { defineWorkflow, executeWorkflow, t } from "../src/index.ts"
 
 test("executeWorkflow passes the decoded payload to the workflow", async () => {

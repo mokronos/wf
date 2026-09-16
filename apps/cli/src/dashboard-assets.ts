@@ -1,4 +1,5 @@
-import path from "node:path"
+import { Effect, Encoding, FileSystem, Path } from "effect"
+import { HttpServerResponse } from "effect/unstable/http"
 import assets from "./embedded-web-assets.gen.ts"
 
 const mimeTypeFor = (pathname: string): string => {
@@ -11,25 +12,38 @@ const mimeTypeFor = (pathname: string): string => {
   return "application/octet-stream"
 }
 
+/** A compiled binary carries the dashboard inside it; running from source reads
+ *  the Vite build output from the repository instead. */
 export const dashboardIsEmbedded = Object.keys(assets).length > 0
-const dashboardSourceDirectory = path.resolve(import.meta.dir, "..", "..", "..", "apps", "wf", "web", "dist")
 
-const dashboardFileResponse = async (pathname: string): Promise<Response> => {
-  const location = path.resolve(dashboardSourceDirectory, pathname === "/" ? "index.html" : pathname.slice(1))
-  const contained = location === dashboardSourceDirectory || location.startsWith(`${dashboardSourceDirectory}${path.sep}`)
-  if (!contained) return new Response("Not found", { status: 404 })
-  const file = Bun.file(location)
-  if (!(await file.exists())) {
-    return new Response(`Dashboard assets not found at ${dashboardSourceDirectory}. Run: bun run --cwd apps/wf/web build`, { status: 404 })
+const notFound = HttpServerResponse.text("Not found", { status: 404 })
+
+const fileResponse = Effect.fnUntraced(function* (pathname: string) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const root = path.resolve(import.meta.dirname, "..", "..", "..", "apps", "wf", "web", "dist")
+  const location = path.resolve(root, pathname === "/" ? "index.html" : pathname.slice(1))
+  // Traversal guard: a request may only name something under the build output.
+  if (location !== root && !location.startsWith(`${root}${path.sep}`)) return notFound
+  if (!(yield* fs.exists(location))) {
+    return HttpServerResponse.text(
+      `Dashboard assets not found at ${root}. Run: bun run --cwd apps/wf/web build`,
+      { status: 404 }
+    )
   }
-  return new Response(file, { headers: { "content-type": mimeTypeFor(location) } })
-}
-
-export const dashboardResponse = async (pathname: string): Promise<Response> => {
-  if (!dashboardIsEmbedded) return dashboardFileResponse(pathname)
-  const asset = assets[pathname === "/" ? "/index.html" : pathname]
-  if (asset === undefined) return new Response("Not found", { status: 404 })
-  return new Response(Buffer.from(asset.base64, "base64"), {
-    headers: { "content-type": asset.contentType.length === 0 ? mimeTypeFor(pathname) : asset.contentType }
+  return yield* HttpServerResponse.file(location, {
+    headers: { "content-type": mimeTypeFor(location) }
   })
-}
+})
+
+export const dashboardResponse = Effect.fnUntraced(function* (pathname: string) {
+  if (!dashboardIsEmbedded) return yield* fileResponse(pathname)
+  const asset = assets[pathname === "/" ? "/index.html" : pathname]
+  if (asset === undefined) return notFound
+  const body = yield* Effect.fromResult(Encoding.decodeBase64(asset.base64))
+  return HttpServerResponse.uint8Array(body, {
+    headers: {
+      "content-type": asset.contentType.length === 0 ? mimeTypeFor(pathname) : asset.contentType
+    }
+  })
+})

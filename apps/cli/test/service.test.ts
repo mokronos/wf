@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { launchdPlist, serviceLabel, systemdQuote, systemdUnit } from "../src/service.ts"
 
 describe("service definitions", () => {

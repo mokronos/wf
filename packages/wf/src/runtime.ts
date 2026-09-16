@@ -1,8 +1,8 @@
 import { whenPresent } from "./optional.ts"
 import type { WorkflowPayload } from "./schemas.ts"
-import { BunServices } from "@effect/platform-bun"
-import { NodeRuntime } from "@effect/platform-node"
-import { Data, Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
+import { BunCrypto, BunFileSystem, BunPath, BunRuntime } from "@effect/platform-bun"
+import { FetchHttpClient } from "effect/unstable/http"
+import { Effect, Exit, Layer, ManagedRuntime, Schema } from "effect"
 import { DurableDeferred, WorkflowEngine } from "effect/unstable/workflow"
 import type { DefinedWorkflow } from "./core.ts"
 import type { SecretResolver } from "./secrets.ts"
@@ -96,9 +96,12 @@ export interface WorkflowRuntime {
   dispose(): Promise<void>
 }
 
-export class WorkflowConflictError extends Data.TaggedError("WorkflowConflictError")<{
-  readonly workflowName: string
-}> {
+export class WorkflowConflictError extends Schema.TaggedError<WorkflowConflictError>()(
+  "WorkflowConflictError",
+  {
+    workflowName: Schema.String
+  }
+) {
   override get message(): string {
     return `Workflow ${this.workflowName} is already registered with different source`
   }
@@ -152,7 +155,11 @@ export const createWorkflowRuntime = (options: WorkflowRuntimeOptions): Workflow
       // environment or the outermost execution span falls back to the no-op
       // default tracer and is never exported.
       Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" })),
-      Layer.provideMerge(BunServices.layer)
+      Layer.provide(FetchHttpClient.layer),
+      // Only the services the engine actually uses: the full BunServices layer
+      // also builds a Terminal, and every runtime built here would then attach
+      // another stdin listener for a console this process never reads.
+      Layer.provideMerge(Layer.mergeAll(BunCrypto.layer, BunFileSystem.layer, BunPath.layer))
     )
     return workflowLayers.reduce(
       (layer, workflowLayer) => Layer.provideMerge(workflowLayer, layer),
@@ -357,7 +364,8 @@ export const makeWorkflowEffect = (
     )),
     // Merged upward so the tracer reaches this program's own root span too.
     Layer.provideMerge(telemetryLayer({ serviceName: "wf-runtime" })),
-    Layer.provideMerge(BunServices.layer)
+    Layer.provide(FetchHttpClient.layer),
+    Layer.provideMerge(Layer.mergeAll(BunCrypto.layer, BunFileSystem.layer, BunPath.layer))
   )
   const workflowName = String(wf.workflow.name ?? wf.name ?? "Workflow")
   const execution = Effect.gen(function* () {
@@ -391,6 +399,6 @@ export const executeWorkflow = (
 // Execute a workflow to completion as a standalone program.
 export const run = (wf: DefinedWorkflow, payload: WorkflowPayload) => {
   return makeWorkflowEffect(wf, payload).pipe(
-    NodeRuntime.runMain
+    BunRuntime.runMain
   )
 }

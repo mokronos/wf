@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "@effect/vitest"
 import { createTestRuntime } from "@mokronos/wfkit"
 import { Schema } from "effect"
 import { configureXEngagementAdapters, resetXEngagementAdapters } from "./adapters"

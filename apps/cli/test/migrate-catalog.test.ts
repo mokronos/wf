@@ -1,7 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "@effect/vitest"
 import { Database } from "bun:sqlite"
 import { existsSync, mkdtempSync, rmSync } from "node:fs"
-import { readFile } from "node:fs/promises"
+import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { migrateLegacyCatalog } from "../src/migrate-catalog.ts"
@@ -83,7 +83,8 @@ describe("legacy catalog migration", () => {
   test("never overwrites a workflow file that already exists", async () => {
     const home = makeHome()
     seedLegacyCatalog(home, [{ id: "alpha", source: "export const fromDatabase = 1\n" }])
-    await Bun.write(path.join(workflowsPath(home), "alpha.ts"), "export const fromFile = 1\n")
+    await mkdir(workflowsPath(home), { recursive: true })
+    await writeFile(path.join(workflowsPath(home), "alpha.ts"), "export const fromFile = 1\n")
 
     expect(await migrateLegacyCatalog(home)).toEqual([])
     expect(await readFile(path.join(workflowsPath(home), "alpha.ts"), "utf8")).toBe(

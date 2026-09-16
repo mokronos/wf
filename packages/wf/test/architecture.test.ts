@@ -1,106 +1,114 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import { mkdtemp, readdir, readFile, rm } from "node:fs/promises"
-import { tmpdir } from "node:os"
-import { dirname, extname, join, resolve } from "node:path"
-import { fileURLToPath } from "node:url"
+import { BunServices } from "@effect/platform-bun"
+import { describe, expect, it } from "@effect/vitest"
+import { Effect, FileSystem, Path } from "effect"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 
-const packageDirectory = join(dirname(fileURLToPath(import.meta.url)), "..")
-const temporaryDirectories: string[] = []
+const packageDirectory = Effect.map(Path.Path, (path) =>
+  path.resolve(import.meta.dirname, ".."))
 
-const typescriptFiles = async (directory: string): Promise<ReadonlyArray<string>> => {
-  const files: string[] = []
-  for (const entry of await readdir(directory, { withFileTypes: true })) {
-    const entryPath = join(directory, entry.name)
-    if (entry.isDirectory()) {
-      files.push(...await typescriptFiles(entryPath))
-    } else if (entryPath.endsWith(".ts")) {
-      files.push(resolve(entryPath))
-    }
-  }
-  return files
-}
+const typescriptFiles = (
+  directory: string
+): Effect.Effect<ReadonlyArray<string>, never, FileSystem.FileSystem | Path.Path> =>
+  Effect.gen(function* () {
+    const fs = yield* FileSystem.FileSystem
+    const path = yield* Path.Path
+    const entries = yield* fs.readDirectory(directory)
+    const nested = yield* Effect.forEach(entries, (entry) =>
+      Effect.gen(function* () {
+        const entryPath = path.join(directory, entry)
+        const info = yield* fs.stat(entryPath)
+        if (info.type === "Directory") return yield* typescriptFiles(entryPath)
+        return entryPath.endsWith(".ts") ? [path.resolve(entryPath)] : []
+      }))
+    return nested.flat()
+  }).pipe(Effect.orDie)
 
-const assertNoImportCycles = async (roots: ReadonlyArray<string>): Promise<void> => {
-  const files = (await Promise.all(roots.map(typescriptFiles))).flat()
-  const knownFiles = new Set(files)
-  const dependencies = new Map<string, ReadonlyArray<string>>()
-  for (const file of files) {
-    const imports = Array.from((await readFile(file, "utf8")).matchAll(
-      /(?:from\s+|import\s*)"(\.[^"]+)"/g
-    )).flatMap((match) => {
-      const specifier = match[1]
-      if (specifier === undefined) return []
-      const dependency = resolve(dirname(file), specifier)
-      const resolved = extname(dependency) === "" ? `${dependency}.ts` : dependency
-      return knownFiles.has(resolved) ? [resolved] : []
-    })
-    dependencies.set(file, imports)
-  }
-
-  const visited = new Set<string>()
-  const stack: string[] = []
-  const visit = (file: string): void => {
-    const cycleStart = stack.indexOf(file)
-    if (cycleStart >= 0) {
-      throw new Error(`Import cycle: ${[...stack.slice(cycleStart), file].join(" -> ")}`)
-    }
-    if (visited.has(file)) return
-    stack.push(file)
-    for (const dependency of dependencies.get(file) ?? []) visit(dependency)
-    stack.pop()
-    visited.add(file)
-  }
-  for (const file of files) visit(file)
-}
-
-afterEach(async () => {
-  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, {
-    recursive: true,
-    force: true
-  })))
+const importedLocalFiles = Effect.fnUntraced(function* (
+  file: string,
+  known: ReadonlySet<string>
+) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
+  const source = yield* fs.readFileString(file)
+  return Array.from(source.matchAll(/(?:from\s+|import\s*)"(\.[^"]+)"/g)).flatMap((match) => {
+    const specifier = match[1]
+    if (specifier === undefined) return []
+    const dependency = path.resolve(path.dirname(file), specifier)
+    const resolved = path.extname(dependency) === "" ? `${dependency}.ts` : dependency
+    return known.has(resolved) ? [resolved] : []
+  })
 })
 
 describe("package architecture", () => {
-  test("local package imports are acyclic", async () => {
-    await assertNoImportCycles([join(packageDirectory, "src")])
-  })
+  it.effect("local package imports are acyclic", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path
+      const files = yield* typescriptFiles(path.join(yield* packageDirectory, "src"))
+      const known = new Set(files)
+      const dependencies = new Map<string, ReadonlyArray<string>>()
+      for (const file of files) {
+        dependencies.set(file, yield* importedLocalFiles(file, known))
+      }
 
-  test("authoring has an explicit package subpath", async () => {
-    const packageJson = await readFile(join(packageDirectory, "package.json"), "utf8")
+      const visited = new Set<string>()
+      const stack: Array<string> = []
+      const visit = (file: string): void => {
+        const cycleStart = stack.indexOf(file)
+        if (cycleStart >= 0) {
+          throw new Error(`Import cycle: ${[...stack.slice(cycleStart), file].join(" -> ")}`)
+        }
+        if (visited.has(file)) return
+        stack.push(file)
+        for (const dependency of dependencies.get(file) ?? []) visit(dependency)
+        stack.pop()
+        visited.add(file)
+      }
+      for (const file of files) expect(() => visit(file)).not.toThrow()
+    }).pipe(Effect.provide(BunServices.layer)))
 
-    expect(packageJson).toContain('"./authoring"')
-  })
+  it.effect("authoring has an explicit package subpath", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const manifest = yield* fs.readFileString(path.join(yield* packageDirectory, "package.json"))
 
-  test("production TypeScript has no explicit any escape hatches", async () => {
-    const files = await typescriptFiles(join(packageDirectory, "src"))
-    const explicitAny = /\b(?:as|extends)\s+any\b|[:=]\s*any\b|[<,]\s*any\s*[,>]/
-    const offenders: string[] = []
-    for (const file of files) {
-      const lines = (await readFile(file, "utf8")).split("\n")
-      for (const [index, line] of lines.entries()) {
-        if (explicitAny.test(line)) {
-          offenders.push(`${file}:${index + 1}`)
+      expect(manifest).toContain('"./authoring"')
+    }).pipe(Effect.provide(BunServices.layer)))
+
+  it.effect("production TypeScript has no explicit any escape hatches", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const files = yield* typescriptFiles(path.join(yield* packageDirectory, "src"))
+      const explicitAny = /\b(?:as|extends)\s+any\b|[:=]\s*any\b|[<,]\s*any\s*[,>]/
+      const offenders: Array<string> = []
+      for (const file of files) {
+        const lines = (yield* fs.readFileString(file)).split("\n")
+        for (const [index, line] of lines.entries()) {
+          if (explicitAny.test(line)) offenders.push(`${file}:${index + 1}`)
         }
       }
-    }
-    expect(offenders).toEqual([])
-  })
+      expect(offenders).toEqual([])
+    }).pipe(Effect.provide(BunServices.layer)))
 
-  test("importing the runtime has no filesystem side effects", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "wf-import-"))
-    temporaryDirectories.push(directory)
+  it.effect("importing the runtime has no filesystem side effects", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem
+      const path = yield* Path.Path
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+      const runtime = path.join(yield* packageDirectory, "src/runtime.ts")
+      const directory = yield* fs.makeTempDirectoryScoped({ prefix: "wf-import-" })
 
-    const process = Bun.spawn({
-      cmd: ["bun", "-e", `await import(${JSON.stringify(join(packageDirectory, "src/runtime.ts"))})`],
-      cwd: directory,
-      stdout: "pipe",
-      stderr: "pipe"
-    })
-    const exitCode = await process.exited
-    const stderr = await new Response(process.stderr).text()
+      const result = yield* spawner.string(
+        ChildProcess.make(
+          process.execPath,
+          ["-e", `await import(${JSON.stringify(runtime)})`],
+          { cwd: directory, stdout: "pipe", stderr: "pipe" }
+        ),
+        { includeStderr: true }
+      )
 
-    expect(stderr).toBe("")
-    expect(exitCode).toBe(0)
-    expect(await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: directory }))).toEqual([])
-  })
+      expect(result).toBe("")
+      expect(yield* fs.readDirectory(directory)).toEqual([])
+    }).pipe(Effect.provide(BunServices.layer)))
 })

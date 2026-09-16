@@ -1,83 +1,85 @@
+import { Effect, Schema, Semaphore } from "effect"
+
 export interface StepConcurrencyPolicy<I> {
   readonly key?: (input: I) => string
   readonly limit: number
 }
 
+export class InvalidConcurrencyLimit extends Schema.TaggedError<InvalidConcurrencyLimit>()(
+  "InvalidConcurrencyLimit",
+  {
+    stepName: Schema.String,
+    limit: Schema.Number
+  }
+) {
+  override get message(): string {
+    return `Invalid concurrency limit for step ${this.stepName}: ${this.limit}`
+  }
+}
+
 export interface ConcurrencyLimiter {
-  acquire<I>(
+  /** Runs `effect` holding one permit of the step's partition. An unset policy
+   *  runs it untouched. Interruption while queued gives the permit back. */
+  withPermit<I>(
     stepName: string,
     policy: StepConcurrencyPolicy<I> | undefined,
-    input: I,
-    signal?: AbortSignal
-  ): Promise<() => void>
+    input: I
+  ): <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E | InvalidConcurrencyLimit, R>
 }
 
-interface SemaphoreState {
-  active: number
-  readonly queue: Array<() => void>
+/** Any step's policy, held only as the identity of a permit pool. The key
+ *  function is contravariant, so every concrete policy is one of these. */
+type PolicyIdentity = StepConcurrencyPolicy<never>
+
+interface Partition {
+  readonly semaphore: Semaphore.Semaphore
+  holders: number
 }
 
-/** Creates an isolated set of step semaphores. */
+/** Creates an isolated set of step semaphores. Partitions belong to the policy
+ *  object a step was defined with, so identically named steps in different
+ *  workflows never share permits. Each is created on first use and dropped once
+ *  its last holder leaves, so a `key` ranging over unbounded input (a customer
+ *  id, say) does not accumulate state. */
 export const createConcurrencyLimiter = (): ConcurrencyLimiter => {
-  const policies = new WeakMap<object, Map<string, Map<string, SemaphoreState>>>()
+  const byPolicy = new WeakMap<PolicyIdentity, Map<string, Partition>>()
+
+  const lease = (policy: PolicyIdentity, key: string, limit: number): Partition => {
+    const partitions = byPolicy.get(policy) ?? new Map<string, Partition>()
+    byPolicy.set(policy, partitions)
+    const existing = partitions.get(key)
+    const partition = existing ?? { semaphore: Semaphore.makeUnsafe(limit), holders: 0 }
+    partition.holders++
+    if (existing === undefined) partitions.set(key, partition)
+    return partition
+  }
+
+  const unlease = (policy: PolicyIdentity, key: string, partition: Partition): void => {
+    partition.holders--
+    if (partition.holders > 0) return
+    const partitions = byPolicy.get(policy)
+    partitions?.delete(key)
+    if (partitions?.size === 0) byPolicy.delete(policy)
+  }
 
   return {
-    async acquire(stepName, policy, input, signal) {
-      if (policy === undefined) return () => undefined
-      const limit = policy.limit
-      if (!Number.isInteger(limit) || limit < 1) {
-        throw new Error(`Invalid concurrency limit for step ${stepName}: ${limit}`)
-      }
-
-      const key = policy.key?.(input) ?? stepName
-      const steps = policies.get(policy) ?? new Map<string, Map<string, SemaphoreState>>()
-      policies.set(policy, steps)
-      const partitions = steps.get(stepName) ?? new Map<string, SemaphoreState>()
-      steps.set(stepName, partitions)
-      const state = partitions.get(key) ?? { active: 0, queue: [] }
-      partitions.set(key, state)
-      if (state.active >= limit) {
-        await new Promise<void>((resolve, reject) => {
-          const grant = () => {
-            signal?.removeEventListener("abort", abort)
-            resolve()
-          }
-          const abort = () => {
-            const index = state.queue.indexOf(grant)
-            if (index !== -1) state.queue.splice(index, 1)
-            reject(signal?.reason ?? new Error("Concurrency wait cancelled"))
-          }
-          if (signal?.aborted === true) {
-            abort()
-            return
-          }
-          state.queue.push(grant)
-          signal?.addEventListener("abort", abort, { once: true })
-        })
-      } else {
-        state.active++
-      }
-      let released = false
-      return () => {
-        if (released) return
-        released = true
-        const next = state.queue.shift()
-        if (next !== undefined) {
-          // Transfer this permit directly. Keeping `active` unchanged prevents
-          // a new caller from slipping in before the queued continuation runs.
-          next()
-          return
+    withPermit(stepName, policy, input) {
+      return (effect) => {
+        if (policy === undefined) return effect
+        const limit = policy.limit
+        if (!Number.isInteger(limit) || limit < 1) {
+          return Effect.fail(new InvalidConcurrencyLimit({ stepName, limit }))
         }
-        state.active--
-        if (state.active === 0 && state.queue.length === 0) {
-          partitions.delete(key)
-          if (partitions.size === 0) steps.delete(stepName)
-          if (steps.size === 0) policies.delete(policy)
-        }
+        const key = policy.key?.(input) ?? stepName
+        return Effect.acquireUseRelease(
+          Effect.sync(() => lease(policy, key, limit)),
+          (partition) => Semaphore.withPermit(partition.semaphore)(effect),
+          (partition) => Effect.sync(() => unlease(policy, key, partition))
+        )
       }
     }
   }
 }
 
-/** Compatibility limiter for direct executeInMemory calls without a runtime. */
+/** Limiter for direct executeInMemory calls made without a runtime. */
 export const defaultConcurrencyLimiter = createConcurrencyLimiter()

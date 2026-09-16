@@ -9,20 +9,22 @@
     "preview": "vite preview"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "catalog:",
     "@types/bun": "catalog:",
+    "@types/dagre": "catalog:",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "@vitejs/plugin-react": "catalog:",
+    "shadcn": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:"
   },
   "dependencies": {
     "@fontsource-variable/geist": "catalog:",
-    "@tailwindcss/vite": "catalog:",
-    "@vitejs/plugin-react": "catalog:",
+    "@mokronos/wfkit": "workspace:*",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",
-    "@types/dagre": "catalog:",
     "dagre": "catalog:",
     "effect": "catalog:",
     "lucide-react": "catalog:",
@@ -30,10 +32,8 @@
     "react": "catalog:",
     "react-dom": "catalog:",
     "reactflow": "catalog:",
-    "shadcn": "catalog:",
     "tailwind-merge": "catalog:",
     "tailwindcss": "catalog:",
-    "tw-animate-css": "catalog:",
-    "@mokronos/wfkit": "workspace:*"
+    "tw-animate-css": "catalog:"
   }
 }

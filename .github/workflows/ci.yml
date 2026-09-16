@@ -19,7 +19,7 @@ jobs:
           bun-version: 1.3.14
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
-      - run: bun test
+      - run: bun run test
         env:
           X_ENGAGEMENT_REAL_X: "0"
       - run: bun run example:order-saga

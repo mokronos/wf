@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { Database } from "bun:sqlite"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"

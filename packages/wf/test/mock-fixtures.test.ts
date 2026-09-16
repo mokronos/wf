@@ -1,5 +1,5 @@
 import { Predicate, Schema } from "effect"
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { readFileSync } from "node:fs"
 import path from "node:path"
 

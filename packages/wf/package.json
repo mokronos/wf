@@ -2,7 +2,7 @@
   "name": "@mokronos/wfkit",
   "version": "0.2.0",
   "type": "module",
-  "description": "The workflow authoring surface — the stable API agents design against.",
+  "description": "The workflow authoring surface \u2014 the stable API agents design against.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -70,13 +70,8 @@
   },
   "dependencies": {
     "@effect/platform-bun": "catalog:",
-    "@effect/platform-node": "catalog:",
-    "@effect/platform-node-shared": "catalog:",
     "@effect/sql-sqlite-bun": "catalog:",
-    "@libsql/client": "catalog:",
     "@mokronos/observability": "workspace:*",
-    "drizzle-orm": "catalog:",
-    "effect": "catalog:",
-    "yaml": "catalog:"
+    "effect": "catalog:"
   }
 }

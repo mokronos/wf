@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { readFile } from "node:fs/promises"
 import path from "node:path"
-import { Data, Effect, Option, Predicate, Schema } from "effect"
+import { Effect, Option, Predicate, Schema } from "effect"
 import { Argument, Command, Flag } from "effect/unstable/cli"
 import {
   createDirectoryWorkflowCatalog,
@@ -109,7 +109,7 @@ const defaultPageSize = 10
 const defaultDiagnosticLimit = 5
 const defaultDiagnosticDetailLimit = 160
 
-const verboseFlag = () => Flag.boolean("verbose").pipe(
+const verboseFlag = () => Flag.Boolean("verbose").pipe(
   Flag.withDefault(false),
   Flag.withAlias("v"),
   Flag.withDescription("Show complete details")
@@ -697,9 +697,10 @@ export interface CliRuntimeOptions {
   readonly storageDir: string
 }
 
-class WorkflowCliError extends Data.TaggedError("WorkflowCliError")<{
-  readonly message: string
-}> {}
+class WorkflowCliError extends Schema.TaggedError<WorkflowCliError>()(
+  "WorkflowCliError",
+  { message: Schema.String }
+) {}
 
 // A caught value. TypeScript types every catch binding as unknown because
 // JavaScript lets any value be thrown, so there is nothing narrower to accept.
@@ -770,22 +771,22 @@ const artifactForExecution = async (
 const createCommand = (runtime: CliRuntimeOptions) => Command.make(
   "create",
   {
-    id: Argument.string("workflow-id").pipe(
+    id: Argument.String("workflow-id").pipe(
       Argument.withDescription("Lowercase workflow id")
     ),
-    name: Flag.string("name").pipe(
+    name: Flag.String("name").pipe(
       Flag.optional,
       Flag.withDescription("Name the workflow in a generated template")
     ),
-    source: Flag.string("source").pipe(
+    source: Flag.String("source").pipe(
       Flag.optional,
       Flag.withDescription("Import inline TypeScript source")
     ),
-    file: Flag.string("file").pipe(
+    file: Flag.String("file").pipe(
       Flag.optional,
       Flag.withDescription("Import TypeScript from a file")
     ),
-    force: Flag.boolean("force").pipe(
+    force: Flag.Boolean("force").pipe(
       Flag.withDefault(false),
       Flag.withDescription("Replace an existing workflow id")
     ),
@@ -841,19 +842,19 @@ const createCommand = (runtime: CliRuntimeOptions) => Command.make(
 const validateCommand = (runtime: CliRuntimeOptions) => Command.make(
   "validate",
   {
-    id: Argument.string("workflow-id").pipe(
+    id: Argument.String("workflow-id").pipe(
       Argument.optional,
       Argument.withDescription("Registered workflow id")
     ),
-    file: Flag.string("file").pipe(
+    file: Flag.String("file").pipe(
       Flag.optional,
       Flag.withDescription("Validate a TypeScript workflow file outside the catalog")
     ),
-    input: Flag.string("input").pipe(
+    input: Flag.String("input").pipe(
       Flag.optional,
       Flag.withDescription("Use this JSON value while tracing the workflow")
     ),
-    json: Flag.boolean("json").pipe(
+    json: Flag.Boolean("json").pipe(
       Flag.withDefault(false),
       Flag.withDescription("Print the complete validation graph as JSON")
     ),
@@ -921,7 +922,7 @@ const runsCommand = (runtime: CliRuntimeOptions) => Command.make(
 
 const historyCommand = (runtime: CliRuntimeOptions) => Command.make(
   "history",
-  { runId: Argument.string("run-id"), verbose: verboseFlag() },
+  { runId: Argument.String("run-id"), verbose: verboseFlag() },
   ({ runId, verbose }) => runCliTask(async () => {
     const { client } = createEngineBackedClient(runtime)
     try {
@@ -938,8 +939,8 @@ const historyCommand = (runtime: CliRuntimeOptions) => Command.make(
 const runCommand = (runtime: CliRuntimeOptions) => Command.make(
   "run",
   {
-    id: Argument.string("workflow-id"),
-    input: Argument.string("json-input").pipe(Argument.optional),
+    id: Argument.String("workflow-id"),
+    input: Argument.String("json-input").pipe(Argument.optional),
     verbose: verboseFlag()
   },
   ({ id, input, verbose }) => runCliTask(async () => {
@@ -974,10 +975,10 @@ const runCommand = (runtime: CliRuntimeOptions) => Command.make(
 const signalCommand = (runtime: CliRuntimeOptions) => Command.make(
   "signal",
   {
-    runId: Argument.string("run-id"),
-    signalName: Argument.string("signal-name"),
-    payload: Argument.string("json-payload").pipe(Argument.optional),
-    actor: Flag.string("actor").pipe(
+    runId: Argument.String("run-id"),
+    signalName: Argument.String("signal-name"),
+    payload: Argument.String("json-payload").pipe(Argument.optional),
+    actor: Flag.String("actor").pipe(
       Flag.optional,
       Flag.withDescription("Record who delivered the signal")
     ),

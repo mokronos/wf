@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, test } from "@effect/vitest"
 import { mkdtempSync, rmSync } from "node:fs"
 import { mkdir, utimes, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"

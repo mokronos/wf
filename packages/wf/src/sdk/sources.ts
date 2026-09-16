@@ -11,7 +11,7 @@ import { Schema } from "effect"
 export const workflowSourceHashPattern = /^[0-9a-f]{64}$/
 
 export const WorkflowSourceHash = Schema.String.pipe(
-  Schema.refine((value): value is string => workflowSourceHashPattern.test(value)),
+  Schema.check(Schema.isPattern(workflowSourceHashPattern)),
   Schema.brand("WorkflowSourceHash")
 )
 export type WorkflowSourceHash = typeof WorkflowSourceHash.Type

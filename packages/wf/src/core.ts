@@ -26,8 +26,7 @@ import {
   NonDeterminismError,
   OrchestrationCall,
   orchestrationCallsEqual,
-  orchestrationValueKey,
-  verifyOrchestrationCall
+  orchestrationValueKey
 } from "./determinism.ts"
 import type { InMemoryDeterminismState } from "./determinism.ts"
 import {
@@ -175,14 +174,6 @@ const typedStepFailure = (stepName: string, error: unknown): unknown =>
 // oxlint-disable-next-line anti-slop/no-unknown-parameters anti-slop/no-unknown-returns
 const unwrapAsyncFailure = (error: unknown): unknown =>
   error instanceof AsyncFailure ? error.error : error
-
-// A caught value. TypeScript types every catch binding as unknown because
-// JavaScript lets any value be thrown, so there is nothing narrower to accept.
-// oxlint-disable-next-line anti-slop/no-unknown-parameters
-const preserveNonDeterminismError = (error: unknown): NonDeterminismError => {
-  if (error instanceof NonDeterminismError) return error
-  throw error
-}
 
 const makeStepContext = <E>(
   executionId: string,
@@ -350,24 +341,18 @@ const makeCtx = <WErrors>(
         const resolver = resources.secrets
         const result = yield* Effect.tryPromise({
           try: async () => {
-            const release = await (resources.concurrency ?? defaultConcurrencyLimiter)
-              .acquire(step.name, step.concurrency, input)
-            try {
-              const executeInput = decodeSync(
-                step.input,
-                await resolveSecretReferences(input, resolver)
-              )
-              const value = await step.execute(
-                executeInput,
-                makeStepContext(executionId, attempt, resolver)
-              )
-              if (isTerminalFailure(value)) {
-                throw value
-              }
-              return decodeSync(step.output, value)
-            } finally {
-              release()
+            const executeInput = decodeSync(
+              step.input,
+              await resolveSecretReferences(input, resolver)
+            )
+            const value = await step.execute(
+              executeInput,
+              makeStepContext(executionId, attempt, resolver)
+            )
+            if (isTerminalFailure(value)) {
+              throw value
             }
+            return decodeSync(step.output, value)
           },
           catch: (error) => {
             if (isTerminalFailure(error)) {
@@ -378,7 +363,12 @@ const makeCtx = <WErrors>(
             }
             return { _wfFailureType: "transient", error } satisfies ActivityFailure
           }
-        })
+        }).pipe(
+          // The permit wraps the whole attempt, so an interrupted or failed step
+          // releases it through the same scope that took it.
+          (resources.concurrency ?? defaultConcurrencyLimiter)
+            .withPermit(step.name, step.concurrency, input)
+        )
 
         yield* emitWorkflowEvent({
           type: "step.completed",
@@ -456,7 +446,10 @@ const makeCtx = <WErrors>(
                     error: unwrapAsyncFailure(error)
                   })
                 ),
-                Effect.orDie
+                // The failure is now recorded in history, and the run still has
+                // to fail with the error that triggered compensation. Dying here
+                // would replace that error with a defect instead.
+                Effect.ignore
               )
               yield* emitWorkflowEvent({
                 type: "compensation.completed",
@@ -800,16 +793,22 @@ const makeInMemoryCtx = <WErrors>(
   const branchCollectors: Array<OrchestrationCall[]> = []
   const signals = options.signalTransport ?? defaultSignalTransport
 
-  const recordCall = async (actual: OrchestrationCall): Promise<void> => {
-    const index = journalPosition++
-    const expected = determinism.calls[index]
-    if (expected === undefined) {
-      determinism.calls.push(actual)
-    } else {
-      verifyOrchestrationCall(expected, actual)
-    }
-    branchCollectors[branchCollectors.length - 1]?.push(actual)
-  }
+  // Suspended: the journal position advances when the recorded call actually
+  // runs, not when the surrounding context method builds its effect.
+  const recordCall = (
+    actual: OrchestrationCall
+  ): Effect.Effect<void, NonDeterminismError> =>
+    Effect.suspend(() => {
+      const index = journalPosition++
+      const expected = determinism.calls[index]
+      if (expected === undefined) {
+        determinism.calls.push(actual)
+      } else if (!orchestrationCallsEqual(expected, actual)) {
+        return Effect.fail(new NonDeterminismError({ expected, actual }))
+      }
+      branchCollectors[branchCollectors.length - 1]?.push(actual)
+      return Effect.void
+    })
 
   return {
     executionId,
@@ -822,111 +821,112 @@ const makeInMemoryCtx = <WErrors>(
       const invocation = nextInvocation(counters, step.name)
       const activityName = `${step.name}#${invocation}`
       const input = decodeSync(step.input, rawInput)
-      // SAFETY: the durable step path — mapError below funnels every activity
-      // failure into the step's declared errors, and the engine's requirement is
-      // provided by the workflow's layer at the composition root.
-      return Effect.tryPromise({
+      // One attempt, holding the step's concurrency permit for exactly as long
+      // as the attempt runs. The permit is taken by the surrounding scope, so an
+      // interrupted or failed attempt returns it without a `finally`.
+      const attemptOnce = (attempt: number) => Effect.tryPromise({
         try: async () => {
-          await recordCall({ kind: "step", name: step.name, counter: invocation })
-          const attempts = transientAttempts(step.retry)
-          let lastTransient: unknown
+          const stepContext = makeStepContext(executionId, attempt, options.secrets)
+          const executeInput = decodeSync(
+            step.input,
+            await resolveSecretReferences(input, options.secrets)
+          )
+          const override = options.stepExecutor === undefined
+            ? { handled: false } as const
+            : await options.stepExecutor({
+                step,
+                input: executeInput,
+                invocation,
+                activityName,
+                context: stepContext
+              })
+          const value = override.handled
+            ? override.value
+            : await step.execute(executeInput, stepContext)
+          if (isTerminalFailure(value)) {
+            throw {
+              _wfFailureType: "terminal",
+              error: decodeSync(step.errors, value.error)
+            } satisfies ActivityFailure
+          }
 
-          for (let attempt = 1; attempt <= attempts; attempt++) {
-            await emit({
-              type: "step.started",
+          const result = decodeSync(step.output, value)
+          encodeSync(step.output, result)
+          await emit({
+            type: "step.completed",
+            executionId,
+            stepName: step.name,
+            invocation,
+            activityName,
+            attempt,
+            result
+          })
+
+          if (step.compensate !== undefined) {
+            const compensate = step.compensate
+            compensations.push({
+              stepName: step.name,
+              invocation,
+              result,
+              input,
+              compensate: (reason) => compensate(
+                decodeSync(step.output, result),
+                decodeSync(step.input, input),
+                reason
+              )
+            })
+          }
+
+          return result
+        },
+        catch: (error) => new AsyncFailure(error)
+      }).pipe(
+        (options.concurrency ?? defaultConcurrencyLimiter)
+          .withPermit(step.name, step.concurrency, input)
+      )
+
+      // SAFETY: the durable step path — the failures below are exactly the
+      // step's declared errors plus the two named in the return type, and the
+      // engine's requirement is provided by the workflow's layer at the
+      // composition root.
+      return Effect.gen(function* () {
+        yield* recordCall({ kind: "step", name: step.name, counter: invocation })
+        const attempts = transientAttempts(step.retry)
+        let lastTransient: unknown
+
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+          yield* Effect.promise(() => emit({
+            type: "step.started",
+            executionId,
+            stepName: step.name,
+            invocation,
+            activityName,
+            attempt,
+            input
+          }))
+
+          const outcome = yield* Effect.result(attemptOnce(attempt))
+          if (outcome._tag === "Success") return outcome.success
+
+          const error = unwrapAsyncFailure(outcome.failure)
+          const terminal = isActivityFailure(error) && error._wfFailureType === "terminal"
+          if (attempt === attempts || terminal) {
+            const failure = typedStepFailure(step.name, error)
+            yield* Effect.promise(() => emit({
+              type: "step.failed",
               executionId,
               stepName: step.name,
               invocation,
               activityName,
-              attempt,
-              input
-            })
-
-            try {
-              const stepContext = makeStepContext(
-                 executionId,
-                 attempt,
-                 options.secrets
-               )
-              const release = await (options.concurrency ?? defaultConcurrencyLimiter)
-                .acquire(step.name, step.concurrency, input, options.signal)
-              try {
-                const executeInput = decodeSync(
-                  step.input,
-                  await resolveSecretReferences(input, options.secrets)
-                )
-                const override = options.stepExecutor === undefined
-                  ? { handled: false } as const
-                  : await options.stepExecutor({
-                      step,
-                      input: executeInput,
-                      invocation,
-                      activityName,
-                      context: stepContext
-                    })
-                const value = override.handled
-                  ? override.value
-                  : await step.execute(executeInput, stepContext)
-                if (isTerminalFailure(value)) {
-                  throw {
-                    _wfFailureType: "terminal",
-                    error: decodeSync(step.errors, value.error)
-                  } satisfies ActivityFailure
-                }
-
-                const result = decodeSync(step.output, value)
-                encodeSync(step.output, result)
-                await emit({
-                  type: "step.completed",
-                  executionId,
-                  stepName: step.name,
-                  invocation,
-                  activityName,
-                  attempt,
-                  result
-                })
-
-                if (step.compensate !== undefined) {
-                  const compensate = step.compensate
-                  compensations.push({
-                    stepName: step.name,
-                    invocation,
-                    result,
-                    input,
-                    compensate: (reason) => compensate(
-                      decodeSync(step.output, result),
-                      decodeSync(step.input, input),
-                      reason
-                    )
-                  })
-                }
-
-                return result
-              } finally {
-                release()
-              }
-            } catch (error) {
-              const terminal = isActivityFailure(error) && error._wfFailureType === "terminal"
-              if (attempt === attempts || terminal) {
-                const failure = typedStepFailure(step.name, error)
-                await emit({
-                  type: "step.failed",
-                  executionId,
-                  stepName: step.name,
-                  invocation,
-                  activityName,
-                  error: failure
-                })
-                throw failure
-              }
-              lastTransient = error
-            }
+              error: failure
+            }))
+            return yield* Effect.fail(failure)
           }
+          lastTransient = error
+        }
 
-          throw lastTransient
-        },
-        catch: (error) => new AsyncFailure(error)
-      }).pipe(Effect.mapError(unwrapAsyncFailure)) as WorkflowValue<
+        return yield* Effect.fail(lastTransient)
+      }) as WorkflowValue<
         Output["Type"],
         Errors["Type"] | NonDeterminismError | StepExecutionError
       >
@@ -936,8 +936,9 @@ const makeInMemoryCtx = <WErrors>(
       const baseName = name ?? `sleep:${String(duration)}`
       const invocation = nextInvocation(counters, baseName)
       const activityName = `${baseName}#${invocation}`
-      return Effect.promise(async () => {
-        await recordCall({ kind: "sleep", name: baseName, counter: invocation })
+      return Effect.gen(function* () {
+        yield* recordCall({ kind: "sleep", name: baseName, counter: invocation })
+        yield* Effect.promise(async () => {
         await emit({
           type: "sleep.started",
           executionId,
@@ -955,6 +956,7 @@ const makeInMemoryCtx = <WErrors>(
           activityName,
           duration
         })
+        })
       })
     },
 
@@ -969,9 +971,8 @@ const makeInMemoryCtx = <WErrors>(
       // SAFETY: the durable signal path. Every branch below returns one of the
       // literal-tagged outcomes, and decode failures surface as the step's
       // declared errors.
-      return Effect.tryPromise({
+      return recordCall({ kind: "signal", name, counter: invocation }).pipe(Effect.andThen(Effect.tryPromise({
         try: async () => {
-          await recordCall({ kind: "signal", name, counter: invocation })
           signals.registerSchema(executionId, name, schema)
           await emit({
             type: "signal.waiting",
@@ -1062,7 +1063,7 @@ const makeInMemoryCtx = <WErrors>(
           return { type: "signal", value } as const
         },
         catch: (error) => new AsyncFailure(error)
-      }).pipe(Effect.mapError(unwrapAsyncFailure)) as WorkflowValue<
+      }).pipe(Effect.mapError(unwrapAsyncFailure)))) as WorkflowValue<
         SignalOutcome<T>,
         NonDeterminismError | SignalDeliveryError | Cancelled
       >
@@ -1071,8 +1072,8 @@ const makeInMemoryCtx = <WErrors>(
     now() {
       const invocation = nextInvocation(counters, "now")
       const call: OrchestrationCall = { kind: "now", name: "now", counter: invocation }
-      return Effect.promise(async () => {
-        await recordCall(call)
+      return Effect.gen(function* () {
+        yield* recordCall(call)
         const key = orchestrationValueKey(call)
         const existing = determinism.values.get(key)
         if (existing instanceof Date) {
@@ -1087,8 +1088,8 @@ const makeInMemoryCtx = <WErrors>(
     random() {
       const invocation = nextInvocation(counters, "random")
       const call: OrchestrationCall = { kind: "random", name: "random", counter: invocation }
-      return Effect.promise(async () => {
-        await recordCall(call)
+      return Effect.gen(function* () {
+        yield* recordCall(call)
         const key = orchestrationValueKey(call)
         const existing = determinism.values.get(key)
         if (Predicate.isNumber(existing)) {
@@ -1115,9 +1116,8 @@ const makeInMemoryCtx = <WErrors>(
       // SAFETY: the in-memory counterpart of the code path above: every failure
       // is rewrapped as CodeExecutionError, leaving only that and
       // NonDeterminismError.
-      return Effect.tryPromise({
+      return recordCall(call).pipe(Effect.andThen(Effect.tryPromise({
         try: async () => {
-          await recordCall(call)
           await emit({
             type: "code.started",
             executionId,
@@ -1169,7 +1169,7 @@ const makeInMemoryCtx = <WErrors>(
           }
         },
         catch: (cause) => new CodeExecutionError({ name, cause })
-      }) as WorkflowValue<Output["Type"], NonDeterminismError | CodeExecutionError>
+      }))) as WorkflowValue<Output["Type"], NonDeterminismError | CodeExecutionError>
     },
 
     all<const Effects extends ReadonlyArray<WorkflowValue<DynamicService, DynamicService>>>(
@@ -1181,10 +1181,7 @@ const makeInMemoryCtx = <WErrors>(
       const activityName = `${name}#${invocation}`
       const branches = effects.length
       const call: OrchestrationCall = { kind: "all", name, counter: invocation, branches }
-      const record = Effect.tryPromise({
-        try: () => recordCall(call),
-        catch: preserveNonDeterminismError
-      })
+      const record = recordCall(call)
       const emitEvent = (event: WorkflowEvent) => Effect.promise(() => emit(event))
       const persistBlock = (branchCalls: OrchestrationCall[][]) =>
         Effect.sync(() => {
@@ -1395,7 +1392,9 @@ export const defineWorkflow = <
                   error: compensationError
                 })
               ),
-              Effect.orDie
+              // Recorded above; swallowing it here keeps the remaining
+              // compensations running and lets the original failure propagate.
+              Effect.ignore
             )
             yield* emitWorkflowEvent({
               type: "compensation.completed",

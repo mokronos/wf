@@ -1,47 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test"
-import { mkdirSync, rmSync } from "node:fs"
-import path from "node:path"
-
-const repoRoot = path.resolve(import.meta.dir, "../../..")
-const cliPath = path.join(repoRoot, "apps", "cli", "src", "main.ts")
-const tempRoot = path.join(repoRoot, ".tmp", "cli-signal-tests")
-const decoder = new TextDecoder()
-
-let currentTempDir: string | undefined
-
-const makeTempDir = () => {
-  mkdirSync(tempRoot, { recursive: true })
-  currentTempDir = path.join(tempRoot, crypto.randomUUID())
-  mkdirSync(currentTempDir, { recursive: true })
-  return currentTempDir
-}
-
-afterEach(() => {
-  if (currentTempDir !== undefined) {
-    rmSync(currentTempDir, { recursive: true, force: true })
-    currentTempDir = undefined
-  }
-})
-
-const runCli = (cwd: string, args: ReadonlyArray<string>) => {
-  const subprocess = Bun.spawnSync({
-    cmd: [process.execPath, "run", cliPath, ...args],
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
-    env: {
-      ...process.env,
-      WF_HOME: cwd,
-      NO_COLOR: "1"
-    }
-  })
-
-  return {
-    exitCode: subprocess.exitCode,
-    stdout: decoder.decode(subprocess.stdout),
-    stderr: decoder.decode(subprocess.stderr)
-  }
-}
+import { describe, expect, it } from "@effect/vitest"
+import { Effect } from "effect"
+import { cliLayer, cliWorkspace, runCli } from "./run-cli.ts"
 
 const signalWorkflowSource = `import { defineWorkflow, t } from "@mokronos/wfkit"
 
@@ -57,45 +16,32 @@ export const SigDemoWorkflow = defineWorkflow({
 `
 
 describe("wf signal", () => {
-  test("resumes a signal-suspended CLI run from another process", () => {
-    const cwd = makeTempDir()
+  it.effect("resumes a signal-suspended CLI run from another process", () =>
+    Effect.gen(function* () {
+      const cwd = yield* cliWorkspace
+      const run = (args: ReadonlyArray<string>) => runCli(args, { cwd, home: cwd })
 
-    const create = runCli(cwd, [
-      "create",
-      "sig-demo",
-      "--source",
-      signalWorkflowSource
-    ])
-    expect(create.exitCode).toBe(0)
+      const create = yield* run(["create", "sig-demo", "--source", signalWorkflowSource])
+      expect(create.exitCode).toBe(0)
 
-    const started = runCli(cwd, ["run", "sig-demo", "{}"])
-    expect(started.exitCode).toBe(0)
-    expect(started.stderr).toContain("[signal] waiting for approval")
-    expect(started.stderr).toContain("wf signal")
+      const started = yield* run(["run", "sig-demo", "{}"])
+      expect(started.exitCode).toBe(0)
+      expect(started.stderr).toContain("[signal] waiting for approval")
+      expect(started.stderr).toContain("wf signal")
 
-    const runId = started.stderr.match(/\[run\] id ([^\s]+)/)?.[1]
-    expect(runId).toBeDefined()
+      const runId = started.stderr.match(/\[run\] id ([^\s]+)/)?.[1]
+      expect(runId).toBeDefined()
 
-    const signaled = runCli(cwd, [
-      "signal",
-      runId!,
-      "approval",
-      "{\"approved\":true}"
-    ])
-    expect(signaled.exitCode).toBe(0)
-    expect(signaled.stdout).toContain("approved")
+      const signaled = yield* run(["signal", runId!, "approval", '{"approved":true}'])
+      expect(signaled.exitCode).toBe(0)
+      expect(signaled.stdout).toContain("approved")
 
-    const runs = runCli(cwd, ["runs"])
-    expect(runs.exitCode).toBe(0)
-    expect(runs.stdout).toContain(`${runId}\tcompleted\tsig-demo`)
+      const runs = yield* run(["runs"])
+      expect(runs.exitCode).toBe(0)
+      expect(runs.stdout).toContain(`${runId}\tcompleted\tsig-demo`)
 
-    const alreadyCompleted = runCli(cwd, [
-      "signal",
-      runId!,
-      "approval",
-      "{\"approved\":true}"
-    ])
-    expect(alreadyCompleted.exitCode).not.toBe(0)
-    expect(alreadyCompleted.stderr).toContain("not waiting for signal approval")
-  }, 15_000)
+      const alreadyCompleted = yield* run(["signal", runId!, "approval", '{"approved":true}'])
+      expect(alreadyCompleted.exitCode).not.toBe(0)
+      expect(alreadyCompleted.stderr).toContain("not waiting for signal approval")
+    }).pipe(Effect.provide(cliLayer)), 30_000)
 })

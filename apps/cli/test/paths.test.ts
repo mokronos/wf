@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import path from "node:path"
 import { enginePath, sourcesPath, wfHome, workflowsPath } from "../src/paths.ts"
 

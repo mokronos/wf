@@ -14,7 +14,7 @@ export const workflowIdPattern = /^[a-z][a-z0-9-]*$/
  * escaping the catalog directory once it is joined into a path.
  */
 export const WorkflowId = Schema.String.pipe(
-  Schema.refine((value): value is string => workflowIdPattern.test(value)),
+  Schema.check(Schema.isPattern(workflowIdPattern)),
   Schema.brand("WorkflowId")
 )
 export type WorkflowId = typeof WorkflowId.Type

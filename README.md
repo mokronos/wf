@@ -38,7 +38,7 @@ State defaults to `~/.wf`; set `WF_HOME` to use another directory.
 
 ```bash
 bun run typecheck
-bun test
+bun run test
 bun run build
 ```
 

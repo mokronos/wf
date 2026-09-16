@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { Schema } from "effect"
 import { decodePersistedJsonSchema } from "../src/sdk/loader.ts"
 import { jsonSchemaOf } from "../src/schemas.ts"

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { Cause, Option, Predicate, Schema } from "effect"
 import { defineStep, defineWorkflow } from "../src/core"
 import { deliverSignal, SignalDeliveryError } from "../src/signal"

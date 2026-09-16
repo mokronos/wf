@@ -2,9 +2,10 @@ import { Predicate, Schema } from "effect"
 
 const SecretRefPrefix = "secret:"
 
-export const SecretRef = Schema.declare<string>(
-  (value): value is string => Predicate.isString(value) && value.startsWith(SecretRefPrefix)
-).pipe(Schema.brand("SecretRef"))
+export const SecretRef = Schema.String.pipe(
+  Schema.check(Schema.isStartsWith(SecretRefPrefix)),
+  Schema.brand("SecretRef")
+)
 export type SecretRef = typeof SecretRef.Type
 
 export const SecretResolutionContext = Schema.Struct({

@@ -1,7 +1,30 @@
-import { mkdir, writeFile } from "node:fs/promises"
+import { Effect, FileSystem, Path, Schema, Stream } from "effect"
+import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process"
 import { homedir, userInfo } from "node:os"
-import path from "node:path"
 import { serviceErrorLogPath, serviceLogPath, wfHome } from "./paths.ts"
+
+export class ServiceCommandError extends Schema.TaggedError<ServiceCommandError>()(
+  "ServiceCommandError",
+  {
+    program: Schema.String,
+    args: Schema.Array(Schema.String),
+    details: Schema.String
+  }
+) {
+  override get message(): string {
+    const invocation = `${this.program} ${this.args.join(" ")}`
+    return `${invocation} failed${this.details.length === 0 ? "" : `:\n${this.details}`}`
+  }
+}
+
+export class UnsupportedPlatform extends Schema.TaggedError<UnsupportedPlatform>()(
+  "UnsupportedPlatform",
+  { platform: Schema.String }
+) {
+  override get message(): string {
+    return "wf install currently supports Linux systemd --user and macOS launchd"
+  }
+}
 
 export const serviceLabel = "dev.mokronos.wf"
 export const defaultPort = 4787
@@ -78,65 +101,91 @@ export const launchdPlist = (descriptor: ServiceDescriptor): string => `<?xml ve
 </dict></plist>
 `
 
-/** Whether a service definition exists, so a command can say that the running
- *  dashboard is older than the code on disk. */
-export const serviceIsRegistered = async (): Promise<boolean> => {
-  const definition = process.platform === "darwin"
-    ? path.join(homedir(), "Library", "LaunchAgents", `${serviceLabel}.plist`)
-    : path.join(homedir(), ".config", "systemd", "user", `${serviceLabel}.service`)
-  return await Bun.file(definition).exists()
+const boundedDetails = (output: string): string => {
+  const details = output.trim()
+  const limit = 800
+  return details.length <= limit
+    ? details
+    : `${details.slice(0, limit)}… (+${details.length - limit} chars)`
 }
 
-const command = async (
+/** Runs a service-manager command once, surfacing its output only when it
+ *  fails (or streaming it straight through under `--verbose`). */
+const runCommand = Effect.fn("service.runCommand")(function* (
   program: string,
-  arguments_: ReadonlyArray<string>,
+  args: ReadonlyArray<string>,
   verbose: boolean
-): Promise<void> => {
-  const process_ = Bun.spawn([program, ...arguments_], {
+) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner
+  const command = ChildProcess.make(program, [...args], {
     stdout: verbose ? "inherit" : "pipe",
     stderr: verbose ? "inherit" : "pipe"
   })
-  const [exitCode, stdout, stderr] = await Promise.all([
-    process_.exited,
-    verbose ? Promise.resolve("") : new Response(process_.stdout).text(),
-    verbose ? Promise.resolve("") : new Response(process_.stderr).text()
-  ])
-  if (exitCode !== 0) {
-    const details = [stdout.trim(), stderr.trim()].filter((line) => line.length > 0).join("\n")
-    const limit = 800
-    const bounded = details.length <= limit
-      ? details
-      : `${details.slice(0, limit)}… (+${details.length - limit} chars)`
-    throw new Error(`${program} ${arguments_.join(" ")} failed${bounded.length === 0 ? "" : `:\n${bounded}`}`)
-  }
-}
 
-export const installService = async (program: ReadonlyArray<string>, verbose = false): Promise<void> => {
+  const { exitCode, output } = yield* Effect.scoped(Effect.gen(function* () {
+    const handle = yield* spawner.spawn(command)
+    if (verbose) {
+      return { exitCode: yield* handle.exitCode, output: "" }
+    }
+    // Drained alongside the wait so a chatty command cannot fill its pipe and
+    // block before exiting.
+    const [output, exitCode] = yield* Effect.all(
+      [handle.all.pipe(Stream.decodeText(), Stream.mkString), handle.exitCode],
+      { concurrency: 2 }
+    )
+    return { exitCode, output }
+  }))
+
+  if (exitCode === 0) return
+  return yield* new ServiceCommandError({ program, args, details: boundedDetails(output) })
+})
+
+/** Registers and starts the per-user dashboard service for this platform. */
+export const installService = Effect.fn("installService")(function* (
+  program: ReadonlyArray<string>,
+  verbose = false
+) {
+  const fs = yield* FileSystem.FileSystem
+  const path = yield* Path.Path
   const home = wfHome()
-  await mkdir(path.join(home, "logs"), { recursive: true })
-  const descriptor: ServiceDescriptor = { program, home, port: defaultPort }
+  yield* fs.makeDirectory(path.join(home, "logs"), { recursive: true })
+
   if (process.platform === "linux") {
     const unitDirectory = path.join(homedir(), ".config", "systemd", "user")
-    await mkdir(unitDirectory, { recursive: true })
-    await writeFile(path.join(unitDirectory, `${serviceLabel}.service`), systemdUnit({
-      program: [...program, "daemon", "--foreground", "--port", String(defaultPort)],
-      environment: { WF_HOME: home }, workingDirectory: home,
-      stdoutPath: serviceLogPath(home), stderrPath: serviceErrorLogPath(home)
-    }), { mode: 0o600 })
-    await command("systemctl", ["--user", "daemon-reload"], verbose)
-    await command("systemctl", ["--user", "enable", `${serviceLabel}.service`], verbose)
-    await command("systemctl", ["--user", "restart", `${serviceLabel}.service`], verbose)
-    await command("loginctl", ["enable-linger", userInfo().username], verbose).catch(() => undefined)
+    yield* fs.makeDirectory(unitDirectory, { recursive: true })
+    yield* fs.writeFileString(
+      path.join(unitDirectory, `${serviceLabel}.service`),
+      systemdUnit({
+        program: [...program, "daemon", "--foreground", "--port", String(defaultPort)],
+        environment: { WF_HOME: home },
+        workingDirectory: home,
+        stdoutPath: serviceLogPath(home),
+        stderrPath: serviceErrorLogPath(home)
+      })
+    )
+    yield* fs.chmod(path.join(unitDirectory, `${serviceLabel}.service`), 0o600)
+    yield* runCommand("systemctl", ["--user", "daemon-reload"], verbose)
+    yield* runCommand("systemctl", ["--user", "enable", `${serviceLabel}.service`], verbose)
+    yield* runCommand("systemctl", ["--user", "restart", `${serviceLabel}.service`], verbose)
+    // Lingering is a nicety: without it the service stops at logout, which is
+    // a worse dashboard but not a failed install.
+    yield* Effect.ignore(runCommand("loginctl", ["enable-linger", userInfo().username], verbose))
     return
   }
+
   if (process.platform === "darwin") {
+    const descriptor: ServiceDescriptor = { program, home, port: defaultPort }
     const agents = path.join(homedir(), "Library", "LaunchAgents")
     const plist = path.join(agents, `${serviceLabel}.plist`)
-    await mkdir(agents, { recursive: true })
-    await writeFile(plist, launchdPlist(descriptor), { mode: 0o600 })
-    await command("launchctl", ["bootout", `gui/${process.getuid?.() ?? userInfo().uid}/${serviceLabel}`], verbose).catch(() => undefined)
-    await command("launchctl", ["bootstrap", `gui/${process.getuid?.() ?? userInfo().uid}`, plist], verbose)
+    const uid = String(process.getuid?.() ?? userInfo().uid)
+    yield* fs.makeDirectory(agents, { recursive: true })
+    yield* fs.writeFileString(plist, launchdPlist(descriptor))
+    yield* fs.chmod(plist, 0o600)
+    // A previous agent may not be loaded; booting it out is best-effort.
+    yield* Effect.ignore(runCommand("launchctl", ["bootout", `gui/${uid}/${serviceLabel}`], verbose))
+    yield* runCommand("launchctl", ["bootstrap", `gui/${uid}`, plist], verbose)
     return
   }
-  throw new Error("wf install currently supports Linux systemd --user and macOS launchd")
-}
+
+  return yield* new UnsupportedPlatform({ platform: process.platform })
+})

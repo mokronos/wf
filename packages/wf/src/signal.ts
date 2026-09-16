@@ -1,5 +1,5 @@
 import type { WorkflowPayload } from "./schemas.ts"
-import { Data, Schema } from "effect"
+import { Schema } from "effect"
 
 type SynchronousSchema<A = Schema.Schema.Type<Schema.Top>> = Schema.Codec<
   A,
@@ -8,10 +8,13 @@ type SynchronousSchema<A = Schema.Schema.Type<Schema.Top>> = Schema.Codec<
   never
 >
 
-export class SignalDeliveryError extends Data.TaggedError("SignalDeliveryError")<{
-  readonly message: string
-  readonly cause?: unknown
-}> {}
+export class SignalDeliveryError extends Schema.TaggedError<SignalDeliveryError>()(
+  "SignalDeliveryError",
+  {
+    message: Schema.String,
+    cause: Schema.optional(Schema.Defect())
+  }
+) {}
 
 interface SignalWaiter {
   /** The payload as it arrived, before this waiter's schema has seen it.
@@ -171,25 +174,13 @@ export const createSignalTransport = (): SignalTransport => {
   }
 }
 
+/** Fallback transport for `executeInMemory` calls made without a runtime. A
+ *  runtime, test runtime, or client always passes its own instead, so signals
+ *  never cross execution boundaries that own separate state. */
 export const defaultSignalTransport = createSignalTransport()
 
-// Backwards-compatible process-local helpers. Production callers should pass
-// an execution-owned transport through their adapter instead.
-export const getSignalSchema = (executionId: string, name: string): SynchronousSchema | undefined =>
-  defaultSignalTransport.getSchema(executionId, name)
-export const registerSignalSchema = <T>(executionId: string, name: string, schema: SynchronousSchema<T>) =>
-  defaultSignalTransport.registerSchema(executionId, name, schema)
-export const deliverSignal = (executionId: string, name: string, payload: WorkflowPayload): Promise<void> =>
-  defaultSignalTransport.deliver(executionId, name, payload)
-export const takeBufferedSignal = <T>(executionId: string, name: string, schema: SynchronousSchema<T>): BufferedSignal<T> =>
-  defaultSignalTransport.takeBuffered(executionId, name, schema)
-export const awaitSignal = <T>(
+export const deliverSignal = (
   executionId: string,
   name: string,
-  schema: SynchronousSchema<T>,
-  options?: { readonly signal?: AbortSignal }
-): Promise<T> => defaultSignalTransport.await(executionId, name, schema, options)
-export const cancelSignalWaits = (executionId: string, error: Error) =>
-  defaultSignalTransport.cancel(executionId, error)
-export const cleanupSignals = (executionId: string, error?: Error) =>
-  defaultSignalTransport.cleanup(executionId, error)
+  payload: WorkflowPayload
+): Promise<void> => defaultSignalTransport.deliver(executionId, name, payload)

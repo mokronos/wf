@@ -10,14 +10,12 @@
   ],
   "catalog": {
     "@astrojs/check": "^0.9.5",
-    "@effect/platform-bun": "4.0.0-rc.112",
-    "@effect/platform-node": "4.0.0-rc.112",
-    "@effect/platform-node-shared": "4.0.0-rc.112",
-    "@effect/sql-sqlite-bun": "4.0.0-rc.112",
+    "@effect/platform-bun": "4.0.0-rc.115",
+    "@effect/sql-sqlite-bun": "4.0.0-rc.115",
+    "@effect/vitest": "4.0.0-rc.115",
     "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/jetbrains-mono": "^5.2.8",
     "@fontsource-variable/manrope": "^5.2.8",
-    "@libsql/client": "0.17.3",
     "@tailwindcss/vite": "^4.3.2",
     "@types/bun": "^1.3.14",
     "@types/dagre": "^0.7.53",
@@ -29,8 +27,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dagre": "^0.8.5",
-    "drizzle-orm": "0.45.2",
-    "effect": "4.0.0-rc.112",
+    "effect": "4.0.0-rc.115",
     "lucide-react": "^1.23.0",
     "radix-ui": "^1.6.2",
     "react": "^19.2.7",
@@ -40,9 +37,9 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.2",
     "tw-animate-css": "^1.4.0",
-    "typescript": "~6.0.2",
+    "typescript": "^6.0.3",
     "vite": "^8.1.1",
-    "yaml": "^2.9.0"
+    "vitest": "^5.0.1"
   },
   "scripts": {
     "build:observability": "bun run --cwd packages/observability build",
@@ -67,17 +64,20 @@
     "lint": "oxlint",
     "prepare": "effect-language-service patch",
     "typecheck": "tsc --build --noEmit && tsc -p apps/wf/web",
-    "test": "bun test",
-    "test:all": "bun test && bun run example:email && bun run example:quickstart && bun run example:order-saga && bun run example:approval && bun run example:campaign-rollout",
+    "test": "bun --bun vitest run",
+    "test:all": "bun run test && bun run example:email && bun run example:quickstart && bun run example:order-saga && bun run example:approval && bun run example:campaign-rollout",
     "verify": "bun run lint && bun run typecheck && bun run test:all && bun run build:cli && bun run build:site && bun run build:dashboard",
-    "wf": "bun run apps/cli/src/main.ts"
+    "wf": "bun run apps/cli/src/main.ts",
+    "test:watch": "bun --bun vitest"
   },
   "devDependencies": {
-    "@effect/language-service": "^0.86.4",
+    "@effect/language-service": "^0.87.2",
+    "@effect/vitest": "catalog:",
     "@oxlint/plugins": "1.79.0",
-    "@types/bun": "latest",
+    "@types/bun": "catalog:",
     "effect-solutions": "^0.5.3",
     "oxlint": "1.79.0",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "vitest": "catalog:"
   }
 }

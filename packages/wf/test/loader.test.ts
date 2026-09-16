@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, test } from "@effect/vitest"
 import { loadWorkflowArtifact } from "../src/sdk/loader.ts"
 import { parseWorkflowId } from "../src/sdk/catalog.ts"
 

@@ -1,4 +1,4 @@
-import { Data, Schema } from "effect"
+import { Schema } from "effect"
 import type { WorkflowGraphNodeMetadata, WorkflowGraphNodeSchemas } from "./schemas.ts"
 
 export const OrchestrationKind = Schema.Literals([
@@ -20,10 +20,13 @@ export const OrchestrationCall = Schema.Struct({
 })
 export type OrchestrationCall = typeof OrchestrationCall.Type
 
-export class NonDeterminismError extends Data.TaggedError("NonDeterminismError")<{
-  readonly expected: OrchestrationCall
-  readonly actual: OrchestrationCall
-}> {
+export class NonDeterminismError extends Schema.TaggedError<NonDeterminismError>()(
+  "NonDeterminismError",
+  {
+    expected: OrchestrationCall,
+    actual: OrchestrationCall
+  }
+) {
   override get message(): string {
     return `Non-deterministic workflow replay: expected ${formatCall(this.expected)} but saw ${formatCall(this.actual)}`
   }
@@ -60,14 +63,5 @@ export const orchestrationCallsEqual = (
   left.name === right.name &&
   left.counter === right.counter &&
   left.branches === right.branches
-
-export const verifyOrchestrationCall = (
-  expected: OrchestrationCall,
-  actual: OrchestrationCall
-): void => {
-  if (!orchestrationCallsEqual(expected, actual)) {
-    throw new NonDeterminismError({ expected, actual })
-  }
-}
 
 export const orchestrationValueKey = (call: OrchestrationCall): string => formatCall(call)

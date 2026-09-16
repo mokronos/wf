@@ -18,5 +18,12 @@ export const emitWorkflowEvent = (
     if (sink === undefined) {
       return
     }
-    yield* Effect.promise(() => Promise.resolve(sink(event)))
+    // A sink is observational. Letting it reject would turn a bad listener
+    // into a defect that kills the run it is only meant to watch.
+    yield* Effect.tryPromise(() => Promise.resolve(sink(event))).pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Workflow event sink failed", cause)
+      ),
+      Effect.ignore
+    )
   })
